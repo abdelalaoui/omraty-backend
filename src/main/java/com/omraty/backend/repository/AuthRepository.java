@@ -89,7 +89,7 @@ public class AuthRepository {
         return jdbcTemplate.update(RefreshTokensTable.REVOKE_REFRESH_TOKEN, token);
     }
 
-    public int deleteExpiredRefreshTokens() {
-        return jdbcTemplate.update(RefreshTokensTable.DELETE_EXPIRED);
+    public int deleteExpiredOrRevokedRefreshTokens() {
+        return jdbcTemplate.update(RefreshTokensTable.DELETE_EXPIRED_OR_REVOKED);
     }
 }

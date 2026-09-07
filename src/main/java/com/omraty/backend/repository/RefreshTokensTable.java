@@ -17,5 +17,6 @@ final class RefreshTokensTable {
     static final String REVOKE_REFRESH_TOKEN =
             "UPDATE refresh_tokens SET revoked = TRUE WHERE token = ?";
 
-    static final String DELETE_EXPIRED = "DELETE FROM refresh_tokens WHERE expires_at < now()";
+    static final String DELETE_EXPIRED_OR_REVOKED =
+            "DELETE FROM refresh_tokens WHERE expires_at < now() OR revoked = true";
 }

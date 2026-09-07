@@ -7,7 +7,7 @@ import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.repository.AuthRepository;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -16,11 +16,13 @@ public class AuthService {
 
     private final AuthRepository authRepository;
     private final JwtService jwtService;
-    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private final PasswordEncoder passwordEncoder;
 
-    public AuthService(AuthRepository authRepository, JwtService jwtService) {
+    public AuthService(
+            AuthRepository authRepository, JwtService jwtService, PasswordEncoder passwordEncoder) {
         this.authRepository = authRepository;
         this.jwtService = jwtService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public AuthResult register(String phone, String password, String gender) {
@@ -77,6 +79,20 @@ public class AuthService {
 
         authRepository.revokeRefreshToken(refreshToken);
         return issueTokens(user);
+    }
+
+    public User verifyAccessToken(String accessToken) {
+        if (!jwtService.isAccessToken(accessToken)) {
+            throw new AuthException.InvalidTokenException(
+                    "Le token fourni n'est pas un access token", null);
+        }
+        UUID userId = jwtService.getUserIdFromToken(accessToken);
+        return authRepository
+                .findById(userId)
+                .orElseThrow(
+                        () ->
+                                new AuthException.InvalidTokenException(
+                                        "Utilisateur introuvable", null));
     }
 
     public void logout(String refreshToken) {
