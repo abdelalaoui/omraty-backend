@@ -4,9 +4,9 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record RefreshToken(
-    Long id,
-    UUID userId,
-    String token,
-    LocalDateTime expiresAt,
-    boolean revoked,
-    LocalDateTime createdAt) {}
+        Long id,
+        UUID userId,
+        String token,
+        LocalDateTime expiresAt,
+        boolean revoked,
+        LocalDateTime createdAt) {}

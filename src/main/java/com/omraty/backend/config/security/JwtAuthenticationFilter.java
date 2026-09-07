@@ -18,41 +18,42 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-  private static final String AUTHORIZATION_HEADER = "Authorization";
-  private static final String BEARER_PREFIX = "Bearer ";
+    private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String BEARER_PREFIX = "Bearer ";
 
-  private final JwtService jwtService;
+    private final JwtService jwtService;
 
-  public JwtAuthenticationFilter(JwtService jwtService) {
-    this.jwtService = jwtService;
-  }
-
-  @Override
-  protected void doFilterInternal(
-      @NonNull HttpServletRequest request,
-      @NonNull HttpServletResponse response,
-      @NonNull FilterChain filterChain)
-      throws ServletException, IOException {
-    String header = request.getHeader(AUTHORIZATION_HEADER);
-
-    if (header != null
-        && header.startsWith(BEARER_PREFIX)
-        && SecurityContextHolder.getContext().getAuthentication() == null) {
-      String token = header.substring(BEARER_PREFIX.length());
-      try {
-        if (jwtService.isAccessToken(token)) {
-          UUID userId = jwtService.getUserIdFromToken(token);
-          UsernamePasswordAuthenticationToken authentication =
-              new UsernamePasswordAuthenticationToken(
-                  userId, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
-          authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-          SecurityContextHolder.getContext().setAuthentication(authentication);
-        }
-      } catch (RuntimeException e) {
-        SecurityContextHolder.clearContext();
-      }
+    public JwtAuthenticationFilter(JwtService jwtService) {
+        this.jwtService = jwtService;
     }
 
-    filterChain.doFilter(request, response);
-  }
+    @Override
+    protected void doFilterInternal(
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain)
+            throws ServletException, IOException {
+        String header = request.getHeader(AUTHORIZATION_HEADER);
+
+        if (header != null
+                && header.startsWith(BEARER_PREFIX)
+                && SecurityContextHolder.getContext().getAuthentication() == null) {
+            String token = header.substring(BEARER_PREFIX.length());
+            try {
+                if (jwtService.isAccessToken(token)) {
+                    UUID userId = jwtService.getUserIdFromToken(token);
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    userId, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                    authentication.setDetails(
+                            new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
+            } catch (RuntimeException e) {
+                SecurityContextHolder.clearContext();
+            }
+        }
+
+        filterChain.doFilter(request, response);
+    }
 }
