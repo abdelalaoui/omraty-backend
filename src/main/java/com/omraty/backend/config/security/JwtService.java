@@ -19,6 +19,7 @@ public class JwtService {
 
     private static final String CLAIM_PHONE = "phone";
     private static final String CLAIM_TYPE = "type";
+    private static final String CLAIM_ROLE = "role";
 
     private enum TokenType {
         ACCESS("access"),
@@ -44,14 +45,22 @@ public class JwtService {
         this.refreshTokenExpirationDays = refreshTokenExpirationDays;
     }
 
-    public String generateAccessToken(UUID userId, String phone) {
+    public String generateAccessToken(UUID userId, String phone, String role) {
         return generateToken(
-                userId, phone, TokenType.ACCESS, Duration.ofMinutes(accessTokenExpirationMinutes));
+                userId,
+                phone,
+                role,
+                TokenType.ACCESS,
+                Duration.ofMinutes(accessTokenExpirationMinutes));
     }
 
     public String generateRefreshToken(UUID userId, String phone) {
         return generateToken(
-                userId, phone, TokenType.REFRESH, Duration.ofDays(refreshTokenExpirationDays));
+                userId,
+                phone,
+                null,
+                TokenType.REFRESH,
+                Duration.ofDays(refreshTokenExpirationDays));
     }
 
     public Claims validateToken(String token) {
@@ -78,19 +87,27 @@ public class JwtService {
         return TokenType.REFRESH.value.equals(validateToken(token).get(CLAIM_TYPE, String.class));
     }
 
+    public String getRole(String token) {
+        return validateToken(token).get(CLAIM_ROLE, String.class);
+    }
+
     public Instant getExpiration(String token) {
         return validateToken(token).getExpiration().toInstant();
     }
 
-    private String generateToken(UUID userId, String phone, TokenType type, Duration expiration) {
+    private String generateToken(
+            UUID userId, String phone, String role, TokenType type, Duration expiration) {
         Instant now = Instant.now();
-        return Jwts.builder()
-                .subject(userId.toString())
-                .claim(CLAIM_PHONE, phone)
-                .claim(CLAIM_TYPE, type.value)
-                .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plus(expiration)))
-                .signWith(secretKey, Jwts.SIG.HS256)
-                .compact();
+        var builder =
+                Jwts.builder()
+                        .subject(userId.toString())
+                        .claim(CLAIM_PHONE, phone)
+                        .claim(CLAIM_TYPE, type.value)
+                        .issuedAt(Date.from(now))
+                        .expiration(Date.from(now.plus(expiration)));
+        if (role != null) {
+            builder.claim(CLAIM_ROLE, role);
+        }
+        return builder.signWith(secretKey, Jwts.SIG.HS256).compact();
     }
 }

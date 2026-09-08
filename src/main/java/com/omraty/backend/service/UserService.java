@@ -5,6 +5,7 @@ import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.exception.UserException;
 import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.storage.FileStorageService;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,43 @@ public class UserService {
                         () ->
                                 new AuthException.InvalidTokenException(
                                         "Utilisateur introuvable", null));
+    }
+
+    /** Comptes ayant soumis un NNI/photo et en attente de revue par un admin. */
+    public List<User> listPendingIdentityVerifications() {
+        return authRepository.findPendingIdentityVerifications();
+    }
+
+    /** Marque l'identité comme vérifiée après validation du NNI/photo par un admin. */
+    public User approveIdentity(UUID userId) {
+        requirePendingIdentity(userId);
+        return authRepository
+                .approveIdentity(userId)
+                .orElseThrow(
+                        () -> new UserException.UserNotFoundException("Utilisateur introuvable"));
+    }
+
+    /** Rejette la demande : le NNI/photo sont effacés, l'utilisateur devra les renvoyer. */
+    public User rejectIdentity(UUID userId) {
+        requirePendingIdentity(userId);
+        return authRepository
+                .rejectIdentity(userId)
+                .orElseThrow(
+                        () -> new UserException.UserNotFoundException("Utilisateur introuvable"));
+    }
+
+    private void requirePendingIdentity(UUID userId) {
+        User user =
+                authRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new UserException.UserNotFoundException(
+                                                "Utilisateur introuvable"));
+        if (user.nni() == null || user.identityVerified()) {
+            throw new UserException.IdentityNotPendingException(
+                    "Aucune demande de vérification d'identité en attente pour cet utilisateur");
+        }
     }
 
     private void validatePhoto(MultipartFile photo) {

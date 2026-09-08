@@ -33,6 +33,7 @@ class AuthServiceTest {
     private static final String RAW_PASSWORD = "MonMotDePasse123!";
     private static final String PASSWORD_HASH = "hashed-password";
     private static final String GENDER = "MALE";
+    private static final String ROLE = "USER";
 
     @Mock private AuthRepository authRepository;
     @Mock private JwtService jwtService;
@@ -53,11 +54,13 @@ class AuthServiceTest {
                         null,
                         null,
                         false,
-                        LocalDateTime.now());
+                        LocalDateTime.now(),
+                        ROLE);
     }
 
     private void stubTokenIssuance(String accessToken, String refreshToken) {
-        when(jwtService.generateAccessToken(user.id(), user.phone())).thenReturn(accessToken);
+        when(jwtService.generateAccessToken(user.id(), user.phone(), user.role()))
+                .thenReturn(accessToken);
         when(jwtService.generateRefreshToken(user.id(), user.phone())).thenReturn(refreshToken);
         when(jwtService.getExpiration(refreshToken)).thenReturn(Instant.now().plusSeconds(3600));
     }
