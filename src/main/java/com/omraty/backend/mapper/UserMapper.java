@@ -10,7 +10,13 @@ public final class UserMapper {
     private UserMapper() {}
 
     public static UserResponse toResponse(User user) {
-        return new UserResponse(user.id(), user.phone(), user.gender(), user.identityVerified());
+        return new UserResponse(
+                user.id(),
+                user.phone(),
+                user.gender(),
+                user.nni(),
+                user.idPhotoUrl(),
+                user.identityVerified());
     }
 
     public static AuthResponse toAuthResponse(AuthResult result) {

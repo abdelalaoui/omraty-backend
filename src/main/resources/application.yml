@@ -8,6 +8,10 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
 
 server:
   port: ${SERVER_PORT:8080}
@@ -16,3 +20,12 @@ jwt:
   secret: ${JWT_SECRET:change-me-in-every-environment-min-32-chars}
   accessTokenExpirationMinutes: ${JWT_ACCESS_EXP_MINUTES:15}
   refreshTokenExpirationDays: ${JWT_REFRESH_EXP_DAYS:30}
+
+app:
+  upload:
+    provider: ${UPLOAD_PROVIDER:local} # local | s3
+    dir: ${UPLOAD_DIR:./uploads}
+    base-url: ${UPLOAD_BASE_URL:/uploads}
+    s3:
+      bucket: ${AWS_S3_BUCKET:}
+      region: ${AWS_REGION:eu-west-3}
