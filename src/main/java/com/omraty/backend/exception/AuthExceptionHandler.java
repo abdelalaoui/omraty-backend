@@ -56,8 +56,7 @@ public class AuthExceptionHandler {
     }
 
     @ExceptionHandler(UserException.UserNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleUserNotFound(
-            UserException.UserNotFoundException e) {
+    public ResponseEntity<ErrorResponse> handleUserNotFound(UserException.UserNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
