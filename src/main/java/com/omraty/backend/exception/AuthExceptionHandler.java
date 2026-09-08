@@ -2,6 +2,8 @@ package com.omraty.backend.exception;
 
 import com.omraty.backend.dto.response.ErrorResponse;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class AuthExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthExceptionHandler.class);
 
     @ExceptionHandler(AuthException.PhoneAlreadyUsedException.class)
     public ResponseEntity<ErrorResponse> handlePhoneAlreadyUsed(
@@ -43,5 +47,12 @@ public class AuthExceptionHandler {
                 .body(
                         new ErrorResponse(
                                 "Requête invalide : vérifiez le format et les valeurs envoyées"));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
+        log.error("Erreur inattendue", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("Une erreur interne est survenue"));
     }
 }
