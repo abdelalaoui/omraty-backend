@@ -21,4 +21,16 @@ public class UserException extends RuntimeException {
             super(message, cause);
         }
     }
+
+    public static class UserNotFoundException extends UserException {
+        public UserNotFoundException(String message) {
+            super(message);
+        }
+    }
+
+    public static class IdentityNotPendingException extends UserException {
+        public IdentityNotPendingException(String message) {
+            super(message);
+        }
+    }
 }

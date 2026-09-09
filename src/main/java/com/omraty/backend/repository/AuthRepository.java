@@ -3,6 +3,7 @@ package com.omraty.backend.repository;
 import com.omraty.backend.entities.RefreshToken;
 import com.omraty.backend.entities.User;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,7 +23,8 @@ public class AuthRepository {
                             rs.getString("nni"),
                             rs.getString("id_photo_url"),
                             rs.getBoolean("identity_verified"),
-                            rs.getObject("created_at", LocalDateTime.class));
+                            rs.getObject("created_at", LocalDateTime.class),
+                            rs.getString("role"));
 
     private static final RowMapper<RefreshToken> REFRESH_TOKEN_ROW_MAPPER =
             (rs, rowNum) ->
@@ -66,6 +68,21 @@ public class AuthRepository {
                         identityVerified,
                         userId)
                 .stream()
+                .findFirst();
+    }
+
+    public List<User> findPendingIdentityVerifications() {
+        return jdbcTemplate.query(
+                UsersTable.SELECT_PENDING_IDENTITY_VERIFICATIONS, USER_ROW_MAPPER);
+    }
+
+    public Optional<User> approveIdentity(UUID userId) {
+        return jdbcTemplate.query(UsersTable.APPROVE_IDENTITY, USER_ROW_MAPPER, userId).stream()
+                .findFirst();
+    }
+
+    public Optional<User> rejectIdentity(UUID userId) {
+        return jdbcTemplate.query(UsersTable.REJECT_IDENTITY, USER_ROW_MAPPER, userId).stream()
                 .findFirst();
     }
 

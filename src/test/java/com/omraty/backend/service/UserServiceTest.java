@@ -15,6 +15,7 @@ import com.omraty.backend.exception.UserException;
 import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.storage.FileStorageService;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +49,8 @@ class UserServiceTest {
                         null,
                         null,
                         false,
-                        LocalDateTime.now());
+                        LocalDateTime.now(),
+                        "USER");
     }
 
     private MultipartFile validPhoto() {
@@ -109,7 +111,8 @@ class UserServiceTest {
                         NNI,
                         "/uploads/identity/x.jpg",
                         false,
-                        user.createdAt());
+                        user.createdAt(),
+                        user.role());
         when(fileStorageService.store(photo, "identity")).thenReturn("/uploads/identity/x.jpg");
         when(authRepository.updateIdentity(user.id(), NNI, "/uploads/identity/x.jpg", false))
                 .thenReturn(Optional.of(updatedUser));
@@ -124,5 +127,91 @@ class UserServiceTest {
         verify(fileStorageService, never()).store(any(), anyString());
         verify(authRepository, never())
                 .updateIdentity(any(), anyString(), anyString(), anyBoolean());
+    }
+
+    private User pendingUser() {
+        return new User(
+                user.id(),
+                user.phone(),
+                user.passwordHash(),
+                user.gender(),
+                NNI,
+                "/uploads/identity/x.jpg",
+                false,
+                user.createdAt(),
+                user.role());
+    }
+
+    @Test
+    void listPendingIdentityVerifications_returnsRepositoryResult() {
+        List<User> pending = List.of(pendingUser());
+        when(authRepository.findPendingIdentityVerifications()).thenReturn(pending);
+
+        assertThat(userService.listPendingIdentityVerifications()).isEqualTo(pending);
+    }
+
+    @Test
+    void approveIdentity_whenNoPendingRequest_throwsException() {
+        when(authRepository.findById(user.id())).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> userService.approveIdentity(user.id()))
+                .isInstanceOf(UserException.IdentityNotPendingException.class);
+
+        verify(authRepository, never()).approveIdentity(any());
+    }
+
+    @Test
+    void approveIdentity_whenUserUnknown_throwsException() {
+        when(authRepository.findById(user.id())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.approveIdentity(user.id()))
+                .isInstanceOf(UserException.UserNotFoundException.class);
+
+        verify(authRepository, never()).approveIdentity(any());
+    }
+
+    @Test
+    void approveIdentity_success_marksIdentityVerified() {
+        User pending = pendingUser();
+        User approved =
+                new User(
+                        pending.id(),
+                        pending.phone(),
+                        pending.passwordHash(),
+                        pending.gender(),
+                        pending.nni(),
+                        pending.idPhotoUrl(),
+                        true,
+                        pending.createdAt(),
+                        pending.role());
+        when(authRepository.findById(pending.id())).thenReturn(Optional.of(pending));
+        when(authRepository.approveIdentity(pending.id())).thenReturn(Optional.of(approved));
+
+        User result = userService.approveIdentity(pending.id());
+
+        assertThat(result.identityVerified()).isTrue();
+    }
+
+    @Test
+    void rejectIdentity_success_clearsSubmittedNniAndPhoto() {
+        User pending = pendingUser();
+        User rejected =
+                new User(
+                        pending.id(),
+                        pending.phone(),
+                        pending.passwordHash(),
+                        pending.gender(),
+                        null,
+                        null,
+                        false,
+                        pending.createdAt(),
+                        pending.role());
+        when(authRepository.findById(pending.id())).thenReturn(Optional.of(pending));
+        when(authRepository.rejectIdentity(pending.id())).thenReturn(Optional.of(rejected));
+
+        User result = userService.rejectIdentity(pending.id());
+
+        assertThat(result.nni()).isNull();
+        assertThat(result.idPhotoUrl()).isNull();
     }
 }
