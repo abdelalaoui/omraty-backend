@@ -49,6 +49,12 @@ public class AuthExceptionHandler {
                                 "Requête invalide : vérifiez le format et les valeurs envoyées"));
     }
 
+    @ExceptionHandler(UserException.InvalidIdentityRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidIdentityRequest(
+            UserException.InvalidIdentityRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);
