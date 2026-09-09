@@ -4,6 +4,7 @@ import com.omraty.backend.dto.response.UserResponse;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.mapper.UserMapper;
 import com.omraty.backend.service.UserService;
+import com.omraty.backend.storage.FileStorageService;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -19,9 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminIdentityController {
 
     private final UserService userService;
+    private final FileStorageService fileStorageService;
 
-    public AdminIdentityController(UserService userService) {
+    public AdminIdentityController(UserService userService, FileStorageService fileStorageService) {
         this.userService = userService;
+        this.fileStorageService = fileStorageService;
     }
 
     @GetMapping
@@ -29,8 +32,26 @@ public class AdminIdentityController {
         List<UserResponse> pending =
                 userService.listPendingIdentityVerifications().stream()
                         .map(UserMapper::toResponse)
+                        .map(this::withPresignedIdPhotoUrl)
                         .toList();
         return ResponseEntity.ok(pending);
+    }
+
+    /**
+     * L'admin doit pouvoir visualiser la photo avant d'approuver/rejeter : la clé S3 brute n'est
+     * pas exploitable telle quelle, on la remplace par une URL présignée temporaire.
+     */
+    private UserResponse withPresignedIdPhotoUrl(UserResponse response) {
+        if (response.idPhotoUrl() == null) {
+            return response;
+        }
+        return new UserResponse(
+                response.id(),
+                response.phone(),
+                response.gender(),
+                response.nni(),
+                fileStorageService.generatePresignedUrl(response.idPhotoUrl()),
+                response.identityVerified());
     }
 
     @PostMapping("/{userId}/approve")
