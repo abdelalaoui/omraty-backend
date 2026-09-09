@@ -78,6 +78,18 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(BenefitException.InvalidBenefitRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidBenefitRequest(
+            BenefitException.InvalidBenefitRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(BenefitException.BenefitNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleBenefitNotFound(
+            BenefitException.BenefitNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);
