@@ -90,6 +90,18 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(ServiceCardException.InvalidServiceCardRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidServiceCardRequest(
+            ServiceCardException.InvalidServiceCardRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(ServiceCardException.ServiceCardNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleServiceCardNotFound(
+            ServiceCardException.ServiceCardNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);
