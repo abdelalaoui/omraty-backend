@@ -121,6 +121,30 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(PackageException.InvalidPackageRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPackageRequest(
+            PackageException.InvalidPackageRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(PackageException.PackageNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handlePackageNotFound(
+            PackageException.PackageNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(RoomException.InvalidRoomTypeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRoomType(
+            RoomException.InvalidRoomTypeException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(RoomException.GroupSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleGroupSizeExceeded(
+            RoomException.GroupSizeExceededException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);
