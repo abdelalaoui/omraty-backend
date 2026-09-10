@@ -1,8 +1,8 @@
 -- Hôtels affichés côté app : liste normale (Omra → Hôtels, clic → site web de l'hôtel) et
 -- parcours VIP (choix d'un hôtel à Mecque puis à Médine séparément, d'où city + son index pour
 -- le filtre GET /hotels?city=). Champs alignés avec le mock déjà utilisé côté app mobile.
--- Lecture seule pour l'instant : pas d'endpoint de gestion, l'ajout/modification d'hôtels se
--- fait par migration ou tâche à part.
+-- Gérés via /admin/hotels (POST/PATCH/DELETE, réservé ROLE_ADMIN) ; lecture publique via
+-- GET /hotels.
 CREATE TABLE hotel (
     id                  BIGSERIAL PRIMARY KEY,
     name                VARCHAR(255) NOT NULL,
