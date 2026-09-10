@@ -10,4 +10,11 @@ import org.springframework.web.multipart.MultipartFile;
 public interface FileStorageService {
 
     String store(MultipartFile file, String subDir);
+
+    /**
+     * Generates a short-lived, time-limited URL clients can use to fetch a previously stored file
+     * that isn't publicly readable — e.g. identity photos. {@code key} is the value returned by
+     * {@link #store}.
+     */
+    String generatePresignedUrl(String key);
 }

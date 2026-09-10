@@ -51,4 +51,10 @@ public class LocalFileStorageService implements FileStorageService {
         }
         return baseUrl + "/" + subDir + "/" + filename;
     }
+
+    @Override
+    public String generatePresignedUrl(String key) {
+        // Local storage serves files directly from baseUrl; store() already returns a usable URL.
+        return key;
+    }
 }
