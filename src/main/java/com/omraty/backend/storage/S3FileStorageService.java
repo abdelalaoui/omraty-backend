@@ -2,6 +2,7 @@ package com.omraty.backend.storage;
 
 import com.omraty.backend.exception.UserException;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -10,7 +11,10 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 /**
  * Stores files in an S3 bucket. Active when app.upload.provider=s3. Credentials are resolved via
@@ -18,14 +22,17 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
  * — never hardcode them here.
  *
  * <p>The returned value is the object key (not a browsable URL): the bucket is not meant to be
- * public since these are identity documents. Serving the photo back to a client will need a
- * dedicated endpoint that generates a short-lived presigned URL — left for a follow-up ticket.
+ * public since these are identity documents. Clients fetch the photo via {@link
+ * #generatePresignedUrl(String)}, which signs a temporary, time-limited GET URL for the key.
  */
 @Service
 @ConditionalOnProperty(prefix = "app.upload", name = "provider", havingValue = "s3")
 public class S3FileStorageService implements FileStorageService {
 
+    private static final Duration PRESIGNED_URL_DURATION = Duration.ofHours(1);
+
     private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
     private final String bucket;
 
     public S3FileStorageService(
@@ -33,6 +40,7 @@ public class S3FileStorageService implements FileStorageService {
             @Value("${app.upload.s3.bucket}") String bucket) {
         this.bucket = bucket;
         this.s3Client = S3Client.builder().region(Region.of(region)).build();
+        this.s3Presigner = S3Presigner.builder().region(Region.of(region)).build();
     }
 
     @Override
@@ -52,5 +60,16 @@ public class S3FileStorageService implements FileStorageService {
                     "Échec de l'envoi de la photo vers S3", e);
         }
         return key;
+    }
+
+    @Override
+    public String generatePresignedUrl(String key) {
+        GetObjectPresignRequest presignRequest =
+                GetObjectPresignRequest.builder()
+                        .signatureDuration(PRESIGNED_URL_DURATION)
+                        .getObjectRequest(
+                                GetObjectRequest.builder().bucket(bucket).key(key).build())
+                        .build();
+        return s3Presigner.presignGetObject(presignRequest).url().toString();
     }
 }
