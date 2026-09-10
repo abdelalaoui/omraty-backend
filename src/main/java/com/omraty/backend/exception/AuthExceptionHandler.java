@@ -10,6 +10,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class AuthExceptionHandler {
@@ -47,6 +48,12 @@ public class AuthExceptionHandler {
                 .body(
                         new ErrorResponse(
                                 "Requête invalide : vérifiez le format et les valeurs envoyées"));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        return ResponseEntity.badRequest()
+                .body(new ErrorResponse("Paramètre invalide : " + e.getName()));
     }
 
     @ExceptionHandler(UserException.InvalidIdentityRequestException.class)
