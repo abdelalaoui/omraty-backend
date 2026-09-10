@@ -97,6 +97,18 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(HotelException.InvalidHotelRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidHotelRequest(
+            HotelException.InvalidHotelRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(HotelException.HotelNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleHotelNotFound(
+            HotelException.HotelNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);
