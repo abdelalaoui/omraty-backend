@@ -20,6 +20,7 @@ public class ServiceCardRepository {
                             rs.getString("description"),
                             rs.getString("button_text"),
                             rs.getString("icon"),
+                            rs.getString("image_url"),
                             rs.getBoolean("coming_soon"),
                             rs.getBoolean("visible"),
                             rs.getObject("updated_at", LocalDateTime.class));
@@ -49,6 +50,7 @@ public class ServiceCardRepository {
             String description,
             String buttonText,
             String icon,
+            String imageUrl,
             boolean comingSoon,
             boolean visible) {
         return jdbcTemplate
@@ -60,6 +62,7 @@ public class ServiceCardRepository {
                         description,
                         buttonText,
                         icon,
+                        imageUrl,
                         comingSoon,
                         visible)
                 .stream()
@@ -77,6 +80,7 @@ public class ServiceCardRepository {
             String description,
             String buttonText,
             String icon,
+            String imageUrl,
             Boolean comingSoon,
             Boolean visible) {
         return jdbcTemplate
@@ -88,8 +92,21 @@ public class ServiceCardRepository {
                         description,
                         buttonText,
                         icon,
+                        imageUrl,
                         comingSoon,
                         visible,
+                        id)
+                .stream()
+                .findFirst();
+    }
+
+    /** Upload dédié (voir ServiceCardService.updateImage) : ne touche qu'à image_url. */
+    public Optional<ServiceCard> updateImage(long id, String imageUrl) {
+        return jdbcTemplate
+                .query(
+                        ServiceCardTable.UPDATE_SERVICE_CARD_IMAGE,
+                        SERVICE_CARD_ROW_MAPPER,
+                        imageUrl,
                         id)
                 .stream()
                 .findFirst();

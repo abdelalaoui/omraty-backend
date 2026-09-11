@@ -8,5 +8,6 @@ public record ServiceCardResponse(
         String description,
         String buttonText,
         String icon,
+        String imageUrl,
         boolean comingSoon,
         boolean visible) {}

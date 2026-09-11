@@ -9,6 +9,7 @@ import com.omraty.backend.service.ServiceCardService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -16,7 +17,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Cartes de services (Omra/Hajj/...) de la home : liste dynamique pilotée depuis le backend, pas
@@ -50,6 +53,7 @@ public class ServiceCardController {
                         request.description(),
                         request.buttonText(),
                         request.icon(),
+                        request.imageUrl(),
                         request.comingSoon(),
                         request.visible());
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -67,8 +71,16 @@ public class ServiceCardController {
                         request.description(),
                         request.buttonText(),
                         request.icon(),
+                        request.imageUrl(),
                         request.comingSoon(),
                         request.visible());
+        return ResponseEntity.ok(ServiceCardMapper.toResponse(serviceCard));
+    }
+
+    @PatchMapping(value = "/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ServiceCardResponse> updateServiceCardImage(
+            @PathVariable long id, @RequestParam("image") MultipartFile image) {
+        ServiceCard serviceCard = serviceCardService.updateImage(id, image);
         return ResponseEntity.ok(ServiceCardMapper.toResponse(serviceCard));
     }
 }

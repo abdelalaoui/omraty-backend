@@ -11,5 +11,6 @@ public record UpdateServiceCardRequest(
         String description,
         String buttonText,
         String icon,
+        String imageUrl,
         Boolean comingSoon,
         Boolean visible) {}
