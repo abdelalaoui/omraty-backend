@@ -3,8 +3,12 @@ package com.omraty.backend.service;
 import com.omraty.backend.entities.ServiceCard;
 import com.omraty.backend.exception.ServiceCardException;
 import com.omraty.backend.repository.ServiceCardRepository;
+import com.omraty.backend.storage.FileStorageService;
+import com.omraty.backend.storage.PublicUrlResolver;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class ServiceCardService {
@@ -14,11 +18,24 @@ public class ServiceCardService {
     private static final int MAX_DESCRIPTION_LENGTH = 1000;
     private static final int MAX_BUTTON_TEXT_LENGTH = 100;
     private static final int MAX_ICON_LENGTH = 100;
+    private static final int MAX_IMAGE_URL_LENGTH = 500;
+
+    private static final String SERVICE_CARD_IMAGE_SUBDIR = "service-card";
+    private static final long MAX_IMAGE_SIZE_BYTES = 5L * 1024 * 1024;
+    private static final Set<String> ALLOWED_IMAGE_CONTENT_TYPES =
+            Set.of("image/jpeg", "image/png");
 
     private final ServiceCardRepository serviceCardRepository;
+    private final FileStorageService fileStorageService;
+    private final PublicUrlResolver publicUrlResolver;
 
-    public ServiceCardService(ServiceCardRepository serviceCardRepository) {
+    public ServiceCardService(
+            ServiceCardRepository serviceCardRepository,
+            FileStorageService fileStorageService,
+            PublicUrlResolver publicUrlResolver) {
         this.serviceCardRepository = serviceCardRepository;
+        this.fileStorageService = fileStorageService;
+        this.publicUrlResolver = publicUrlResolver;
     }
 
     /** Cartes actives à afficher sur la home, avec leur contenu et leur état (comingSoon). */
@@ -27,9 +44,10 @@ public class ServiceCardService {
     }
 
     /**
-     * Ajoute une nouvelle carte de service. comingSoon/visible non fournis = valeurs par défaut
-     * (pas en mode coming soon, visible) — extensible à un nouveau type de service sans changement
-     * de code.
+     * Ajoute une nouvelle carte de service. imageUrl est optionnelle (réglable ici en texte, ou
+     * plus tard par upload, voir {@link #updateImage}) ; comingSoon/visible non fournis = valeurs
+     * par défaut (pas en mode coming soon, visible) — extensible à un nouveau type de service sans
+     * changement de code.
      */
     public ServiceCard createServiceCard(
             String type,
@@ -37,6 +55,7 @@ public class ServiceCardService {
             String description,
             String buttonText,
             String icon,
+            String imageUrl,
             Boolean comingSoon,
             Boolean visible) {
         validateType(type);
@@ -44,10 +63,11 @@ public class ServiceCardService {
         validateDescription(description);
         validateButtonText(buttonText);
         validateIcon(icon);
+        validateImageUrl(imageUrl);
         boolean isComingSoon = comingSoon != null && comingSoon;
         boolean isVisible = visible == null || visible;
         return serviceCardRepository.insert(
-                type, title, description, buttonText, icon, isComingSoon, isVisible);
+                type, title, description, buttonText, icon, imageUrl, isComingSoon, isVisible);
     }
 
     /**
@@ -62,6 +82,7 @@ public class ServiceCardService {
             String description,
             String buttonText,
             String icon,
+            String imageUrl,
             Boolean comingSoon,
             Boolean visible) {
         if (type != null) {
@@ -79,8 +100,37 @@ public class ServiceCardService {
         if (icon != null) {
             validateIcon(icon);
         }
+        if (imageUrl != null) {
+            validateImageUrl(imageUrl);
+        }
         return serviceCardRepository
-                .update(id, type, title, description, buttonText, icon, comingSoon, visible)
+                .update(
+                        id,
+                        type,
+                        title,
+                        description,
+                        buttonText,
+                        icon,
+                        imageUrl,
+                        comingSoon,
+                        visible)
+                .orElseThrow(
+                        () ->
+                                new ServiceCardException.ServiceCardNotFoundException(
+                                        "Carte de service introuvable (id=" + id + ")"));
+    }
+
+    /**
+     * Upload admin de l'image affichée dans le cercle de la carte (même mécanisme S3/local que la
+     * bannière, voir BannerService.updateImage) : ne touche qu'à imageUrl, le reste du contenu
+     * n'est pas modifié.
+     */
+    public ServiceCard updateImage(long id, MultipartFile image) {
+        validateImage(image);
+        String storedKey = fileStorageService.store(image, SERVICE_CARD_IMAGE_SUBDIR);
+        String imageUrl = publicUrlResolver.toPublicUrl(storedKey);
+        return serviceCardRepository
+                .updateImage(id, imageUrl)
                 .orElseThrow(
                         () ->
                                 new ServiceCardException.ServiceCardNotFoundException(
@@ -139,6 +189,31 @@ public class ServiceCardService {
         if (icon.length() > MAX_ICON_LENGTH) {
             throw new ServiceCardException.InvalidServiceCardRequestException(
                     "L'icône dépasse la longueur maximale autorisée (" + MAX_ICON_LENGTH + ")");
+        }
+    }
+
+    private void validateImageUrl(String imageUrl) {
+        if (imageUrl != null && imageUrl.length() > MAX_IMAGE_URL_LENGTH) {
+            throw new ServiceCardException.InvalidServiceCardRequestException(
+                    "L'URL de l'image dépasse la longueur maximale autorisée ("
+                            + MAX_IMAGE_URL_LENGTH
+                            + ")");
+        }
+    }
+
+    private void validateImage(MultipartFile image) {
+        if (image == null || image.isEmpty()) {
+            throw new ServiceCardException.InvalidServiceCardRequestException(
+                    "L'image de la carte est requise");
+        }
+        if (image.getSize() > MAX_IMAGE_SIZE_BYTES) {
+            throw new ServiceCardException.InvalidServiceCardRequestException(
+                    "L'image dépasse la taille maximale autorisée (5 Mo)");
+        }
+        String contentType = image.getContentType();
+        if (contentType == null || !ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType)) {
+            throw new ServiceCardException.InvalidServiceCardRequestException(
+                    "Format d'image non supporté (JPEG ou PNG uniquement)");
         }
     }
 }

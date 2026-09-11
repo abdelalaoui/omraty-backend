@@ -4,8 +4,8 @@ import com.omraty.backend.entities.Banner;
 import com.omraty.backend.exception.BannerException;
 import com.omraty.backend.repository.BannerRepository;
 import com.omraty.backend.storage.FileStorageService;
+import com.omraty.backend.storage.PublicUrlResolver;
 import java.util.Set;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -18,25 +18,18 @@ public class BannerService {
             Set.of("image/jpeg", "image/png");
     private static final int MAX_TITLE_LENGTH = 255;
     private static final int MAX_DESCRIPTION_LENGTH = 1000;
-    private static final String S3_PROVIDER = "s3";
 
     private final BannerRepository bannerRepository;
     private final FileStorageService fileStorageService;
-    private final String uploadProvider;
-    private final String s3Bucket;
-    private final String s3Region;
+    private final PublicUrlResolver publicUrlResolver;
 
     public BannerService(
             BannerRepository bannerRepository,
             FileStorageService fileStorageService,
-            @Value("${app.upload.provider}") String uploadProvider,
-            @Value("${app.upload.s3.bucket}") String s3Bucket,
-            @Value("${app.upload.s3.region}") String s3Region) {
+            PublicUrlResolver publicUrlResolver) {
         this.bannerRepository = bannerRepository;
         this.fileStorageService = fileStorageService;
-        this.uploadProvider = uploadProvider;
-        this.s3Bucket = s3Bucket;
-        this.s3Region = s3Region;
+        this.publicUrlResolver = publicUrlResolver;
     }
 
     /** Bannière courante, telle que retournée à l'app pour l'écran d'accueil. */
@@ -57,24 +50,11 @@ public class BannerService {
         validateText(title, MAX_TITLE_LENGTH, "Le titre");
         validateText(description, MAX_DESCRIPTION_LENGTH, "La description");
         String storedKey = fileStorageService.store(image, BANNER_IMAGE_SUBDIR);
-        String imageUrl = toPublicUrl(storedKey);
+        String imageUrl = publicUrlResolver.toPublicUrl(storedKey);
         return bannerRepository
                 .updateImage(imageUrl, title, description)
                 .orElseThrow(
                         () -> new BannerException.BannerNotFoundException("Bannière introuvable"));
-    }
-
-    /**
-     * En stockage S3, {@link FileStorageService#store} ne renvoie que la clé de l'objet (le bucket
-     * n'est pas public par défaut). Le dossier banner/ est configuré public en lecture côté infra,
-     * donc on reconstruit ici l'URL publique complète à partir de la clé. En stockage local, la clé
-     * est déjà une URL utilisable telle quelle.
-     */
-    private String toPublicUrl(String storedKey) {
-        if (!S3_PROVIDER.equalsIgnoreCase(uploadProvider)) {
-            return storedKey;
-        }
-        return "https://" + s3Bucket + ".s3." + s3Region + ".amazonaws.com/" + storedKey;
     }
 
     /** Affiche/masque la bannière sur l'écran d'accueil sans supprimer ses données. */

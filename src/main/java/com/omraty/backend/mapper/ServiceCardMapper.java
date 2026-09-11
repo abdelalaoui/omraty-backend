@@ -16,6 +16,7 @@ public final class ServiceCardMapper {
                 serviceCard.description(),
                 serviceCard.buttonText(),
                 serviceCard.icon(),
+                serviceCard.imageUrl(),
                 serviceCard.comingSoon(),
                 serviceCard.visible());
     }
