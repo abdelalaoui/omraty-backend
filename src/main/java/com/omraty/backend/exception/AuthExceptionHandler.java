@@ -145,6 +145,24 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(AgencyCodeException.InvalidAgencyCodeRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidAgencyCodeRequest(
+            AgencyCodeException.InvalidAgencyCodeRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(AgencyCodeException.AgencyCodeNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAgencyCodeNotFound(
+            AgencyCodeException.AgencyCodeNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(AgencyCodeException.AgencyCodeAlreadyUsedException.class)
+    public ResponseEntity<ErrorResponse> handleAgencyCodeAlreadyUsed(
+            AgencyCodeException.AgencyCodeAlreadyUsedException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);
