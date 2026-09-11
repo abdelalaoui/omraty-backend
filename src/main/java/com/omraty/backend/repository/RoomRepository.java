@@ -52,6 +52,18 @@ public class RoomRepository {
         return total == null ? 0 : total;
     }
 
+    /**
+     * Total des places engagées par les demandes VIP actives (PENDING, OFFER_SENT, ACCEPTED) pour
+     * ce package. À combiner avec {@link #sumReservedSeatsForPackage} pour le plafond group_size
+     * (voir PackageCapacityService).
+     */
+    public int sumVipSeatsForPackage(long packageId) {
+        Integer total =
+                jdbcTemplate.queryForObject(
+                        RoomTable.SELECT_TOTAL_VIP_SEATS_FOR_PACKAGE, Integer.class, packageId);
+        return total == null ? 0 : total;
+    }
+
     public Room insert(int type, long packageId, int totalCapacity, int reservedCount) {
         return jdbcTemplate
                 .query(

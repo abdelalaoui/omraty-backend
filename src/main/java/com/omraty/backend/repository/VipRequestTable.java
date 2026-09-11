@@ -5,9 +5,9 @@ final class VipRequestTable {
     private VipRequestTable() {}
 
     static final String VIP_REQUEST_COLUMNS =
-            "id, user_id, mecca_hotel_id, mecca_check_in, mecca_check_out, medina_hotel_id,"
-                    + " medina_check_in, medina_check_out, seats, airline, status, proposed_price,"
-                    + " offer_expires_at, created_at";
+            "id, user_id, package_id, mecca_hotel_id, mecca_check_in, mecca_check_out,"
+                    + " medina_hotel_id, medina_check_in, medina_check_out, seats, airline, status,"
+                    + " proposed_price, offer_expires_at, created_at";
 
     static final String SELECT_VIP_REQUEST_BY_ID_FOR_UPDATE =
             "SELECT " + VIP_REQUEST_COLUMNS + " FROM vip_request WHERE id = ? FOR UPDATE";
@@ -23,9 +23,9 @@ final class VipRequestTable {
                     + " FROM vip_request WHERE user_id = ? ORDER BY created_at DESC";
 
     static final String INSERT_VIP_REQUEST =
-            "INSERT INTO vip_request (user_id, mecca_hotel_id, mecca_check_in, mecca_check_out,"
-                    + " medina_hotel_id, medina_check_in, medina_check_out, seats, airline) VALUES"
-                    + " (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING "
+            "INSERT INTO vip_request (user_id, package_id, mecca_hotel_id, mecca_check_in,"
+                    + " mecca_check_out, medina_hotel_id, medina_check_in, medina_check_out, seats,"
+                    + " airline) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING "
                     + VIP_REQUEST_COLUMNS;
 
     static final String UPDATE_APPROVE =

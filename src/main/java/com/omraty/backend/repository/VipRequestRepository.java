@@ -20,6 +20,7 @@ public class VipRequestRepository {
                     new VipRequest(
                             rs.getLong("id"),
                             (UUID) rs.getObject("user_id"),
+                            rs.getLong("package_id"),
                             rs.getLong("mecca_hotel_id"),
                             rs.getObject("mecca_check_in", LocalDate.class),
                             rs.getObject("mecca_check_out", LocalDate.class),
@@ -67,6 +68,7 @@ public class VipRequestRepository {
 
     public VipRequest insert(
             UUID userId,
+            long packageId,
             long meccaHotelId,
             LocalDate meccaCheckIn,
             LocalDate meccaCheckOut,
@@ -80,6 +82,7 @@ public class VipRequestRepository {
                         VipRequestTable.INSERT_VIP_REQUEST,
                         VIP_REQUEST_ROW_MAPPER,
                         userId,
+                        packageId,
                         meccaHotelId,
                         meccaCheckIn,
                         meccaCheckOut,

@@ -22,6 +22,14 @@ final class RoomTable {
     static final String SELECT_TOTAL_RESERVED_FOR_PACKAGE =
             "SELECT COALESCE(SUM(reserved_count), 0) FROM room WHERE package_id = ?";
 
+    // Places des demandes VIP actives (PENDING, OFFER_SENT, ACCEPTED) pour ce package : REJECTED et
+    // CANCELLED ne comptent plus, la place est libérée. Combinée à
+    // SELECT_TOTAL_RESERVED_FOR_PACKAGE
+    // dans PackageCapacityService pour former le plafond group_size partagé entre chambres et VIP.
+    static final String SELECT_TOTAL_VIP_SEATS_FOR_PACKAGE =
+            "SELECT COALESCE(SUM(seats), 0) FROM vip_request WHERE package_id = ? AND status IN"
+                    + " ('PENDING', 'OFFER_SENT', 'ACCEPTED')";
+
     static final String INSERT_ROOM =
             "INSERT INTO room (type, package_id, total_capacity, reserved_count) VALUES (?, ?, ?,"
                     + " ?) RETURNING "

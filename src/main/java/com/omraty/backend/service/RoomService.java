@@ -34,14 +34,17 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final BedRepository bedRepository;
     private final PackageRepository packageRepository;
+    private final PackageCapacityService packageCapacityService;
 
     public RoomService(
             RoomRepository roomRepository,
             BedRepository bedRepository,
-            PackageRepository packageRepository) {
+            PackageRepository packageRepository,
+            PackageCapacityService packageCapacityService) {
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
         this.packageRepository = packageRepository;
+        this.packageCapacityService = packageCapacityService;
     }
 
     /** État actuel des lits (disponibles/réservés), groupés par chambre, pour un package. */
@@ -71,7 +74,7 @@ public class RoomService {
     public Bed reserveBed(int type, long packageId) {
         validateSharedRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
-        ensureCapacityAvailable(pkg, packageId, 1);
+        packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
 
         Room room =
                 roomRepository
@@ -104,7 +107,7 @@ public class RoomService {
     public Room purchaseRoom(int type, long packageId) {
         validateWholeRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
-        ensureCapacityAvailable(pkg, packageId, type);
+        packageCapacityService.ensureCapacityAvailable(pkg, packageId, type);
         return roomRepository.insert(type, packageId, type, type);
     }
 
@@ -112,20 +115,6 @@ public class RoomService {
         Room room = roomRepository.insert(type, packageId, type, 0);
         bedRepository.insertBedsForRoom(room.id(), type);
         return room;
-    }
-
-    private void ensureCapacityAvailable(OmraPackage pkg, long packageId, int additionalSeats) {
-        int alreadyReserved = roomRepository.sumReservedSeatsForPackage(packageId);
-        if (alreadyReserved + additionalSeats > pkg.groupSize()) {
-            throw new RoomException.GroupSizeExceededException(
-                    "Le groupSize du package (id="
-                            + packageId
-                            + ") est atteint : "
-                            + alreadyReserved
-                            + "/"
-                            + pkg.groupSize()
-                            + " places déjà réservées");
-        }
     }
 
     private OmraPackage lockPackageOrThrow(long packageId) {

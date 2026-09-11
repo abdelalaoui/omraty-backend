@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 
 public record CreateVipRequestRequest(
+        @NotNull(message = "Le package est requis") Long packageId,
         @NotNull(message = "L'hôtel de Mecque est requis") Long meccaHotelId,
         @NotNull(message = "Le check-in de Mecque est requis") LocalDate meccaCheckIn,
         @NotNull(message = "Le check-out de Mecque est requis") LocalDate meccaCheckOut,

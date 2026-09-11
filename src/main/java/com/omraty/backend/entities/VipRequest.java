@@ -14,6 +14,7 @@ import java.util.UUID;
 public record VipRequest(
         long id,
         UUID userId,
+        long packageId,
         long meccaHotelId,
         LocalDate meccaCheckIn,
         LocalDate meccaCheckOut,

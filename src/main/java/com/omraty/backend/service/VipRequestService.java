@@ -1,11 +1,14 @@
 package com.omraty.backend.service;
 
 import com.omraty.backend.entities.Hotel;
+import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.HotelCity;
 import com.omraty.backend.entities.enums.VipRequestStatus;
+import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.VipRequestException;
 import com.omraty.backend.repository.HotelRepository;
+import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.VipRequestRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,20 +31,36 @@ public class VipRequestService {
 
     private final VipRequestRepository vipRequestRepository;
     private final HotelRepository hotelRepository;
+    private final PackageRepository packageRepository;
+    private final PackageCapacityService packageCapacityService;
     private final long offerExpirationHours;
 
     public VipRequestService(
             VipRequestRepository vipRequestRepository,
             HotelRepository hotelRepository,
+            PackageRepository packageRepository,
+            PackageCapacityService packageCapacityService,
             @Value("${app.vip.offer-expiration-hours}") long offerExpirationHours) {
         this.vipRequestRepository = vipRequestRepository;
         this.hotelRepository = hotelRepository;
+        this.packageRepository = packageRepository;
+        this.packageCapacityService = packageCapacityService;
         this.offerExpirationHours = offerExpirationHours;
     }
 
-    /** Le client soumet sa demande VIP (hôtel + dates par ville, places, compagnie aérienne). */
+    /**
+     * Le client soumet sa demande VIP (package, hôtel + dates par ville, places, compagnie
+     * aérienne). Les places engagées comptent dans le même plafond group_size du package que les
+     * chambres (voir PackageCapacityService) : le package est verrouillé avant calcul pour
+     * sérialiser les accès concurrents.
+     *
+     * @throws com.omraty.backend.exception.RoomException.GroupSizeExceededException si la demande
+     *     dépasserait le groupSize du package.
+     */
+    @Transactional
     public VipRequest submitRequest(
             UUID userId,
+            long packageId,
             long meccaHotelId,
             LocalDate meccaCheckIn,
             LocalDate meccaCheckOut,
@@ -56,8 +75,11 @@ public class VipRequestService {
         validateStay(medinaCheckIn, medinaCheckOut);
         validateSeats(seats);
         validateAirline(airline);
+        OmraPackage pkg = lockPackageOrThrow(packageId);
+        packageCapacityService.ensureCapacityAvailable(pkg, packageId, seats);
         return vipRequestRepository.insert(
                 userId,
+                packageId,
                 meccaHotelId,
                 meccaCheckIn,
                 meccaCheckOut,
@@ -127,6 +149,15 @@ public class VipRequestService {
                     "L'offre a expiré, soumettez une nouvelle demande");
         }
         return vipRequestRepository.updateAccept(id);
+    }
+
+    private OmraPackage lockPackageOrThrow(long packageId) {
+        return packageRepository
+                .findByIdForUpdate(packageId)
+                .orElseThrow(
+                        () ->
+                                new PackageException.PackageNotFoundException(
+                                        "Package introuvable (id=" + packageId + ")"));
     }
 
     private VipRequest lockOrThrow(long id) {

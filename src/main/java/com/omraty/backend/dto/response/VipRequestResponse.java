@@ -13,6 +13,7 @@ import java.util.UUID;
 public record VipRequestResponse(
         long id,
         UUID userId,
+        long packageId,
         Long meccaHotelId,
         LocalDate meccaCheckIn,
         LocalDate meccaCheckOut,

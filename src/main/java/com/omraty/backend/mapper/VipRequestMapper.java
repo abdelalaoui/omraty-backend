@@ -14,6 +14,7 @@ public final class VipRequestMapper {
         return new VipRequestResponse(
                 vipRequest.id(),
                 vipRequest.userId(),
+                vipRequest.packageId(),
                 vipRequest.meccaHotelId(),
                 vipRequest.meccaCheckIn(),
                 vipRequest.meccaCheckOut(),

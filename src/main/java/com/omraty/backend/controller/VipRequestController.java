@@ -38,6 +38,7 @@ public class VipRequestController {
         VipRequest vipRequest =
                 vipRequestService.submitRequest(
                         userId,
+                        request.packageId(),
                         request.meccaHotelId(),
                         request.meccaCheckIn(),
                         request.meccaCheckOut(),
