@@ -28,7 +28,11 @@ class RoomServiceTest {
     @Mock private PackageRepository packageRepository;
 
     private RoomService roomService() {
-        return new RoomService(roomRepository, bedRepository, packageRepository);
+        return new RoomService(
+                roomRepository,
+                bedRepository,
+                packageRepository,
+                new PackageCapacityService(roomRepository));
     }
 
     @Test

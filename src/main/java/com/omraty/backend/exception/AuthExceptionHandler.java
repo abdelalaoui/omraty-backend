@@ -121,6 +121,24 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(VipRequestException.InvalidVipRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidVipRequest(
+            VipRequestException.InvalidVipRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(VipRequestException.VipRequestNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleVipRequestNotFound(
+            VipRequestException.VipRequestNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(VipRequestException.VipRequestStateException.class)
+    public ResponseEntity<ErrorResponse> handleVipRequestState(
+            VipRequestException.VipRequestStateException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(PackageException.InvalidPackageRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidPackageRequest(
             PackageException.InvalidPackageRequestException e) {

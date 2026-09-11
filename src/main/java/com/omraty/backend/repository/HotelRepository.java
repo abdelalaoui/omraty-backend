@@ -41,6 +41,11 @@ public class HotelRepository {
         return jdbcTemplate.query(HotelTable.SELECT_HOTELS_BY_CITY, HOTEL_ROW_MAPPER, city.name());
     }
 
+    public Optional<Hotel> findById(long id) {
+        return jdbcTemplate.query(HotelTable.SELECT_HOTEL_BY_ID, HOTEL_ROW_MAPPER, id).stream()
+                .findFirst();
+    }
+
     public Hotel insert(
             String name,
             String location,

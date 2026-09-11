@@ -14,6 +14,8 @@ final class HotelTable {
     static final String SELECT_HOTELS_BY_CITY =
             "SELECT " + HOTEL_COLUMNS + " FROM hotel WHERE city = ? ORDER BY id ASC";
 
+    static final String SELECT_HOTEL_BY_ID = "SELECT " + HOTEL_COLUMNS + " FROM hotel WHERE id = ?";
+
     static final String INSERT_HOTEL =
             "INSERT INTO hotel (name, location, city, stars, price_per_night, distance_to_haram,"
                     + " image_url, website_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING "

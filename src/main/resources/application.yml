@@ -22,6 +22,8 @@ jwt:
   refreshTokenExpirationDays: ${JWT_REFRESH_EXP_DAYS:30}
 
 app:
+  vip:
+    offer-expiration-hours: ${VIP_OFFER_EXPIRATION_HOURS:24}
   upload:
     provider: ${UPLOAD_PROVIDER:local} # local | s3
     dir: ${UPLOAD_DIR:./uploads}
