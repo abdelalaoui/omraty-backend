@@ -50,7 +50,7 @@ class VipRequestServiceTest {
     /** Package avec assez de marge pour ne jamais gêner les tests qui ne portent pas dessus. */
     private void stubPackageWithRoomFor(int seatsAlreadyUsed) {
         when(packageRepository.findByIdForUpdate(PACKAGE_ID))
-                .thenReturn(Optional.of(new OmraPackage(PACKAGE_ID, 100)));
+                .thenReturn(Optional.of(new OmraPackage(PACKAGE_ID, "Omra Test", 100)));
         when(roomRepository.sumReservedSeatsForPackage(PACKAGE_ID)).thenReturn(0);
         when(roomRepository.sumVipSeatsForPackage(PACKAGE_ID)).thenReturn(seatsAlreadyUsed);
     }
@@ -151,7 +151,7 @@ class VipRequestServiceTest {
         when(hotelRepository.findById(1L)).thenReturn(Optional.of(hotel(1L, HotelCity.MECCA)));
         when(hotelRepository.findById(2L)).thenReturn(Optional.of(hotel(2L, HotelCity.MEDINA)));
         when(packageRepository.findByIdForUpdate(PACKAGE_ID))
-                .thenReturn(Optional.of(new OmraPackage(PACKAGE_ID, 5)));
+                .thenReturn(Optional.of(new OmraPackage(PACKAGE_ID, "Omra Test", 5)));
         // 3 places déjà réservées en chambre + 2 places déjà engagées par des demandes VIP actives
         // : 5/5 places prises, la nouvelle demande de 1 place dépasserait le groupSize.
         when(roomRepository.sumReservedSeatsForPackage(PACKAGE_ID)).thenReturn(3);
@@ -184,7 +184,7 @@ class VipRequestServiceTest {
         when(hotelRepository.findById(1L)).thenReturn(Optional.of(hotel(1L, HotelCity.MECCA)));
         when(hotelRepository.findById(2L)).thenReturn(Optional.of(hotel(2L, HotelCity.MEDINA)));
         when(packageRepository.findByIdForUpdate(PACKAGE_ID))
-                .thenReturn(Optional.of(new OmraPackage(PACKAGE_ID, 5)));
+                .thenReturn(Optional.of(new OmraPackage(PACKAGE_ID, "Omra Test", 5)));
         when(roomRepository.sumReservedSeatsForPackage(PACKAGE_ID)).thenReturn(0);
         // La demande REJECTED/CANCELLED n'est plus comptée par la requête SQL : seules les 4 places
         // encore actives remontent, la 5e place redevient disponible.

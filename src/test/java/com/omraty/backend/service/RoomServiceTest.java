@@ -52,7 +52,7 @@ class RoomServiceTest {
     @Test
     void reserveBed_whenGroupSizeAlreadyReached_throwsExceptionWithoutTouchingRooms() {
         when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, 5)));
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(5);
 
         assertThatThrownBy(() -> roomService().reserveBed(5, 1L))
@@ -64,7 +64,7 @@ class RoomServiceTest {
     @Test
     void reserveBed_withOpenRoomAvailable_reservesInExistingRoomWithoutCreatingANewOne() {
         when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, 40)));
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 40)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(3);
         Room openRoom = new Room(10L, 5, 1L, 5, 3);
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
@@ -83,7 +83,7 @@ class RoomServiceTest {
     @Test
     void reserveBed_whenNoOpenRoom_opensNewRoomWithFreshBedsThenReservesInIt() {
         when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, 40)));
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 40)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(5);
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.empty());
         Room newRoom = new Room(20L, 5, 1L, 5, 0);
@@ -108,7 +108,7 @@ class RoomServiceTest {
     @Test
     void purchaseRoom_whenWouldExceedGroupSize_throwsException() {
         when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, 10)));
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 10)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(9);
 
         assertThatThrownBy(() -> roomService().purchaseRoom(2, 1L))
@@ -120,7 +120,7 @@ class RoomServiceTest {
     @Test
     void purchaseRoom_withinGroupSize_createsRoomAlreadyFull() {
         when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, 10)));
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 10)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(6);
         Room purchasedRoom = new Room(30L, 3, 1L, 3, 3);
         when(roomRepository.insert(3, 1L, 3, 3)).thenReturn(purchasedRoom);
