@@ -11,7 +11,9 @@ import org.springframework.stereotype.Repository;
 public class PackageRepository {
 
     private static final RowMapper<OmraPackage> PACKAGE_ROW_MAPPER =
-            (rs, rowNum) -> new OmraPackage(rs.getLong("id"), rs.getInt("group_size"));
+            (rs, rowNum) ->
+                    new OmraPackage(
+                            rs.getLong("id"), rs.getString("label"), rs.getInt("group_size"));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -42,9 +44,9 @@ public class PackageRepository {
                 .findFirst();
     }
 
-    public OmraPackage insert(int groupSize) {
+    public OmraPackage insert(String label, int groupSize) {
         return jdbcTemplate
-                .query(PackageTable.INSERT_PACKAGE, PACKAGE_ROW_MAPPER, groupSize)
+                .query(PackageTable.INSERT_PACKAGE, PACKAGE_ROW_MAPPER, label, groupSize)
                 .stream()
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Échec de la création du package"));

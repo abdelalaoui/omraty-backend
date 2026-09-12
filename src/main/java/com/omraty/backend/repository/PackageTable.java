@@ -4,7 +4,7 @@ final class PackageTable {
 
     private PackageTable() {}
 
-    static final String PACKAGE_COLUMNS = "id, group_size";
+    static final String PACKAGE_COLUMNS = "id, label, group_size";
 
     static final String SELECT_ALL_PACKAGES =
             "SELECT " + PACKAGE_COLUMNS + " FROM package ORDER BY id ASC";
@@ -16,5 +16,5 @@ final class PackageTable {
             "SELECT " + PACKAGE_COLUMNS + " FROM package WHERE id = ? FOR UPDATE";
 
     static final String INSERT_PACKAGE =
-            "INSERT INTO package (group_size) VALUES (?) RETURNING " + PACKAGE_COLUMNS;
+            "INSERT INTO package (label, group_size) VALUES (?, ?) RETURNING " + PACKAGE_COLUMNS;
 }

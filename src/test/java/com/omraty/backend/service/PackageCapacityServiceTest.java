@@ -38,7 +38,8 @@ class PackageCapacityServiceTest {
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(3);
         when(roomRepository.sumVipSeatsForPackage(1L)).thenReturn(2);
 
-        packageCapacityService().ensureCapacityAvailable(new OmraPackage(1L, 10), 1L, 5);
+        packageCapacityService()
+                .ensureCapacityAvailable(new OmraPackage(1L, "Omra Test", 10), 1L, 5);
     }
 
     @Test
@@ -49,7 +50,8 @@ class PackageCapacityServiceTest {
         assertThatThrownBy(
                         () ->
                                 packageCapacityService()
-                                        .ensureCapacityAvailable(new OmraPackage(1L, 10), 1L, 6))
+                                        .ensureCapacityAvailable(
+                                                new OmraPackage(1L, "Omra Test", 10), 1L, 6))
                 .isInstanceOf(RoomException.GroupSizeExceededException.class);
     }
 }

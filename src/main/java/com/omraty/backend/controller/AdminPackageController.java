@@ -38,6 +38,9 @@ public class AdminPackageController {
     public ResponseEntity<PackageResponse> createPackage(
             @Valid @RequestBody CreatePackageRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(PackageMapper.toResponse(packageService.createPackage(request.groupSize())));
+                .body(
+                        PackageMapper.toResponse(
+                                packageService.createPackage(
+                                        request.label(), request.groupSize())));
     }
 }
