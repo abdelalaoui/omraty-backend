@@ -14,7 +14,8 @@ public final class ServiceTierMapper {
                 serviceTier.type(),
                 serviceTier.capacity(),
                 serviceTier.label(),
-                serviceTier.visible());
+                serviceTier.visible(),
+                serviceTier.closed());
     }
 
     public static List<ServiceTierResponse> toResponseList(List<ServiceTier> serviceTiers) {

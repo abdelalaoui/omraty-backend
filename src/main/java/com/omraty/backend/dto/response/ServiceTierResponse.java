@@ -5,7 +5,14 @@ import com.omraty.backend.entities.enums.ServiceTierType;
 /**
  * Formule de la grille des services Omra. type pilote l'écran ouvert au clic côté app (ROOM → écran
  * des lits avec capacity, VIP → parcours VIP, AGENCY → écran agence) ; ne jamais en déduire le
- * comportement à partir de label, purement éditorial.
+ * comportement à partir de label, purement éditorial. closed = true : formule temporairement
+ * indisponible, à afficher comme telle (elle reste dans la liste, contrairement à visible = false
+ * qui la retire entièrement de GET /service-tiers).
  */
 public record ServiceTierResponse(
-        long id, ServiceTierType type, Integer capacity, String label, boolean visible) {}
+        long id,
+        ServiceTierType type,
+        Integer capacity,
+        String label,
+        boolean visible,
+        boolean closed) {}

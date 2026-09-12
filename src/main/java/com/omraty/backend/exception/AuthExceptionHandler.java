@@ -109,6 +109,18 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(ServiceTierException.InvalidServiceTierRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidServiceTierRequest(
+            ServiceTierException.InvalidServiceTierRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(ServiceTierException.ServiceTierNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleServiceTierNotFound(
+            ServiceTierException.ServiceTierNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(HotelException.InvalidHotelRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidHotelRequest(
             HotelException.InvalidHotelRequestException e) {
