@@ -7,7 +7,6 @@ import static org.mockito.Mockito.when;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.repository.PackageRepository;
-import com.omraty.backend.repository.RoomRepository;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -19,10 +18,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PackageServiceTest {
 
     @Mock private PackageRepository packageRepository;
-    @Mock private RoomRepository roomRepository;
+    @Mock private PackageCapacityService packageCapacityService;
 
     private PackageService packageService() {
-        return new PackageService(packageRepository, roomRepository);
+        return new PackageService(packageRepository, packageCapacityService);
     }
 
     @Test
@@ -60,8 +59,8 @@ class PackageServiceTest {
         OmraPackage openPackage = new OmraPackage(1L, "Omra Ramadan du 10 au 20 mars", 40);
         OmraPackage fullPackage = new OmraPackage(2L, "Omra Chaabane du 1 au 10 mars", 10);
         when(packageRepository.findAll()).thenReturn(List.of(openPackage, fullPackage));
-        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(15);
-        when(roomRepository.sumReservedSeatsForPackage(2L)).thenReturn(10);
+        when(packageCapacityService.committedSeats(1L)).thenReturn(15);
+        when(packageCapacityService.committedSeats(2L)).thenReturn(10);
 
         List<ReservationGroup> groups = packageService().getReservationGroups();
 
@@ -69,5 +68,22 @@ class PackageServiceTest {
                 .containsExactly(
                         new ReservationGroup(openPackage, 15),
                         new ReservationGroup(fullPackage, 10));
+    }
+
+    @Test
+    void getReservationGroups_reservedSeats_includesActiveVipSeatsOnTopOfRooms() {
+        // committedSeats() (PackageCapacityService) agrège places en chambre + demandes VIP
+        // actives sur le même plafond group_size ; reservedSeats doit refléter ce total combiné,
+        // pas seulement les chambres, sous peine d'afficher un groupe comme disponible alors
+        // qu'il est déjà plein une fois les VIP comptés.
+        OmraPackage pkgWithVipRequests = new OmraPackage(3L, "Omra Rajab du 5 au 15 mars", 20);
+        int roomSeats = 5;
+        int vipSeats = 8;
+        when(packageRepository.findAll()).thenReturn(List.of(pkgWithVipRequests));
+        when(packageCapacityService.committedSeats(3L)).thenReturn(roomSeats + vipSeats);
+
+        List<ReservationGroup> groups = packageService().getReservationGroups();
+
+        assertThat(groups).containsExactly(new ReservationGroup(pkgWithVipRequests, 13));
     }
 }

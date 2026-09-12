@@ -3,7 +3,6 @@ package com.omraty.backend.service;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.repository.PackageRepository;
-import com.omraty.backend.repository.RoomRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -13,11 +12,12 @@ public class PackageService {
     private static final int MAX_LABEL_LENGTH = 255;
 
     private final PackageRepository packageRepository;
-    private final RoomRepository roomRepository;
+    private final PackageCapacityService packageCapacityService;
 
-    public PackageService(PackageRepository packageRepository, RoomRepository roomRepository) {
+    public PackageService(
+            PackageRepository packageRepository, PackageCapacityService packageCapacityService) {
         this.packageRepository = packageRepository;
-        this.roomRepository = roomRepository;
+        this.packageCapacityService = packageCapacityService;
     }
 
     public List<OmraPackage> getPackages() {
@@ -48,14 +48,16 @@ public class PackageService {
     /**
      * Tous les packages (périodes de départ), pleins ou non — aucun filtrage ici, voir
      * ReservationGroup. Pour l'utilisateur qui doit choisir sa période avant de réserver une
-     * chambre (voir GET /reservation-groups).
+     * chambre (voir GET /reservation-groups). reservedSeats reflète le même plafond partagé que
+     * PackageCapacityService (chambres + demandes VIP actives), pour éviter d'afficher un groupe
+     * comme disponible alors qu'il est déjà plein une fois les VIP comptés.
      */
     public List<ReservationGroup> getReservationGroups() {
         return packageRepository.findAll().stream()
                 .map(
                         pkg ->
                                 new ReservationGroup(
-                                        pkg, roomRepository.sumReservedSeatsForPackage(pkg.id())))
+                                        pkg, packageCapacityService.committedSeats(pkg.id())))
                 .toList();
     }
 
