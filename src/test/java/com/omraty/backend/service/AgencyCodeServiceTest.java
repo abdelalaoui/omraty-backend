@@ -14,6 +14,7 @@ import com.omraty.backend.exception.AgencyCodeException;
 import com.omraty.backend.repository.AgencyCodeRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,17 @@ class AgencyCodeServiceTest {
                 used,
                 accountId,
                 LocalDateTime.now());
+    }
+
+    @Test
+    void getAgencyCodes_returnsAllCodesFromRepository_mostRecentFirst() {
+        AgencyCode used = agencyCode("ABCD2345", true, UUID.randomUUID());
+        AgencyCode unused = agencyCode("EFGH6789", false, null);
+        when(agencyCodeRepository.findAll()).thenReturn(List.of(used, unused));
+
+        List<AgencyCode> result = agencyCodeService().getAgencyCodes();
+
+        assertThat(result).containsExactly(used, unused);
     }
 
     @Test

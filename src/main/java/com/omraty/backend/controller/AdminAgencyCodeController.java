@@ -5,8 +5,10 @@ import com.omraty.backend.dto.response.AgencyCodeResponse;
 import com.omraty.backend.mapper.AgencyCodeMapper;
 import com.omraty.backend.service.AgencyCodeService;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,6 +27,13 @@ public class AdminAgencyCodeController {
 
     public AdminAgencyCodeController(AgencyCodeService agencyCodeService) {
         this.agencyCodeService = agencyCodeService;
+    }
+
+    /** Tous les codes créés, les plus récents d'abord. */
+    @GetMapping
+    public ResponseEntity<List<AgencyCodeResponse>> getAgencyCodes() {
+        return ResponseEntity.ok(
+                AgencyCodeMapper.toResponseList(agencyCodeService.getAgencyCodes()));
     }
 
     @PostMapping

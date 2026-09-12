@@ -9,6 +9,10 @@ final class AgencyCodeTable {
 
     static final String EXISTS_BY_CODE = "SELECT EXISTS(SELECT 1 FROM agency_code WHERE code = ?)";
 
+    /** Pour l'admin : tous les codes créés, les plus récents d'abord. */
+    static final String SELECT_ALL_AGENCY_CODES =
+            "SELECT " + AGENCY_CODE_COLUMNS + " FROM agency_code ORDER BY created_at DESC";
+
     /**
      * Verrouille et renvoie le code : à appeler en début de transaction avant de le valider, pour
      * empêcher deux comptes de valider le même code en même temps.
