@@ -2,6 +2,7 @@ package com.omraty.backend.mapper;
 
 import com.omraty.backend.dto.response.AgencyCodeResponse;
 import com.omraty.backend.entities.AgencyCode;
+import java.util.List;
 
 public final class AgencyCodeMapper {
 
@@ -17,5 +18,9 @@ public final class AgencyCodeMapper {
                 agencyCode.used(),
                 agencyCode.accountId(),
                 agencyCode.createdAt());
+    }
+
+    public static List<AgencyCodeResponse> toResponseList(List<AgencyCode> agencyCodes) {
+        return agencyCodes.stream().map(AgencyCodeMapper::toResponse).toList();
     }
 }

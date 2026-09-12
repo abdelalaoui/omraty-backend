@@ -5,6 +5,7 @@ import com.omraty.backend.exception.AgencyCodeException;
 import com.omraty.backend.repository.AgencyCodeRepository;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +47,13 @@ public class AgencyCodeService {
         validateDiscountPercentage(discountPercentage);
         return agencyCodeRepository.insert(
                 agencyName, phoneNumber, discountPercentage, generateUniqueCode());
+    }
+
+    /**
+     * Tous les codes créés, pour l'admin (voir GET /admin/agency-codes), les plus récents d'abord.
+     */
+    public List<AgencyCode> getAgencyCodes() {
+        return agencyCodeRepository.findAll();
     }
 
     /**

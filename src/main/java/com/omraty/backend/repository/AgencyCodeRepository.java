@@ -3,6 +3,7 @@ package com.omraty.backend.repository;
 import com.omraty.backend.entities.AgencyCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,6 +36,11 @@ public class AgencyCodeRepository {
         Boolean exists =
                 jdbcTemplate.queryForObject(AgencyCodeTable.EXISTS_BY_CODE, Boolean.class, code);
         return Boolean.TRUE.equals(exists);
+    }
+
+    /** Pour l'admin : tous les codes créés, les plus récents d'abord. */
+    public List<AgencyCode> findAll() {
+        return jdbcTemplate.query(AgencyCodeTable.SELECT_ALL_AGENCY_CODES, AGENCY_CODE_ROW_MAPPER);
     }
 
     public Optional<AgencyCode> findByCodeForUpdate(String code) {
