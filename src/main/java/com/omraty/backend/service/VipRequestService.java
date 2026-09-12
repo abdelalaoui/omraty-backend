@@ -33,6 +33,7 @@ public class VipRequestService {
     private final HotelRepository hotelRepository;
     private final PackageRepository packageRepository;
     private final PackageCapacityService packageCapacityService;
+    private final NotificationService notificationService;
     private final long offerExpirationHours;
 
     public VipRequestService(
@@ -40,11 +41,13 @@ public class VipRequestService {
             HotelRepository hotelRepository,
             PackageRepository packageRepository,
             PackageCapacityService packageCapacityService,
+            NotificationService notificationService,
             @Value("${app.vip.offer-expiration-hours}") long offerExpirationHours) {
         this.vipRequestRepository = vipRequestRepository;
         this.hotelRepository = hotelRepository;
         this.packageRepository = packageRepository;
         this.packageCapacityService = packageCapacityService;
+        this.notificationService = notificationService;
         this.offerExpirationHours = offerExpirationHours;
     }
 
@@ -113,7 +116,14 @@ public class VipRequestService {
                 VipRequestStatus.PENDING,
                 "Seule une demande en attente peut être approuvée");
         LocalDateTime offerExpiresAt = LocalDateTime.now().plusHours(offerExpirationHours);
-        return vipRequestRepository.updateApprove(id, proposedPrice, offerExpiresAt);
+        VipRequest updated = vipRequestRepository.updateApprove(id, proposedPrice, offerExpiresAt);
+        notificationService.create(
+                updated.userId(),
+                "Demande VIP approuvée",
+                "Votre demande VIP a été approuvée : une offre de "
+                        + proposedPrice.toPlainString()
+                        + " MAD vous a été envoyée.");
+        return updated;
     }
 
     /**
@@ -127,7 +137,10 @@ public class VipRequestService {
                 request,
                 VipRequestStatus.PENDING,
                 "Seule une demande en attente peut être rejetée");
-        return vipRequestRepository.updateReject(id);
+        VipRequest updated = vipRequestRepository.updateReject(id);
+        notificationService.create(
+                updated.userId(), "Demande VIP rejetée", "Votre demande VIP a été rejetée.");
+        return updated;
     }
 
     /**
