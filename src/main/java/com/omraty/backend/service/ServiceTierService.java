@@ -35,17 +35,28 @@ public class ServiceTierService {
     public ServiceTier createServiceTier(
             ServiceTierType type,
             Integer capacity,
-            String label,
+            String labelFr,
+            String labelEn,
+            String labelAr,
             Integer displayOrder,
             Boolean visible,
             Boolean closed) {
-        validateLabel(label);
+        validateLabel(labelFr, "labelFr");
+        validateLabel(labelEn, "labelEn");
+        validateLabel(labelAr, "labelAr");
         validateCapacity(type, capacity);
         int resolvedDisplayOrder = displayOrder != null ? displayOrder : 0;
         boolean isVisible = visible == null || visible;
         boolean isClosed = closed != null && closed;
         return serviceTierRepository.insert(
-                type, capacity, label, resolvedDisplayOrder, isVisible, isClosed);
+                type,
+                capacity,
+                labelFr,
+                labelEn,
+                labelAr,
+                resolvedDisplayOrder,
+                isVisible,
+                isClosed);
     }
 
     /**
@@ -59,13 +70,21 @@ public class ServiceTierService {
             long id,
             ServiceTierType type,
             Integer capacity,
-            String label,
+            String labelFr,
+            String labelEn,
+            String labelAr,
             Integer displayOrder,
             Boolean visible,
             Boolean closed) {
         ServiceTier existing = getServiceTierOrThrow(id);
-        if (label != null) {
-            validateLabel(label);
+        if (labelFr != null) {
+            validateLabel(labelFr, "labelFr");
+        }
+        if (labelEn != null) {
+            validateLabel(labelEn, "labelEn");
+        }
+        if (labelAr != null) {
+            validateLabel(labelAr, "labelAr");
         }
         if (type != null || capacity != null) {
             ServiceTierType effectiveType = type != null ? type : existing.type();
@@ -73,7 +92,16 @@ public class ServiceTierService {
             validateCapacity(effectiveType, effectiveCapacity);
         }
         return serviceTierRepository
-                .update(id, type, capacity, label, displayOrder, visible, closed)
+                .update(
+                        id,
+                        type,
+                        capacity,
+                        labelFr,
+                        labelEn,
+                        labelAr,
+                        displayOrder,
+                        visible,
+                        closed)
                 .orElseThrow(
                         () ->
                                 new ServiceTierException.ServiceTierNotFoundException(
@@ -89,14 +117,18 @@ public class ServiceTierService {
                                         "Formule introuvable (id=" + id + ")"));
     }
 
-    private void validateLabel(String label) {
+    private void validateLabel(String label, String fieldName) {
         if (label.isBlank()) {
             throw new ServiceTierException.InvalidServiceTierRequestException(
-                    "Le label ne peut pas être vide");
+                    "Le champ " + fieldName + " ne peut pas être vide");
         }
         if (label.length() > MAX_LABEL_LENGTH) {
             throw new ServiceTierException.InvalidServiceTierRequestException(
-                    "Le label dépasse la longueur maximale autorisée (" + MAX_LABEL_LENGTH + ")");
+                    "Le champ "
+                            + fieldName
+                            + " dépasse la longueur maximale autorisée ("
+                            + MAX_LABEL_LENGTH
+                            + ")");
         }
     }
 
