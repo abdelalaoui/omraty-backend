@@ -65,6 +65,27 @@ public class RoomService {
     }
 
     /**
+     * Ouvre une chambre partagée pour ce package (type 5 uniquement), sans réserver de lit :
+     * réutilise la chambre ouverte existante s'il y en a une (idempotent, ne rien faire de plus),
+     * sinon en ouvre une nouvelle avec ses 5 lits tous disponibles.
+     *
+     * <p>Contrairement à {@link #reserveBed}, aucune place n'est consommée ici, donc pas de
+     * vérification de capacité (groupSize).
+     */
+    @Transactional
+    public RoomWithBeds openSharedRoom(int type, long packageId) {
+        validateSharedRoomType(type);
+        lockPackageOrThrow(packageId);
+
+        Room room =
+                roomRepository
+                        .findOpenRoomForUpdate(packageId, type)
+                        .orElseGet(() -> openNewSharedRoom(packageId, type));
+
+        return new RoomWithBeds(room, bedRepository.findByRoomIds(List.of(room.id())));
+    }
+
+    /**
      * Réserve un lit pour ce package (type 5 uniquement) : réutilise la chambre ouverte existante
      * s'il y en a une, sinon en ouvre une nouvelle automatiquement avec ses 5 lits.
      *
