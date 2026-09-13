@@ -21,8 +21,8 @@ import org.springframework.context.annotation.Configuration;
  * secrets AWS déjà en place) : soit le contenu JSON de la clé de compte de service directement,
  * soit un chemin vers le fichier JSON — jamais codé en dur ici.
  *
- * <p>Les notifications push sont une fonctionnalité annexe : si la clé est absente ou invalide,
- * on logue l'erreur et on démarre sans bean FirebaseMessaging plutôt que de faire planter toute
+ * <p>Les notifications push sont une fonctionnalité annexe : si la clé est absente ou invalide, on
+ * logue l'erreur et on démarre sans bean FirebaseMessaging plutôt que de faire planter toute
  * l'application (voir FirebasePushSender, qui tolère son absence).
  */
 @Configuration
