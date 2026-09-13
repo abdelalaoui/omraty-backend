@@ -2,12 +2,14 @@ package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.request.CreateServiceCardRequest;
 import com.omraty.backend.dto.request.UpdateServiceCardRequest;
+import com.omraty.backend.dto.response.AdminServiceCardResponse;
 import com.omraty.backend.dto.response.ServiceCardResponse;
 import com.omraty.backend.entities.ServiceCard;
 import com.omraty.backend.mapper.ServiceCardMapper;
 import com.omraty.backend.service.ServiceCardService;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,7 +28,11 @@ import org.springframework.web.multipart.MultipartFile;
  * Cartes de services (Omra/Hajj/...) de la home : liste dynamique pilotée depuis le backend, pas
  * figée à 2 cartes — en ajouter une nouvelle (ex : un 3ème type de service) ou en modifier une (y
  * compris basculer comingSoon) ne nécessite pas de redéploiement de l'app. GET accessible à tout
- * utilisateur authentifié ; POST/PATCH réservés à ROLE_ADMIN (voir SecurityConfig).
+ * utilisateur authentifié, title/description/buttonText renvoyés dans la langue du header
+ * Accept-Language de la requête (fr|en|ar, ar par défaut si absent ou non reconnu — voir
+ * ServiceCardMapper) ; POST/PATCH réservés à ROLE_ADMIN (voir SecurityConfig) et renvoient les 3
+ * variantes de chaque champ (voir {@link AdminServiceCardResponse}) pour permettre l'édition
+ * complète.
  */
 @RestController
 @RequestMapping("/home/service-cards")
@@ -38,49 +45,64 @@ public class ServiceCardController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ServiceCardResponse>> listActiveServiceCards() {
+    public ResponseEntity<List<ServiceCardResponse>> listActiveServiceCards(
+            @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
+                    String acceptLanguage) {
         return ResponseEntity.ok(
-                ServiceCardMapper.toResponseList(serviceCardService.getActiveServiceCards()));
+                ServiceCardMapper.toResponseList(
+                        serviceCardService.getActiveServiceCards(), acceptLanguage));
     }
 
     @PostMapping
-    public ResponseEntity<ServiceCardResponse> createServiceCard(
+    public ResponseEntity<AdminServiceCardResponse> createServiceCard(
             @Valid @RequestBody CreateServiceCardRequest request) {
         ServiceCard serviceCard =
                 serviceCardService.createServiceCard(
                         request.type(),
-                        request.title(),
-                        request.description(),
-                        request.buttonText(),
+                        request.titleFr(),
+                        request.titleEn(),
+                        request.titleAr(),
+                        request.descriptionFr(),
+                        request.descriptionEn(),
+                        request.descriptionAr(),
+                        request.buttonTextFr(),
+                        request.buttonTextEn(),
+                        request.buttonTextAr(),
                         request.icon(),
                         request.imageUrl(),
                         request.comingSoon(),
                         request.visible());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ServiceCardMapper.toResponse(serviceCard));
+                .body(ServiceCardMapper.toAdminResponse(serviceCard));
     }
 
     @PatchMapping("/{id}")
-    public ResponseEntity<ServiceCardResponse> updateServiceCard(
+    public ResponseEntity<AdminServiceCardResponse> updateServiceCard(
             @PathVariable long id, @RequestBody UpdateServiceCardRequest request) {
         ServiceCard serviceCard =
                 serviceCardService.updateServiceCard(
                         id,
                         request.type(),
-                        request.title(),
-                        request.description(),
-                        request.buttonText(),
+                        request.titleFr(),
+                        request.titleEn(),
+                        request.titleAr(),
+                        request.descriptionFr(),
+                        request.descriptionEn(),
+                        request.descriptionAr(),
+                        request.buttonTextFr(),
+                        request.buttonTextEn(),
+                        request.buttonTextAr(),
                         request.icon(),
                         request.imageUrl(),
                         request.comingSoon(),
                         request.visible());
-        return ResponseEntity.ok(ServiceCardMapper.toResponse(serviceCard));
+        return ResponseEntity.ok(ServiceCardMapper.toAdminResponse(serviceCard));
     }
 
     @PatchMapping(value = "/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ServiceCardResponse> updateServiceCardImage(
+    public ResponseEntity<AdminServiceCardResponse> updateServiceCardImage(
             @PathVariable long id, @RequestParam("image") MultipartFile image) {
         ServiceCard serviceCard = serviceCardService.updateImage(id, image);
-        return ResponseEntity.ok(ServiceCardMapper.toResponse(serviceCard));
+        return ResponseEntity.ok(ServiceCardMapper.toAdminResponse(serviceCard));
     }
 }

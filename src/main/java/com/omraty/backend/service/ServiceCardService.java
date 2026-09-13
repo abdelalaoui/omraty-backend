@@ -44,30 +44,58 @@ public class ServiceCardService {
     }
 
     /**
-     * Ajoute une nouvelle carte de service. imageUrl est optionnelle (réglable ici en texte, ou
+     * Ajoute une nouvelle carte de service. Seuls titleFr et buttonTextFr sont requis :
+     * titleEn/titleAr et buttonTextEn/buttonTextAr sont optionnels (repli sur le _fr tant qu'ils ne
+     * sont pas traduits, voir ServiceCardMapper), descriptionFr/En/Ar restent optionnels comme
+     * l'était l'ancienne description unique. imageUrl est optionnelle (réglable ici en texte, ou
      * plus tard par upload, voir {@link #updateImage}) ; comingSoon/visible non fournis = valeurs
      * par défaut (pas en mode coming soon, visible) — extensible à un nouveau type de service sans
      * changement de code.
      */
     public ServiceCard createServiceCard(
             String type,
-            String title,
-            String description,
-            String buttonText,
+            String titleFr,
+            String titleEn,
+            String titleAr,
+            String descriptionFr,
+            String descriptionEn,
+            String descriptionAr,
+            String buttonTextFr,
+            String buttonTextEn,
+            String buttonTextAr,
             String icon,
             String imageUrl,
             Boolean comingSoon,
             Boolean visible) {
         validateType(type);
-        validateTitle(title);
-        validateDescription(description);
-        validateButtonText(buttonText);
+        validateTitle(titleFr);
+        validateOptionalTranslation(titleEn, "titleEn", MAX_TITLE_LENGTH);
+        validateOptionalTranslation(titleAr, "titleAr", MAX_TITLE_LENGTH);
+        validateDescription(descriptionFr);
+        validateDescription(descriptionEn);
+        validateDescription(descriptionAr);
+        validateButtonText(buttonTextFr);
+        validateOptionalTranslation(buttonTextEn, "buttonTextEn", MAX_BUTTON_TEXT_LENGTH);
+        validateOptionalTranslation(buttonTextAr, "buttonTextAr", MAX_BUTTON_TEXT_LENGTH);
         validateIcon(icon);
         validateImageUrl(imageUrl);
         boolean isComingSoon = comingSoon != null && comingSoon;
         boolean isVisible = visible == null || visible;
         return serviceCardRepository.insert(
-                type, title, description, buttonText, icon, imageUrl, isComingSoon, isVisible);
+                type,
+                titleFr,
+                titleEn,
+                titleAr,
+                descriptionFr,
+                descriptionEn,
+                descriptionAr,
+                buttonTextFr,
+                buttonTextEn,
+                buttonTextAr,
+                icon,
+                imageUrl,
+                isComingSoon,
+                isVisible);
     }
 
     /**
@@ -78,9 +106,15 @@ public class ServiceCardService {
     public ServiceCard updateServiceCard(
             long id,
             String type,
-            String title,
-            String description,
-            String buttonText,
+            String titleFr,
+            String titleEn,
+            String titleAr,
+            String descriptionFr,
+            String descriptionEn,
+            String descriptionAr,
+            String buttonTextFr,
+            String buttonTextEn,
+            String buttonTextAr,
             String icon,
             String imageUrl,
             Boolean comingSoon,
@@ -88,15 +122,19 @@ public class ServiceCardService {
         if (type != null) {
             validateType(type);
         }
-        if (title != null) {
-            validateTitle(title);
+        if (titleFr != null) {
+            validateTitle(titleFr);
         }
-        if (description != null) {
-            validateDescription(description);
+        validateOptionalTranslation(titleEn, "titleEn", MAX_TITLE_LENGTH);
+        validateOptionalTranslation(titleAr, "titleAr", MAX_TITLE_LENGTH);
+        validateDescription(descriptionFr);
+        validateDescription(descriptionEn);
+        validateDescription(descriptionAr);
+        if (buttonTextFr != null) {
+            validateButtonText(buttonTextFr);
         }
-        if (buttonText != null) {
-            validateButtonText(buttonText);
-        }
+        validateOptionalTranslation(buttonTextEn, "buttonTextEn", MAX_BUTTON_TEXT_LENGTH);
+        validateOptionalTranslation(buttonTextAr, "buttonTextAr", MAX_BUTTON_TEXT_LENGTH);
         if (icon != null) {
             validateIcon(icon);
         }
@@ -107,9 +145,15 @@ public class ServiceCardService {
                 .update(
                         id,
                         type,
-                        title,
-                        description,
-                        buttonText,
+                        titleFr,
+                        titleEn,
+                        titleAr,
+                        descriptionFr,
+                        descriptionEn,
+                        descriptionAr,
+                        buttonTextFr,
+                        buttonTextEn,
+                        buttonTextAr,
                         icon,
                         imageUrl,
                         comingSoon,
@@ -177,6 +221,30 @@ public class ServiceCardService {
             throw new ServiceCardException.InvalidServiceCardRequestException(
                     "Le texte du bouton dépasse la longueur maximale autorisée ("
                             + MAX_BUTTON_TEXT_LENGTH
+                            + ")");
+        }
+    }
+
+    /**
+     * Variantes en/ar de title et buttonText : optionnelles (repli sur le _fr tant qu'absentes,
+     * voir ServiceCardMapper), mais si fournies elles suivent les mêmes règles que leur champ
+     * requis (non vide, longueur maximale) pour éviter une traduction blanche ou tronquée
+     * silencieuse.
+     */
+    private void validateOptionalTranslation(String value, String fieldName, int maxLength) {
+        if (value == null) {
+            return;
+        }
+        if (value.isBlank()) {
+            throw new ServiceCardException.InvalidServiceCardRequestException(
+                    "Le champ " + fieldName + " ne peut pas être vide s'il est fourni");
+        }
+        if (value.length() > maxLength) {
+            throw new ServiceCardException.InvalidServiceCardRequestException(
+                    "Le champ "
+                            + fieldName
+                            + " dépasse la longueur maximale autorisée ("
+                            + maxLength
                             + ")");
         }
     }
