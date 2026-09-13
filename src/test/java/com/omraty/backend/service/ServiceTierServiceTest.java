@@ -28,7 +28,16 @@ class ServiceTierServiceTest {
     private ServiceTier serviceTier(
             long id, ServiceTierType type, Integer capacity, boolean visible, boolean closed) {
         return new ServiceTier(
-                id, type, capacity, "Chambre double", 1, visible, closed, LocalDateTime.now());
+                id,
+                type,
+                capacity,
+                "Chambre double",
+                "Double room",
+                "غرفة مزدوجة",
+                1,
+                visible,
+                closed,
+                LocalDateTime.now());
     }
 
     @Test
@@ -44,24 +53,74 @@ class ServiceTierServiceTest {
 
     @Test
     void createServiceTier_withoutDisplayOrderVisibleOrClosed_defaultsToZeroVisibleAndNotClosed() {
-        when(serviceTierRepository.insert(ServiceTierType.VIP, null, "VIP", 0, true, false))
+        when(serviceTierRepository.insert(
+                        ServiceTierType.VIP, null, "VIP", "VIP", "كبار الشخصيات", 0, true, false))
                 .thenReturn(serviceTier(1L, ServiceTierType.VIP, null, true, false));
 
         ServiceTier created =
                 serviceTierService()
-                        .createServiceTier(ServiceTierType.VIP, null, "VIP", null, null, null);
+                        .createServiceTier(
+                                ServiceTierType.VIP,
+                                null,
+                                "VIP",
+                                "VIP",
+                                "كبار الشخصيات",
+                                null,
+                                null,
+                                null);
 
         assertThat(created.visible()).isTrue();
         assertThat(created.closed()).isFalse();
     }
 
     @Test
-    void createServiceTier_withBlankLabel_throwsException() {
+    void createServiceTier_withBlankLabelFr_throwsException() {
         assertThatThrownBy(
                         () ->
                                 serviceTierService()
                                         .createServiceTier(
-                                                ServiceTierType.VIP, null, "  ", null, null, null))
+                                                ServiceTierType.VIP,
+                                                null,
+                                                "  ",
+                                                "VIP",
+                                                "كبار الشخصيات",
+                                                null,
+                                                null,
+                                                null))
+                .isInstanceOf(ServiceTierException.InvalidServiceTierRequestException.class);
+    }
+
+    @Test
+    void createServiceTier_withBlankLabelEn_throwsException() {
+        assertThatThrownBy(
+                        () ->
+                                serviceTierService()
+                                        .createServiceTier(
+                                                ServiceTierType.VIP,
+                                                null,
+                                                "VIP",
+                                                "  ",
+                                                "كبار الشخصيات",
+                                                null,
+                                                null,
+                                                null))
+                .isInstanceOf(ServiceTierException.InvalidServiceTierRequestException.class);
+    }
+
+    @Test
+    void createServiceTier_withBlankLabelAr_throwsException() {
+        assertThatThrownBy(
+                        () ->
+                                serviceTierService()
+                                        .createServiceTier(
+                                                ServiceTierType.VIP,
+                                                null,
+                                                "VIP",
+                                                "VIP",
+                                                "  ",
+                                                null,
+                                                null,
+                                                null))
                 .isInstanceOf(ServiceTierException.InvalidServiceTierRequestException.class);
     }
 
@@ -71,7 +130,14 @@ class ServiceTierServiceTest {
                         () ->
                                 serviceTierService()
                                         .createServiceTier(
-                                                ServiceTierType.VIP, 4, "VIP", null, null, null))
+                                                ServiceTierType.VIP,
+                                                4,
+                                                "VIP",
+                                                "VIP",
+                                                "كبار الشخصيات",
+                                                null,
+                                                null,
+                                                null))
                 .isInstanceOf(ServiceTierException.InvalidServiceTierRequestException.class);
     }
 
@@ -84,6 +150,8 @@ class ServiceTierServiceTest {
                                                 ServiceTierType.ROOM,
                                                 0,
                                                 "Chambre",
+                                                "Room",
+                                                "غرفة",
                                                 null,
                                                 null,
                                                 null))
@@ -97,7 +165,8 @@ class ServiceTierServiceTest {
         assertThatThrownBy(
                         () ->
                                 serviceTierService()
-                                        .updateServiceTier(1L, null, null, null, null, null, true))
+                                        .updateServiceTier(
+                                                1L, null, null, null, null, null, null, null, true))
                 .isInstanceOf(ServiceTierException.ServiceTierNotFoundException.class);
     }
 
@@ -105,11 +174,12 @@ class ServiceTierServiceTest {
     void updateServiceTier_togglingClosed_delegatesToRepository() {
         when(serviceTierRepository.findById(1L))
                 .thenReturn(Optional.of(serviceTier(1L, ServiceTierType.ROOM, 2, true, false)));
-        when(serviceTierRepository.update(1L, null, null, null, null, null, true))
+        when(serviceTierRepository.update(1L, null, null, null, null, null, null, null, true))
                 .thenReturn(Optional.of(serviceTier(1L, ServiceTierType.ROOM, 2, true, true)));
 
         ServiceTier updated =
-                serviceTierService().updateServiceTier(1L, null, null, null, null, null, true);
+                serviceTierService()
+                        .updateServiceTier(1L, null, null, null, null, null, null, null, true);
 
         assertThat(updated.closed()).isTrue();
     }
@@ -122,7 +192,8 @@ class ServiceTierServiceTest {
         assertThatThrownBy(
                         () ->
                                 serviceTierService()
-                                        .updateServiceTier(1L, null, 4, null, null, null, null))
+                                        .updateServiceTier(
+                                                1L, null, 4, null, null, null, null, null, null))
                 .isInstanceOf(ServiceTierException.InvalidServiceTierRequestException.class);
     }
 
@@ -141,19 +212,22 @@ class ServiceTierServiceTest {
                                                 null,
                                                 null,
                                                 null,
+                                                null,
+                                                null,
                                                 null))
                 .isInstanceOf(ServiceTierException.InvalidServiceTierRequestException.class);
     }
 
     @Test
-    void updateServiceTier_withBlankLabel_throwsException() {
+    void updateServiceTier_withBlankLabelFr_throwsException() {
         when(serviceTierRepository.findById(1L))
                 .thenReturn(Optional.of(serviceTier(1L, ServiceTierType.ROOM, 2, true, false)));
 
         assertThatThrownBy(
                         () ->
                                 serviceTierService()
-                                        .updateServiceTier(1L, null, null, "  ", null, null, null))
+                                        .updateServiceTier(
+                                                1L, null, null, "  ", null, null, null, null, null))
                 .isInstanceOf(ServiceTierException.InvalidServiceTierRequestException.class);
     }
 }

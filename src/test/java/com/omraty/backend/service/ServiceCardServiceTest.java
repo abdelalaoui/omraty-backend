@@ -35,8 +35,14 @@ class ServiceCardServiceTest {
                 id,
                 "OMRA",
                 "Omra",
+                "Omra",
+                "عمرة",
                 "Réservez votre Omra",
+                "Book your Omra",
+                "احجز عمرتك",
                 "Réserver",
+                "Book",
+                "احجز",
                 "mosque",
                 "https://cdn.example.com/omra.png",
                 comingSoon,
@@ -63,8 +69,14 @@ class ServiceCardServiceTest {
         when(serviceCardRepository.insert(
                         "HAJJ",
                         "Hajj",
+                        null,
+                        null,
                         "Réservez votre Hajj",
+                        null,
+                        null,
                         "Réserver",
+                        null,
+                        null,
                         "kaaba",
                         "https://cdn.example.com/hajj.png",
                         false,
@@ -76,8 +88,14 @@ class ServiceCardServiceTest {
                         .createServiceCard(
                                 "HAJJ",
                                 "Hajj",
+                                null,
+                                null,
                                 "Réservez votre Hajj",
+                                null,
+                                null,
                                 "Réserver",
+                                null,
+                                null,
                                 "kaaba",
                                 "https://cdn.example.com/hajj.png",
                                 null,
@@ -92,8 +110,14 @@ class ServiceCardServiceTest {
         when(serviceCardRepository.insert(
                         "HAJJ",
                         "Hajj",
+                        null,
+                        null,
                         "Réservez votre Hajj",
+                        null,
+                        null,
                         "Réserver",
+                        null,
+                        null,
                         "kaaba",
                         null,
                         false,
@@ -104,8 +128,14 @@ class ServiceCardServiceTest {
                 .createServiceCard(
                         "HAJJ",
                         "Hajj",
+                        null,
+                        null,
                         "Réservez votre Hajj",
+                        null,
+                        null,
                         "Réserver",
+                        null,
+                        null,
                         "kaaba",
                         null,
                         null,
@@ -113,15 +143,21 @@ class ServiceCardServiceTest {
     }
 
     @Test
-    void createServiceCard_withBlankTitle_throwsException() {
+    void createServiceCard_withBlankTitleFr_throwsException() {
         assertThatThrownBy(
                         () ->
                                 serviceCardService()
                                         .createServiceCard(
                                                 "OMRA",
                                                 "  ",
+                                                null,
+                                                null,
                                                 "desc",
+                                                null,
+                                                null,
                                                 "Réserver",
+                                                null,
+                                                null,
                                                 "mosque",
                                                 null,
                                                 null,
@@ -137,8 +173,37 @@ class ServiceCardServiceTest {
                                         .createServiceCard(
                                                 " ",
                                                 "Omra",
+                                                null,
+                                                null,
                                                 "desc",
+                                                null,
+                                                null,
                                                 "Réserver",
+                                                null,
+                                                null,
+                                                "mosque",
+                                                null,
+                                                null,
+                                                null))
+                .isInstanceOf(ServiceCardException.InvalidServiceCardRequestException.class);
+    }
+
+    @Test
+    void createServiceCard_withBlankTitleEn_throwsException() {
+        assertThatThrownBy(
+                        () ->
+                                serviceCardService()
+                                        .createServiceCard(
+                                                "OMRA",
+                                                "Omra",
+                                                "  ",
+                                                null,
+                                                "desc",
+                                                null,
+                                                null,
+                                                "Réserver",
+                                                null,
+                                                null,
                                                 "mosque",
                                                 null,
                                                 null,
@@ -156,8 +221,14 @@ class ServiceCardServiceTest {
                                         .createServiceCard(
                                                 "OMRA",
                                                 "Omra",
+                                                null,
+                                                null,
                                                 "desc",
+                                                null,
+                                                null,
                                                 "Réserver",
+                                                null,
+                                                null,
                                                 "mosque",
                                                 tooLong,
                                                 null,
@@ -167,25 +238,32 @@ class ServiceCardServiceTest {
 
     @Test
     void updateServiceCard_whenNotFound_throwsException() {
-        when(serviceCardRepository.update(1L, null, null, null, null, null, null, true, null))
+        when(serviceCardRepository.update(
+                        1L, null, null, null, null, null, null, null, null, null, null, null, null,
+                        true, null))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(
                         () ->
                                 serviceCardService()
                                         .updateServiceCard(
-                                                1L, null, null, null, null, null, null, true, null))
+                                                1L, null, null, null, null, null, null, null, null,
+                                                null, null, null, null, true, null))
                 .isInstanceOf(ServiceCardException.ServiceCardNotFoundException.class);
     }
 
     @Test
     void updateServiceCard_togglingComingSoon_delegatesToRepository() {
-        when(serviceCardRepository.update(1L, null, null, null, null, null, null, true, null))
+        when(serviceCardRepository.update(
+                        1L, null, null, null, null, null, null, null, null, null, null, null, null,
+                        true, null))
                 .thenReturn(Optional.of(serviceCard(1L, true, true)));
 
         ServiceCard updated =
                 serviceCardService()
-                        .updateServiceCard(1L, null, null, null, null, null, null, true, null);
+                        .updateServiceCard(
+                                1L, null, null, null, null, null, null, null, null, null, null,
+                                null, null, true, null);
 
         assertThat(updated.comingSoon()).isTrue();
     }
@@ -198,8 +276,8 @@ class ServiceCardServiceTest {
                         () ->
                                 serviceCardService()
                                         .updateServiceCard(
-                                                1L, null, null, null, null, null, tooLong, null,
-                                                null))
+                                                1L, null, null, null, null, null, null, null, null,
+                                                null, null, null, tooLong, null, null))
                 .isInstanceOf(ServiceCardException.InvalidServiceCardRequestException.class);
     }
 
