@@ -21,10 +21,15 @@ public class UserService {
 
     private final AuthRepository authRepository;
     private final FileStorageService fileStorageService;
+    private final NotificationService notificationService;
 
-    public UserService(AuthRepository authRepository, FileStorageService fileStorageService) {
+    public UserService(
+            AuthRepository authRepository,
+            FileStorageService fileStorageService,
+            NotificationService notificationService) {
         this.authRepository = authRepository;
         this.fileStorageService = fileStorageService;
+        this.notificationService = notificationService;
     }
 
     public User updateIdentity(UUID userId, String nni, MultipartFile photo) {
@@ -53,19 +58,34 @@ public class UserService {
     /** Marque l'identité comme vérifiée après validation du NNI/photo par un admin. */
     public User approveIdentity(UUID userId) {
         requirePendingIdentity(userId);
-        return authRepository
-                .approveIdentity(userId)
-                .orElseThrow(
-                        () -> new UserException.UserNotFoundException("Utilisateur introuvable"));
+        User user =
+                authRepository
+                        .approveIdentity(userId)
+                        .orElseThrow(
+                                () ->
+                                        new UserException.UserNotFoundException(
+                                                "Utilisateur introuvable"));
+        notificationService.create(
+                userId, "Identité vérifiée", "Votre identité (NNI et photo) a été vérifiée.");
+        return user;
     }
 
     /** Rejette la demande : le NNI/photo sont effacés, l'utilisateur devra les renvoyer. */
     public User rejectIdentity(UUID userId) {
         requirePendingIdentity(userId);
-        return authRepository
-                .rejectIdentity(userId)
-                .orElseThrow(
-                        () -> new UserException.UserNotFoundException("Utilisateur introuvable"));
+        User user =
+                authRepository
+                        .rejectIdentity(userId)
+                        .orElseThrow(
+                                () ->
+                                        new UserException.UserNotFoundException(
+                                                "Utilisateur introuvable"));
+        notificationService.create(
+                userId,
+                "Vérification d'identité rejetée",
+                "Votre demande de vérification d'identité a été rejetée. Merci de renvoyer votre"
+                        + " NNI et votre photo.");
+        return user;
     }
 
     private void requirePendingIdentity(UUID userId) {
