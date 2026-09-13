@@ -28,6 +28,10 @@ services:
       AWS_REGION: ${AWS_REGION:-eu-west-3}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID in .env}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY in .env}
+      # Contenu JSON de la clé de compte de service Firebase (ou chemin vers ce fichier), voir
+      # FirebaseConfig. Facultatif : en son absence, les notifications push FCM sont simplement
+      # désactivées (voir FirebasePushSender), le reste de l'application démarre normalement.
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${FIREBASE_SERVICE_ACCOUNT_KEY:-}
     ports:
       - "8080:8080"
     networks:

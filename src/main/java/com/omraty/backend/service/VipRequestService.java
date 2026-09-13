@@ -122,7 +122,7 @@ public class VipRequestService {
                 "Demande VIP approuvée",
                 "Votre demande VIP a été approuvée : une offre de "
                         + proposedPrice.toPlainString()
-                        + " MAD vous a été envoyée.");
+                        + " MRU vous a été envoyée.");
         return updated;
     }
 
