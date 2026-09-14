@@ -117,7 +117,7 @@ class RoomServiceTest {
     @Test
     void openSharedRoom_withOpenRoomAlreadyExisting_returnsItAsIsWithoutCreatingANewOne() {
         when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5)));
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5, null, null)));
         Room openRoom = new Room(10L, 5, 1L, 5, 3);
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
         Bed bed = new Bed(100L, 4, false, 10L);
@@ -138,7 +138,7 @@ class RoomServiceTest {
     @Test
     void openSharedRoom_whenNoOpenRoom_opensNewRoomWithFreshUnreservedBeds() {
         when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5)));
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5, null, null)));
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.empty());
         Room newRoom = new Room(20L, 5, 1L, 5, 0);
         when(roomRepository.insert(5, 1L, 5, 0)).thenReturn(newRoom);
