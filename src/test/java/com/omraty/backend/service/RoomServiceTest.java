@@ -14,6 +14,7 @@ import com.omraty.backend.exception.RoomException;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -97,6 +98,60 @@ class RoomServiceTest {
         assertThat(reserved.roomId()).isEqualTo(20L);
         verify(bedRepository).insertBedsForRoom(20L, 5);
         verify(roomRepository).incrementReservedCount(20L);
+    }
+
+    @Test
+    void openSharedRoom_withInvalidType_throwsException() {
+        assertThatThrownBy(() -> roomService().openSharedRoom(2, 1L))
+                .isInstanceOf(RoomException.InvalidRoomTypeException.class);
+    }
+
+    @Test
+    void openSharedRoom_whenPackageNotFound_throwsException() {
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> roomService().openSharedRoom(5, 1L))
+                .isInstanceOf(PackageException.PackageNotFoundException.class);
+    }
+
+    @Test
+    void openSharedRoom_withOpenRoomAlreadyExisting_returnsItAsIsWithoutCreatingANewOne() {
+        when(packageRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5)));
+        Room openRoom = new Room(10L, 5, 1L, 5, 3);
+        when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
+        Bed bed = new Bed(100L, 4, false, 10L);
+        when(bedRepository.findByRoomIds(List.of(10L))).thenReturn(List.of(bed));
+
+        RoomWithBeds result = roomService().openSharedRoom(5, 1L);
+
+        assertThat(result.room()).isEqualTo(openRoom);
+        assertThat(result.beds()).containsExactly(bed);
+        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt());
+        verify(bedRepository, never()).markReserved(anyLong());
+        verify(roomRepository, never()).incrementReservedCount(anyLong());
+        // Idempotent : aucune vérification de capacité (groupSize) puisqu'aucune place n'est
+        // consommée.
+        verify(roomRepository, never()).sumReservedSeatsForPackage(anyLong());
+    }
+
+    @Test
+    void openSharedRoom_whenNoOpenRoom_opensNewRoomWithFreshUnreservedBeds() {
+        when(packageRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5)));
+        when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.empty());
+        Room newRoom = new Room(20L, 5, 1L, 5, 0);
+        when(roomRepository.insert(5, 1L, 5, 0)).thenReturn(newRoom);
+        Bed freeBed = new Bed(200L, 1, false, 20L);
+        when(bedRepository.findByRoomIds(List.of(20L))).thenReturn(List.of(freeBed));
+
+        RoomWithBeds result = roomService().openSharedRoom(5, 1L);
+
+        assertThat(result.room()).isEqualTo(newRoom);
+        assertThat(result.beds()).containsExactly(freeBed);
+        verify(bedRepository).insertBedsForRoom(20L, 5);
+        verify(bedRepository, never()).markReserved(anyLong());
+        verify(roomRepository, never()).incrementReservedCount(anyLong());
     }
 
     @Test

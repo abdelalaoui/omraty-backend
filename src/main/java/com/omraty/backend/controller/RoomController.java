@@ -10,6 +10,7 @@ import com.omraty.backend.entities.Room;
 import com.omraty.backend.mapper.BedMapper;
 import com.omraty.backend.mapper.RoomMapper;
 import com.omraty.backend.service.RoomService;
+import com.omraty.backend.service.RoomWithBeds;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -30,6 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
  * peut pas connaître à l'avance l'id d'un lit libre avant qu'une chambre ouverte n'existe (voir GET
  * ci-dessous, qui peut renvoyer une liste vide). C'est le serveur qui choisit le lit et, au besoin,
  * ouvre lui-même une nouvelle chambre — voir RoomService.reserveBed.
+ *
+ * <p>POST /{type}/open (type 5 uniquement) ouvre une chambre partagée sans réserver de lit, pour
+ * les cas où le client veut afficher/préparer la chambre avant qu'un lit ne soit choisi — voir
+ * RoomService.openSharedRoom. Idempotent : rejouer l'appel sur une chambre déjà ouverte ne fait
+ * rien de plus.
  */
 @RestController
 @RequestMapping("/rooms")
@@ -46,6 +52,17 @@ public class RoomController {
             @PathVariable int type, @RequestParam long packageId) {
         return ResponseEntity.ok(
                 RoomMapper.toBedsResponseList(roomService.getRoomsWithBeds(type, packageId)));
+    }
+
+    /**
+     * Ouvre une chambre partagée sans réserver de lit (type 5 uniquement) : idempotent, si une
+     * chambre ouverte existe déjà pour ce package elle est simplement renvoyée telle quelle.
+     */
+    @PostMapping("/{type}/open")
+    public ResponseEntity<RoomBedsResponse> openSharedRoom(
+            @PathVariable int type, @Valid @RequestBody ReserveBedRequest request) {
+        RoomWithBeds roomWithBeds = roomService.openSharedRoom(type, request.packageId());
+        return ResponseEntity.ok(RoomMapper.toBedsResponse(roomWithBeds));
     }
 
     @PostMapping("/{type}/beds/reserve")
