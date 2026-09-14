@@ -9,7 +9,8 @@ public final class PackageMapper {
     private PackageMapper() {}
 
     public static PackageResponse toResponse(OmraPackage pkg) {
-        return new PackageResponse(pkg.id(), pkg.label(), pkg.groupSize());
+        return new PackageResponse(
+                pkg.id(), pkg.label(), pkg.groupSize(), pkg.startDate(), pkg.endDate());
     }
 
     public static List<PackageResponse> toResponseList(List<OmraPackage> packages) {

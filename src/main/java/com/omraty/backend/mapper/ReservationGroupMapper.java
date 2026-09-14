@@ -13,7 +13,9 @@ public final class ReservationGroupMapper {
                 reservationGroup.pkg().id(),
                 reservationGroup.pkg().label(),
                 reservationGroup.pkg().groupSize(),
-                reservationGroup.reservedSeats());
+                reservationGroup.reservedSeats(),
+                reservationGroup.pkg().startDate(),
+                reservationGroup.pkg().endDate());
     }
 
     public static List<ReservationGroupResponse> toResponseList(

@@ -1,6 +1,7 @@
 package com.omraty.backend.repository;
 
 import com.omraty.backend.entities.OmraPackage;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,7 +14,11 @@ public class PackageRepository {
     private static final RowMapper<OmraPackage> PACKAGE_ROW_MAPPER =
             (rs, rowNum) ->
                     new OmraPackage(
-                            rs.getLong("id"), rs.getString("label"), rs.getInt("group_size"));
+                            rs.getLong("id"),
+                            rs.getString("label"),
+                            rs.getInt("group_size"),
+                            rs.getObject("start_date", LocalDate.class),
+                            rs.getObject("end_date", LocalDate.class));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -44,11 +49,33 @@ public class PackageRepository {
                 .findFirst();
     }
 
-    public OmraPackage insert(String label, int groupSize) {
+    public OmraPackage insert(String label, int groupSize, LocalDate startDate, LocalDate endDate) {
         return jdbcTemplate
-                .query(PackageTable.INSERT_PACKAGE, PACKAGE_ROW_MAPPER, label, groupSize)
+                .query(
+                        PackageTable.INSERT_PACKAGE,
+                        PACKAGE_ROW_MAPPER,
+                        label,
+                        groupSize,
+                        startDate,
+                        endDate)
                 .stream()
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Échec de la création du package"));
+    }
+
+    /** Mise à jour partielle : seuls les champs non null sont modifiés (voir PackageTable). */
+    public Optional<OmraPackage> update(
+            long id, String label, Integer groupSize, LocalDate startDate, LocalDate endDate) {
+        return jdbcTemplate
+                .query(
+                        PackageTable.UPDATE_PACKAGE,
+                        PACKAGE_ROW_MAPPER,
+                        label,
+                        groupSize,
+                        startDate,
+                        endDate,
+                        id)
+                .stream()
+                .findFirst();
     }
 }
