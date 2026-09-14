@@ -24,6 +24,11 @@ jwt:
 app:
   vip:
     offer-expiration-hours: ${VIP_OFFER_EXPIRATION_HOURS:24}
+  firebase:
+    # Contenu JSON de la clé de compte de service Firebase (Firebase Console > Paramètres du
+    # projet > Comptes de service > Générer une nouvelle clé privée), ou chemin vers ce fichier
+    # JSON. Voir FirebaseConfig.
+    service-account-key: ${FIREBASE_SERVICE_ACCOUNT_KEY:}
   upload:
     provider: ${UPLOAD_PROVIDER:local} # local | s3
     dir: ${UPLOAD_DIR:./uploads}

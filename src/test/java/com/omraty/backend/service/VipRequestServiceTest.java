@@ -2,6 +2,7 @@ package com.omraty.backend.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.omraty.backend.entities.Hotel;
@@ -37,6 +38,7 @@ class VipRequestServiceTest {
     @Mock private HotelRepository hotelRepository;
     @Mock private PackageRepository packageRepository;
     @Mock private RoomRepository roomRepository;
+    @Mock private NotificationService notificationService;
 
     private VipRequestService vipRequestService() {
         return new VipRequestService(
@@ -44,6 +46,7 @@ class VipRequestServiceTest {
                 hotelRepository,
                 packageRepository,
                 new PackageCapacityService(roomRepository),
+                notificationService,
                 OFFER_EXPIRATION_HOURS);
     }
 
@@ -272,6 +275,11 @@ class VipRequestServiceTest {
 
         assertThat(result.status()).isEqualTo(VipRequestStatus.OFFER_SENT);
         assertThat(result.proposedPrice()).isEqualByComparingTo("5000.00");
+        verify(notificationService)
+                .create(
+                        org.mockito.ArgumentMatchers.eq(USER_ID),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -303,6 +311,11 @@ class VipRequestServiceTest {
         VipRequest result = vipRequestService().reject(1L);
 
         assertThat(result.status()).isEqualTo(VipRequestStatus.REJECTED);
+        verify(notificationService)
+                .create(
+                        org.mockito.ArgumentMatchers.eq(USER_ID),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test

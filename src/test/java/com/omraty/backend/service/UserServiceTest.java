@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,13 +34,14 @@ class UserServiceTest {
 
     @Mock private AuthRepository authRepository;
     @Mock private FileStorageService fileStorageService;
+    @Mock private NotificationService notificationService;
 
     private UserService userService;
     private User user;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(authRepository, fileStorageService);
+        userService = new UserService(authRepository, fileStorageService, notificationService);
         user =
                 new User(
                         UUID.randomUUID(),
@@ -190,6 +192,7 @@ class UserServiceTest {
         User result = userService.approveIdentity(pending.id());
 
         assertThat(result.identityVerified()).isTrue();
+        verify(notificationService).create(eq(pending.id()), anyString(), anyString());
     }
 
     @Test
@@ -213,5 +216,6 @@ class UserServiceTest {
 
         assertThat(result.nni()).isNull();
         assertThat(result.idPhotoUrl()).isNull();
+        verify(notificationService).create(eq(pending.id()), anyString(), anyString());
     }
 }
