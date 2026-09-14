@@ -1,3 +1,6 @@
+-- V21 plutôt que V17 : cette migration a été renommée plusieurs fois (V17 -> V20 -> V17) avant
+-- d'être mergée après V18/V19/V20 (déjà appliqués en prod entre-temps) — Flyway refuse par défaut
+-- une migration résolue dont la version est inférieure à la plus haute déjà appliquée.
 -- Notifications in-app (VIP traitée, identité vérifiée...) affichées dans l'écran des
 -- notifications côté client. Voir NotificationService : chaque création insère ici puis tente un
 -- push FCM au jeton actif de l'utilisateur (silencieux si aucun jeton enregistré).
