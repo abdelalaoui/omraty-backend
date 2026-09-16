@@ -67,6 +67,21 @@ public class BedRepository {
                 BED_ROW_MAPPER);
     }
 
+    /** Lits identifiés par ces ids, pour PaymentReminderService. */
+    public List<Bed> findByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbcTemplate.query(
+                BedTable.SELECT_BEDS_BY_IDS,
+                (PreparedStatement ps) -> {
+                    Array array =
+                            ps.getConnection().createArrayOf("bigint", ids.toArray(new Long[0]));
+                    ps.setArray(1, array);
+                },
+                BED_ROW_MAPPER);
+    }
+
     /** Lits réservés par cet utilisateur, les plus récents d'abord. */
     public List<Bed> findByUserId(UUID userId) {
         return jdbcTemplate.query(BedTable.SELECT_BEDS_BY_USER_ID, BED_ROW_MAPPER, userId);

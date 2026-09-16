@@ -20,6 +20,7 @@ import com.omraty.backend.repository.ServiceTierRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -99,7 +100,7 @@ class BookingPaymentServiceTest {
     }
 
     @Test
-    void createPaymentPlan_installments_withoutPackageStartDate_throwsExceptionBeforeInserting() {
+    void createPaymentPlan_installments_withoutPackageEndDate_throwsExceptionBeforeInserting() {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
 
         assertThatThrownBy(
@@ -117,9 +118,10 @@ class BookingPaymentServiceTest {
     }
 
     @Test
-    void createPaymentPlan_installments_createsThreeTranchesWithDatesRelativeToDeparture() {
-        LocalDate startDate = LocalDate.of(2026, 6, 1);
-        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, startDate, null);
+    void createPaymentPlan_installments_createsThreeTranchesWithDatesBasedOnEndDate() {
+        LocalDate today = LocalDate.now();
+        LocalDate endDate = today.plusDays(120);
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, endDate);
         BookingPayment inserted =
                 new BookingPayment(
                         10L, null, 200L, PaymentPlan.INSTALLMENTS, new BigDecimal("100000"), null);
@@ -165,9 +167,13 @@ class BookingPaymentServiceTest {
         assertThat(amounts.stream().reduce(BigDecimal.ZERO, BigDecimal::add))
                 .isEqualByComparingTo("100000");
 
+        // Tranche 2 : mi-chemin entre la date de réservation (aujourd'hui) et endDate. Tranche 3 :
+        // endDate - 7 jours (demande explicite du manager).
+        long daysUntilEnd = ChronoUnit.DAYS.between(today, endDate);
         List<LocalDate> dueDates = dueDateCaptor.getAllValues();
-        assertThat(dueDates.get(1)).isEqualTo(startDate.minusDays(60));
-        assertThat(dueDates.get(2)).isEqualTo(startDate.minusDays(30));
+        assertThat(dueDates.get(0)).isEqualTo(today);
+        assertThat(dueDates.get(1)).isEqualTo(today.plusDays(daysUntilEnd / 2));
+        assertThat(dueDates.get(2)).isEqualTo(endDate.minusDays(7));
 
         List<LocalDateTime> paidAts = paidAtCaptor.getAllValues();
         assertThat(paidAts.get(0)).isNotNull();
@@ -187,7 +193,13 @@ class BookingPaymentServiceTest {
     void markInstallmentPaid_whenAlreadyPaid_throwsException() {
         BookingInstallment paid =
                 new BookingInstallment(
-                        1L, 10L, 2, new BigDecimal("20000"), LocalDate.now(), LocalDateTime.now());
+                        1L,
+                        10L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        LocalDateTime.now(),
+                        null);
         when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.of(paid));
 
         assertThatThrownBy(() -> bookingPaymentService().markInstallmentPaid(1L))
@@ -199,10 +211,17 @@ class BookingPaymentServiceTest {
     @Test
     void markInstallmentPaid_whenUnpaid_marksItPaid() {
         BookingInstallment unpaid =
-                new BookingInstallment(1L, 10L, 2, new BigDecimal("20000"), LocalDate.now(), null);
+                new BookingInstallment(
+                        1L, 10L, 2, new BigDecimal("20000"), LocalDate.now(), null, null);
         BookingInstallment updated =
                 new BookingInstallment(
-                        1L, 10L, 2, new BigDecimal("20000"), LocalDate.now(), LocalDateTime.now());
+                        1L,
+                        10L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        LocalDateTime.now(),
+                        null);
         when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.of(unpaid));
         when(bookingInstallmentRepository.markPaid(1L)).thenReturn(Optional.of(updated));
 
@@ -240,11 +259,12 @@ class BookingPaymentServiceTest {
                                 1,
                                 new BigDecimal("60000"),
                                 LocalDate.now(),
-                                LocalDateTime.now()),
+                                LocalDateTime.now(),
+                                null),
                         new BookingInstallment(
-                                2L, 1L, 2, new BigDecimal("20000"), secondDueDate, null),
+                                2L, 1L, 2, new BigDecimal("20000"), secondDueDate, null, null),
                         new BookingInstallment(
-                                3L, 1L, 3, new BigDecimal("20000"), thirdDueDate, null));
+                                3L, 1L, 3, new BigDecimal("20000"), thirdDueDate, null, null));
 
         UserPurchasePayment result =
                 bookingPaymentService().toPurchasePayment(payment, installments);

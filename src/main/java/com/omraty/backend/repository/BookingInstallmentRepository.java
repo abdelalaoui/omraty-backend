@@ -23,7 +23,8 @@ public class BookingInstallmentRepository {
                             rs.getInt("sequence"),
                             rs.getBigDecimal("amount"),
                             rs.getObject("due_date", LocalDate.class),
-                            rs.getObject("paid_at", LocalDateTime.class));
+                            rs.getObject("paid_at", LocalDateTime.class),
+                            rs.getObject("reminder_sent_at", LocalDateTime.class));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -82,5 +83,16 @@ public class BookingInstallmentRepository {
                 .query(BookingInstallmentTable.MARK_PAID, BOOKING_INSTALLMENT_ROW_MAPPER, id)
                 .stream()
                 .findFirst();
+    }
+
+    /** 3e tranches non payées dont l'échéance est atteinte et pas encore rappelées. */
+    public List<BookingInstallment> findThirdInstallmentsNeedingReminder() {
+        return jdbcTemplate.query(
+                BookingInstallmentTable.SELECT_THIRD_INSTALLMENTS_NEEDING_REMINDER,
+                BOOKING_INSTALLMENT_ROW_MAPPER);
+    }
+
+    public void markReminderSent(long id) {
+        jdbcTemplate.update(BookingInstallmentTable.MARK_REMINDER_SENT, id);
     }
 }

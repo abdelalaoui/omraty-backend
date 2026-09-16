@@ -14,8 +14,8 @@ public class BookingPaymentException extends RuntimeException {
     }
 
     /**
-     * Plan INSTALLMENTS demandé mais le package n'a pas de startDate : les échéances des tranches
-     * 2/3 en dépendent (voir BookingPaymentService).
+     * Plan INSTALLMENTS demandé mais le package n'a pas de endDate : les échéances des tranches 2/3
+     * en dépendent (voir BookingPaymentService).
      */
     public static class PackageDatesMissingException extends BookingPaymentException {
         public PackageDatesMissingException(String message) {

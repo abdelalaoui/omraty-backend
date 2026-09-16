@@ -61,6 +61,21 @@ public class BookingPaymentRepository {
                 BOOKING_PAYMENT_ROW_MAPPER);
     }
 
+    /** Plans de paiement identifiés par ces ids, pour PaymentReminderService. */
+    public List<BookingPayment> findByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_BOOKING_PAYMENTS_BY_IDS,
+                (PreparedStatement ps) -> {
+                    Array array =
+                            ps.getConnection().createArrayOf("bigint", ids.toArray(new Long[0]));
+                    ps.setArray(1, array);
+                },
+                BOOKING_PAYMENT_ROW_MAPPER);
+    }
+
     /** roomId et bedId : exactement l'un des deux renseigné (voir migration V25). */
     public BookingPayment insert(
             Long roomId, Long bedId, PaymentPlan plan, BigDecimal totalAmount) {

@@ -13,6 +13,10 @@ final class BookingPaymentTable {
     static final String SELECT_BOOKING_PAYMENTS_BY_BED_IDS =
             "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE bed_id = ANY (?)";
 
+    // Pour PaymentReminderService : retrouver le roomId/bedId d'une tranche à rappeler.
+    static final String SELECT_BOOKING_PAYMENTS_BY_IDS =
+            "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE id = ANY (?)";
+
     // roomId et bedId : exactement l'un des deux renseigné (voir migration V25, CHECK
     // chk_booking_payment_exactly_one_target). created_at prend le défaut (now()).
     static final String INSERT_BOOKING_PAYMENT =

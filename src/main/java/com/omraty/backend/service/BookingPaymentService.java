@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -31,8 +32,7 @@ public class BookingPaymentService {
 
     private static final BigDecimal FIRST_INSTALLMENT_RATIO = new BigDecimal("0.60");
     private static final BigDecimal SECOND_INSTALLMENT_RATIO = new BigDecimal("0.20");
-    private static final int SECOND_INSTALLMENT_DAYS_BEFORE_DEPARTURE = 60;
-    private static final int THIRD_INSTALLMENT_DAYS_BEFORE_DEPARTURE = 30;
+    private static final int THIRD_INSTALLMENT_DAYS_BEFORE_END = 7;
 
     private final ServiceTierRepository serviceTierRepository;
     private final BookingPaymentRepository bookingPaymentRepository;
@@ -76,51 +76,49 @@ public class BookingPaymentService {
      * Crée le plan de paiement d'un achat de chambre (roomId renseigné) ou d'une réservation de lit
      * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V25). FULL :
      * une seule ligne booking_payment, considérée payée à la confirmation, aucune tranche.
-     * INSTALLMENTS : 3 tranches (60/20/20%), la 1ère payée à la confirmation, les 2 autres dues
-     * respectivement {@value #SECOND_INSTALLMENT_DAYS_BEFORE_DEPARTURE} et {@value
-     * #THIRD_INSTALLMENT_DAYS_BEFORE_DEPARTURE} jours avant pkg.startDate().
+     * INSTALLMENTS : 3 tranches (60/20/20%) — la 1ère payée à la confirmation ; la 2e due à
+     * mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due {@value
+     * #THIRD_INSTALLMENT_DAYS_BEFORE_END} jours avant pkg.endDate(), avec rappel automatique au
+     * client à cette échéance (voir PaymentReminderService).
      *
      * @throws BookingPaymentException.PackageDatesMissingException si plan = INSTALLMENTS et que le
-     *     package n'a pas encore de startDate.
+     *     package n'a pas encore de endDate.
      */
     public BookingPayment createPaymentPlan(
             Long roomId, Long bedId, PaymentPlan plan, BigDecimal totalAmount, OmraPackage pkg) {
-        if (plan == PaymentPlan.INSTALLMENTS && pkg.startDate() == null) {
+        if (plan == PaymentPlan.INSTALLMENTS && pkg.endDate() == null) {
             throw new BookingPaymentException.PackageDatesMissingException(
-                    "Le paiement en 3 tranches nécessite une date de départ (startDate) sur le"
-                            + " package (id="
+                    "Le paiement en 3 tranches nécessite une date de fin (endDate) sur le package"
+                            + " (id="
                             + pkg.id()
                             + ")");
         }
         BookingPayment payment = bookingPaymentRepository.insert(roomId, bedId, plan, totalAmount);
         if (plan == PaymentPlan.INSTALLMENTS) {
-            createInstallments(payment, totalAmount, pkg.startDate());
+            createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate());
         }
         return payment;
     }
 
     private void createInstallments(
-            BookingPayment payment, BigDecimal totalAmount, LocalDate packageStartDate) {
+            BookingPayment payment,
+            BigDecimal totalAmount,
+            LocalDate reservationDate,
+            LocalDate packageEndDate) {
         BigDecimal firstAmount = round(totalAmount.multiply(FIRST_INSTALLMENT_RATIO));
         BigDecimal secondAmount = round(totalAmount.multiply(SECOND_INSTALLMENT_RATIO));
         // Le reliquat absorbe l'arrondi des deux premières tranches, pour que leur somme retombe
         // exactement sur totalAmount.
         BigDecimal thirdAmount = totalAmount.subtract(firstAmount).subtract(secondAmount);
 
+        long daysUntilEnd = ChronoUnit.DAYS.between(reservationDate, packageEndDate);
+        LocalDate secondDueDate = reservationDate.plusDays(daysUntilEnd / 2);
+        LocalDate thirdDueDate = packageEndDate.minusDays(THIRD_INSTALLMENT_DAYS_BEFORE_END);
+
         bookingInstallmentRepository.insert(
-                payment.id(), 1, firstAmount, LocalDate.now(), LocalDateTime.now());
-        bookingInstallmentRepository.insert(
-                payment.id(),
-                2,
-                secondAmount,
-                packageStartDate.minusDays(SECOND_INSTALLMENT_DAYS_BEFORE_DEPARTURE),
-                null);
-        bookingInstallmentRepository.insert(
-                payment.id(),
-                3,
-                thirdAmount,
-                packageStartDate.minusDays(THIRD_INSTALLMENT_DAYS_BEFORE_DEPARTURE),
-                null);
+                payment.id(), 1, firstAmount, reservationDate, LocalDateTime.now());
+        bookingInstallmentRepository.insert(payment.id(), 2, secondAmount, secondDueDate, null);
+        bookingInstallmentRepository.insert(payment.id(), 3, thirdAmount, thirdDueDate, null);
     }
 
     private static BigDecimal round(BigDecimal amount) {
