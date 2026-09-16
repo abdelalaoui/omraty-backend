@@ -1,13 +1,17 @@
 package com.omraty.backend.service;
 
 import com.omraty.backend.entities.Bed;
+import com.omraty.backend.entities.BookingInstallment;
+import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
+import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.RoomException;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -38,16 +42,19 @@ public class RoomService {
     private final BedRepository bedRepository;
     private final PackageRepository packageRepository;
     private final PackageCapacityService packageCapacityService;
+    private final BookingPaymentService bookingPaymentService;
 
     public RoomService(
             RoomRepository roomRepository,
             BedRepository bedRepository,
             PackageRepository packageRepository,
-            PackageCapacityService packageCapacityService) {
+            PackageCapacityService packageCapacityService,
+            BookingPaymentService bookingPaymentService) {
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
         this.packageRepository = packageRepository;
         this.packageCapacityService = packageCapacityService;
+        this.bookingPaymentService = bookingPaymentService;
     }
 
     /** État actuel des lits (disponibles/réservés), groupés par chambre, pour un package. */
@@ -93,12 +100,15 @@ public class RoomService {
      * s'il y en a une, sinon en ouvre une nouvelle automatiquement avec ses 5 lits.
      *
      * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
+     * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
+     *     le prix de la formule ROOM (capacité 5) n'est pas encore saisi par l'admin.
      */
     @Transactional
-    public Bed reserveBed(int type, long packageId, UUID userId) {
+    public Bed reserveBed(int type, long packageId, UUID userId, PaymentPlan plan) {
         validateSharedRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
+        BigDecimal price = bookingPaymentService.resolvePrice(type);
 
         Room room =
                 roomRepository
@@ -117,6 +127,7 @@ public class RoomService {
 
         Bed reservedBed = bedRepository.markReserved(bed.id(), userId);
         roomRepository.incrementReservedCount(room.id());
+        bookingPaymentService.createPaymentPlan(null, reservedBed.id(), plan, price, pkg);
         return reservedBed;
     }
 
@@ -126,13 +137,18 @@ public class RoomService {
      *
      * @throws RoomException.GroupSizeExceededException si l'achat dépasserait le groupSize du
      *     package.
+     * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
+     *     le prix de la formule ROOM (capacité type) n'est pas encore saisi par l'admin.
      */
     @Transactional
-    public Room purchaseRoom(int type, long packageId, UUID userId) {
+    public Room purchaseRoom(int type, long packageId, UUID userId, PaymentPlan plan) {
         validateWholeRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, type);
-        return roomRepository.insert(type, packageId, type, type, userId);
+        BigDecimal price = bookingPaymentService.resolvePrice(type);
+        Room room = roomRepository.insert(type, packageId, type, type, userId);
+        bookingPaymentService.createPaymentPlan(room.id(), null, plan, price, pkg);
+        return room;
     }
 
     /**
@@ -159,6 +175,19 @@ public class RoomService {
                 packageRepository.findByIds(packageIds).stream()
                         .collect(Collectors.toMap(OmraPackage::id, OmraPackage::label));
 
+        Map<Long, BookingPayment> paymentsByRoomId =
+                bookingPaymentService.findPaymentsByRoomIds(
+                        purchasedRooms.stream().map(Room::id).toList());
+        Map<Long, BookingPayment> paymentsByBedId =
+                bookingPaymentService.findPaymentsByBedIds(
+                        reservedBeds.stream().map(Bed::id).toList());
+        List<Long> paymentIds =
+                Stream.concat(paymentsByRoomId.values().stream(), paymentsByBedId.values().stream())
+                        .map(BookingPayment::id)
+                        .toList();
+        Map<Long, List<BookingInstallment>> installmentsByPaymentId =
+                bookingPaymentService.findInstallmentsByPaymentIds(paymentIds);
+
         Stream<UserPurchase> fromPurchasedRooms =
                 purchasedRooms.stream()
                         .map(
@@ -169,7 +198,10 @@ public class RoomService {
                                                 room.packageId(),
                                                 packageLabelsById.get(room.packageId()),
                                                 room.createdAt(),
-                                                null));
+                                                null,
+                                                resolvePayment(
+                                                        paymentsByRoomId.get(room.id()),
+                                                        installmentsByPaymentId)));
         Stream<UserPurchase> fromReservedBeds =
                 reservedBeds.stream()
                         .map(
@@ -181,11 +213,23 @@ public class RoomService {
                                             room.packageId(),
                                             packageLabelsById.get(room.packageId()),
                                             bed.createdAt(),
-                                            bed.number());
+                                            bed.number(),
+                                            resolvePayment(
+                                                    paymentsByBedId.get(bed.id()),
+                                                    installmentsByPaymentId));
                                 });
         return Stream.concat(fromPurchasedRooms, fromReservedBeds)
                 .sorted(Comparator.comparing(UserPurchase::createdAt).reversed())
                 .toList();
+    }
+
+    private UserPurchasePayment resolvePayment(
+            BookingPayment payment, Map<Long, List<BookingInstallment>> installmentsByPaymentId) {
+        if (payment == null) {
+            return null;
+        }
+        return bookingPaymentService.toPurchasePayment(
+                payment, installmentsByPaymentId.getOrDefault(payment.id(), List.of()));
     }
 
     private Room openNewSharedRoom(long packageId, int type) {

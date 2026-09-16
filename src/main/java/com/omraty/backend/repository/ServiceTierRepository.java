@@ -47,6 +47,17 @@ public class ServiceTierRepository {
                 .findFirst();
     }
 
+    /** Formule ROOM pour cette capacité (2, 3 ou 5), pour le prix réel d'un achat/réservation. */
+    public Optional<ServiceTier> findRoomTierByCapacity(int capacity) {
+        return jdbcTemplate
+                .query(
+                        ServiceTierTable.SELECT_ROOM_TIER_BY_CAPACITY,
+                        SERVICE_TIER_ROW_MAPPER,
+                        capacity)
+                .stream()
+                .findFirst();
+    }
+
     public ServiceTier insert(
             ServiceTierType type,
             Integer capacity,
