@@ -1,8 +1,12 @@
 package com.omraty.backend.repository;
 
 import com.omraty.backend.entities.Room;
+import java.sql.Array;
+import java.sql.PreparedStatement;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -17,7 +21,9 @@ public class RoomRepository {
                             rs.getInt("type"),
                             rs.getLong("package_id"),
                             rs.getInt("total_capacity"),
-                            rs.getInt("reserved_count"));
+                            rs.getInt("reserved_count"),
+                            (UUID) rs.getObject("user_id"),
+                            rs.getObject("created_at", LocalDateTime.class));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -42,6 +48,26 @@ public class RoomRepository {
                 RoomTable.SELECT_ROOMS_BY_PACKAGE_AND_TYPE, ROOM_ROW_MAPPER, packageId, type);
     }
 
+    /** Chambres identifiées par ces ids, pour joindre le package d'un lit réservé (GET achats). */
+    public List<Room> findByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbcTemplate.query(
+                RoomTable.SELECT_ROOMS_BY_IDS,
+                (PreparedStatement ps) -> {
+                    Array array =
+                            ps.getConnection().createArrayOf("bigint", ids.toArray(new Long[0]));
+                    ps.setArray(1, array);
+                },
+                ROOM_ROW_MAPPER);
+    }
+
+    /** Chambres entières (type 2/3) achetées par cet utilisateur, les plus récentes d'abord. */
+    public List<Room> findByUserId(UUID userId) {
+        return jdbcTemplate.query(RoomTable.SELECT_ROOMS_BY_USER_ID, ROOM_ROW_MAPPER, userId);
+    }
+
     /**
      * Total des places déjà réservées, toutes chambres et tous types confondus, pour ce package.
      */
@@ -64,7 +90,12 @@ public class RoomRepository {
         return total == null ? 0 : total;
     }
 
-    public Room insert(int type, long packageId, int totalCapacity, int reservedCount) {
+    /**
+     * userId : uniquement pour l'achat direct d'une chambre entière (types 2/3) ; null pour
+     * l'ouverture d'une chambre partagée (type 5, voir RoomService.openNewSharedRoom).
+     */
+    public Room insert(
+            int type, long packageId, int totalCapacity, int reservedCount, UUID userId) {
         return jdbcTemplate
                 .query(
                         RoomTable.INSERT_ROOM,
@@ -72,7 +103,8 @@ public class RoomRepository {
                         type,
                         packageId,
                         totalCapacity,
-                        reservedCount)
+                        reservedCount,
+                        userId)
                 .stream()
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Échec de la création de la chambre"));

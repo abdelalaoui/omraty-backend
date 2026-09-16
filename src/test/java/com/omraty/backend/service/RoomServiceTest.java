@@ -14,8 +14,10 @@ import com.omraty.backend.exception.RoomException;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -23,6 +25,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class RoomServiceTest {
+
+    private static final UUID USER_ID = UUID.randomUUID();
 
     @Mock private RoomRepository roomRepository;
     @Mock private BedRepository bedRepository;
@@ -38,7 +42,7 @@ class RoomServiceTest {
 
     @Test
     void reserveBed_withInvalidType_throwsException() {
-        assertThatThrownBy(() -> roomService().reserveBed(2, 1L))
+        assertThatThrownBy(() -> roomService().reserveBed(2, 1L, USER_ID))
                 .isInstanceOf(RoomException.InvalidRoomTypeException.class);
     }
 
@@ -46,7 +50,7 @@ class RoomServiceTest {
     void reserveBed_whenPackageNotFound_throwsException() {
         when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> roomService().reserveBed(5, 1L))
+        assertThatThrownBy(() -> roomService().reserveBed(5, 1L, USER_ID))
                 .isInstanceOf(PackageException.PackageNotFoundException.class);
     }
 
@@ -56,7 +60,7 @@ class RoomServiceTest {
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5, null, null)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(5);
 
-        assertThatThrownBy(() -> roomService().reserveBed(5, 1L))
+        assertThatThrownBy(() -> roomService().reserveBed(5, 1L, USER_ID))
                 .isInstanceOf(RoomException.GroupSizeExceededException.class);
 
         verify(roomRepository, never()).findOpenRoomForUpdate(1L, 5);
@@ -67,17 +71,19 @@ class RoomServiceTest {
         when(packageRepository.findByIdForUpdate(1L))
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 40, null, null)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(3);
-        Room openRoom = new Room(10L, 5, 1L, 5, 3);
+        Room openRoom = new Room(10L, 5, 1L, 5, 3, null, LocalDateTime.now());
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
-        Bed freeBed = new Bed(100L, 4, false, 10L);
+        Bed freeBed = new Bed(100L, 4, false, 10L, null, null);
         when(bedRepository.findFirstUnreservedBedForUpdate(10L)).thenReturn(Optional.of(freeBed));
-        when(bedRepository.markReserved(100L)).thenReturn(new Bed(100L, 4, true, 10L));
+        when(bedRepository.markReserved(100L, USER_ID))
+                .thenReturn(new Bed(100L, 4, true, 10L, USER_ID, LocalDateTime.now()));
 
-        Bed reserved = roomService().reserveBed(5, 1L);
+        Bed reserved = roomService().reserveBed(5, 1L, USER_ID);
 
         assertThat(reserved.reserved()).isTrue();
         assertThat(reserved.id()).isEqualTo(100L);
-        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt());
+        assertThat(reserved.userId()).isEqualTo(USER_ID);
+        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
         verify(roomRepository).incrementReservedCount(10L);
     }
 
@@ -87,13 +93,14 @@ class RoomServiceTest {
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 40, null, null)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(5);
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.empty());
-        Room newRoom = new Room(20L, 5, 1L, 5, 0);
-        when(roomRepository.insert(5, 1L, 5, 0)).thenReturn(newRoom);
-        Bed freeBed = new Bed(200L, 1, false, 20L);
+        Room newRoom = new Room(20L, 5, 1L, 5, 0, null, LocalDateTime.now());
+        when(roomRepository.insert(5, 1L, 5, 0, null)).thenReturn(newRoom);
+        Bed freeBed = new Bed(200L, 1, false, 20L, null, null);
         when(bedRepository.findFirstUnreservedBedForUpdate(20L)).thenReturn(Optional.of(freeBed));
-        when(bedRepository.markReserved(200L)).thenReturn(new Bed(200L, 1, true, 20L));
+        when(bedRepository.markReserved(200L, USER_ID))
+                .thenReturn(new Bed(200L, 1, true, 20L, USER_ID, LocalDateTime.now()));
 
-        Bed reserved = roomService().reserveBed(5, 1L);
+        Bed reserved = roomService().reserveBed(5, 1L, USER_ID);
 
         assertThat(reserved.roomId()).isEqualTo(20L);
         verify(bedRepository).insertBedsForRoom(20L, 5);
@@ -118,17 +125,17 @@ class RoomServiceTest {
     void openSharedRoom_withOpenRoomAlreadyExisting_returnsItAsIsWithoutCreatingANewOne() {
         when(packageRepository.findByIdForUpdate(1L))
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5, null, null)));
-        Room openRoom = new Room(10L, 5, 1L, 5, 3);
+        Room openRoom = new Room(10L, 5, 1L, 5, 3, null, LocalDateTime.now());
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
-        Bed bed = new Bed(100L, 4, false, 10L);
+        Bed bed = new Bed(100L, 4, false, 10L, null, null);
         when(bedRepository.findByRoomIds(List.of(10L))).thenReturn(List.of(bed));
 
         RoomWithBeds result = roomService().openSharedRoom(5, 1L);
 
         assertThat(result.room()).isEqualTo(openRoom);
         assertThat(result.beds()).containsExactly(bed);
-        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt());
-        verify(bedRepository, never()).markReserved(anyLong());
+        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
+        verify(bedRepository, never()).markReserved(anyLong(), any());
         verify(roomRepository, never()).incrementReservedCount(anyLong());
         // Idempotent : aucune vérification de capacité (groupSize) puisqu'aucune place n'est
         // consommée.
@@ -140,9 +147,9 @@ class RoomServiceTest {
         when(packageRepository.findByIdForUpdate(1L))
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5, null, null)));
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.empty());
-        Room newRoom = new Room(20L, 5, 1L, 5, 0);
-        when(roomRepository.insert(5, 1L, 5, 0)).thenReturn(newRoom);
-        Bed freeBed = new Bed(200L, 1, false, 20L);
+        Room newRoom = new Room(20L, 5, 1L, 5, 0, null, LocalDateTime.now());
+        when(roomRepository.insert(5, 1L, 5, 0, null)).thenReturn(newRoom);
+        Bed freeBed = new Bed(200L, 1, false, 20L, null, null);
         when(bedRepository.findByRoomIds(List.of(20L))).thenReturn(List.of(freeBed));
 
         RoomWithBeds result = roomService().openSharedRoom(5, 1L);
@@ -150,13 +157,13 @@ class RoomServiceTest {
         assertThat(result.room()).isEqualTo(newRoom);
         assertThat(result.beds()).containsExactly(freeBed);
         verify(bedRepository).insertBedsForRoom(20L, 5);
-        verify(bedRepository, never()).markReserved(anyLong());
+        verify(bedRepository, never()).markReserved(anyLong(), any());
         verify(roomRepository, never()).incrementReservedCount(anyLong());
     }
 
     @Test
     void purchaseRoom_withInvalidType_throwsException() {
-        assertThatThrownBy(() -> roomService().purchaseRoom(5, 1L))
+        assertThatThrownBy(() -> roomService().purchaseRoom(5, 1L, USER_ID))
                 .isInstanceOf(RoomException.InvalidRoomTypeException.class);
     }
 
@@ -166,23 +173,61 @@ class RoomServiceTest {
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 10, null, null)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(9);
 
-        assertThatThrownBy(() -> roomService().purchaseRoom(2, 1L))
+        assertThatThrownBy(() -> roomService().purchaseRoom(2, 1L, USER_ID))
                 .isInstanceOf(RoomException.GroupSizeExceededException.class);
 
-        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt());
+        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
     }
 
     @Test
-    void purchaseRoom_withinGroupSize_createsRoomAlreadyFull() {
+    void purchaseRoom_withinGroupSize_createsRoomAlreadyFullAndOwnedByUser() {
         when(packageRepository.findByIdForUpdate(1L))
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 10, null, null)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(6);
-        Room purchasedRoom = new Room(30L, 3, 1L, 3, 3);
-        when(roomRepository.insert(3, 1L, 3, 3)).thenReturn(purchasedRoom);
+        Room purchasedRoom = new Room(30L, 3, 1L, 3, 3, USER_ID, LocalDateTime.now());
+        when(roomRepository.insert(3, 1L, 3, 3, USER_ID)).thenReturn(purchasedRoom);
 
-        Room result = roomService().purchaseRoom(3, 1L);
+        Room result = roomService().purchaseRoom(3, 1L, USER_ID);
 
         assertThat(result.reservedCount()).isEqualTo(result.totalCapacity());
+        assertThat(result.userId()).isEqualTo(USER_ID);
+    }
+
+    @Test
+    void getPurchasesForUser_combinesPurchasedRoomsAndReservedBedsSortedByMostRecent() {
+        LocalDateTime older = LocalDateTime.of(2026, 1, 1, 10, 0);
+        LocalDateTime newer = LocalDateTime.of(2026, 2, 1, 10, 0);
+        Room purchasedRoom = new Room(30L, 3, 1L, 3, 3, USER_ID, older);
+        when(roomRepository.findByUserId(USER_ID)).thenReturn(List.of(purchasedRoom));
+        Bed reservedBed = new Bed(100L, 4, true, 10L, USER_ID, newer);
+        when(bedRepository.findByUserId(USER_ID)).thenReturn(List.of(reservedBed));
+        Room sharedRoom = new Room(10L, 5, 2L, 5, 3, null, older);
+        when(roomRepository.findByIds(List.of(10L))).thenReturn(List.of(sharedRoom));
+        when(packageRepository.findByIds(List.of(1L, 2L)))
+                .thenReturn(
+                        List.of(
+                                new OmraPackage(1L, "Omra Ramadan", 10, null, null),
+                                new OmraPackage(2L, "Omra Chaabane", 5, null, null)));
+
+        List<UserPurchase> purchases = roomService().getPurchasesForUser(USER_ID);
+
+        assertThat(purchases).hasSize(2);
+        assertThat(purchases.get(0).bedNumber()).isEqualTo(4);
+        assertThat(purchases.get(0).packageLabel()).isEqualTo("Omra Chaabane");
+        assertThat(purchases.get(0).createdAt()).isEqualTo(newer);
+        assertThat(purchases.get(1).bedNumber()).isNull();
+        assertThat(purchases.get(1).packageLabel()).isEqualTo("Omra Ramadan");
+        assertThat(purchases.get(1).createdAt()).isEqualTo(older);
+    }
+
+    @Test
+    void getPurchasesForUser_withNoPurchases_returnsEmptyListWithoutQueryingPackages() {
+        when(roomRepository.findByUserId(USER_ID)).thenReturn(List.of());
+        when(bedRepository.findByUserId(USER_ID)).thenReturn(List.of());
+        when(roomRepository.findByIds(List.of())).thenReturn(List.of());
+        when(packageRepository.findByIds(List.of())).thenReturn(List.of());
+
+        assertThat(roomService().getPurchasesForUser(USER_ID)).isEmpty();
     }
 
     private static int anyInt() {
@@ -191,5 +236,9 @@ class RoomServiceTest {
 
     private static long anyLong() {
         return org.mockito.ArgumentMatchers.anyLong();
+    }
+
+    private static <T> T any() {
+        return org.mockito.ArgumentMatchers.any();
     }
 }
