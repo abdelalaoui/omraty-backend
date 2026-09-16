@@ -26,6 +26,7 @@ public final class ServiceTierMapper {
                 serviceTier.id(),
                 serviceTier.type(),
                 serviceTier.capacity(),
+                serviceTier.price(),
                 labelFor(serviceTier, resolveLanguage(acceptLanguage)),
                 serviceTier.visible(),
                 serviceTier.closed());
@@ -36,6 +37,7 @@ public final class ServiceTierMapper {
                 serviceTier.id(),
                 serviceTier.type(),
                 serviceTier.capacity(),
+                serviceTier.price(),
                 serviceTier.labelFr(),
                 serviceTier.labelEn(),
                 serviceTier.labelAr(),
