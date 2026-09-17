@@ -199,6 +199,18 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(TripPackageException.InvalidTripPackageRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidTripPackageRequest(
+            TripPackageException.InvalidTripPackageRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(TripPackageException.TripPackageNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleTripPackageNotFound(
+            TripPackageException.TripPackageNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);
