@@ -5,6 +5,7 @@ import com.omraty.backend.exception.BannerException;
 import com.omraty.backend.repository.BannerRepository;
 import com.omraty.backend.storage.FileStorageService;
 import com.omraty.backend.storage.PublicUrlResolver;
+import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,37 +33,72 @@ public class BannerService {
         this.publicUrlResolver = publicUrlResolver;
     }
 
-    /** Bannière courante, telle que retournée à l'app pour l'écran d'accueil. */
-    public Banner getBanner() {
-        return bannerRepository
-                .findBanner()
-                .orElseThrow(
-                        () -> new BannerException.BannerNotFoundException("Bannière introuvable"));
+    /** Bannières visibles, triées par ordre d'affichage, telles que retournées à l'app. */
+    public List<Banner> getActiveBanners() {
+        return bannerRepository.findActiveBanners();
+    }
+
+    /** Toutes les bannières (visibles ou masquées), pour l'écran d'administration. */
+    public List<Banner> getAllBanners() {
+        return bannerRepository.findAllBanners();
     }
 
     /**
-     * Change l'image de la bannière, sans toucher à sa visibilité. title/description sont
-     * optionnels : une image seule suffit, ou l'image accompagnée d'un titre et/ou d'une
-     * description (non fournis = valeurs existantes conservées).
+     * Ajoute une nouvelle bannière avec son image. displayOrder non fourni = ajoutée en fin de
+     * liste ; visible non fourni = visible par défaut.
      */
-    public Banner updateImage(MultipartFile image, String title, String description) {
+    public Banner createBanner(
+            MultipartFile image,
+            String title,
+            String description,
+            Integer displayOrder,
+            Boolean visible) {
         validateImage(image);
         validateText(title, MAX_TITLE_LENGTH, "Le titre");
         validateText(description, MAX_DESCRIPTION_LENGTH, "La description");
         String storedKey = fileStorageService.store(image, BANNER_IMAGE_SUBDIR);
         String imageUrl = publicUrlResolver.toPublicUrl(storedKey);
-        return bannerRepository
-                .updateImage(imageUrl, title, description)
-                .orElseThrow(
-                        () -> new BannerException.BannerNotFoundException("Bannière introuvable"));
+        int order = displayOrder != null ? displayOrder : bannerRepository.nextDisplayOrder();
+        boolean isVisible = visible == null || visible;
+        return bannerRepository.insert(imageUrl, title, description, order, isVisible);
     }
 
-    /** Affiche/masque la bannière sur l'écran d'accueil sans supprimer ses données. */
-    public Banner updateVisibility(boolean visible) {
+    /**
+     * Met à jour une bannière existante (titre, description, ordre, visibilité). Tous les champs
+     * sont optionnels : seuls ceux fournis (non null) sont modifiés. L'image se change via {@link
+     * #updateImage(long, MultipartFile)}.
+     */
+    public Banner updateBanner(
+            long id, String title, String description, Integer displayOrder, Boolean visible) {
+        validateText(title, MAX_TITLE_LENGTH, "Le titre");
+        validateText(description, MAX_DESCRIPTION_LENGTH, "La description");
         return bannerRepository
-                .updateVisibility(visible)
+                .update(id, title, description, displayOrder, visible)
                 .orElseThrow(
-                        () -> new BannerException.BannerNotFoundException("Bannière introuvable"));
+                        () ->
+                                new BannerException.BannerNotFoundException(
+                                        "Bannière introuvable (id=" + id + ")"));
+    }
+
+    /** Change l'image d'une bannière existante, sans toucher à ses autres champs. */
+    public Banner updateImage(long id, MultipartFile image) {
+        validateImage(image);
+        String storedKey = fileStorageService.store(image, BANNER_IMAGE_SUBDIR);
+        String imageUrl = publicUrlResolver.toPublicUrl(storedKey);
+        return bannerRepository
+                .updateImage(id, imageUrl)
+                .orElseThrow(
+                        () ->
+                                new BannerException.BannerNotFoundException(
+                                        "Bannière introuvable (id=" + id + ")"));
+    }
+
+    /** Supprime une bannière. */
+    public void deleteBanner(long id) {
+        if (!bannerRepository.deleteById(id)) {
+            throw new BannerException.BannerNotFoundException(
+                    "Bannière introuvable (id=" + id + ")");
+        }
     }
 
     private void validateImage(MultipartFile image) {
