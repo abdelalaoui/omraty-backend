@@ -6,7 +6,7 @@ import com.omraty.backend.repository.AppSettingRepository;
 import org.springframework.stereotype.Service;
 
 /**
- * Réglages clé/valeur modifiables sans redéploiement (voir migration V27), consultables/modifiables
+ * Réglages clé/valeur modifiables sans redéploiement (voir migration V28), consultables/modifiables
  * par l'admin via GET/PATCH /admin/settings/{key}.
  */
 @Service

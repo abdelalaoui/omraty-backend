@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Consultation/modification des réglages clé/valeur (voir migration V27, AppSettingService), sans
+ * Consultation/modification des réglages clé/valeur (voir migration V28, AppSettingService), sans
  * redéploiement. Réservé à ROLE_ADMIN (voir SecurityConfig, préfixe /admin/**).
  */
 @RestController
