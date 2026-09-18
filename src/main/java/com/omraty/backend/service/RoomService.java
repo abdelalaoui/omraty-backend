@@ -8,10 +8,13 @@ import com.omraty.backend.exception.RoomException;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -92,7 +95,7 @@ public class RoomService {
      * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
      */
     @Transactional
-    public Bed reserveBed(int type, long packageId) {
+    public Bed reserveBed(int type, long packageId, UUID userId) {
         validateSharedRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
@@ -112,7 +115,7 @@ public class RoomService {
                                                         + room.id()
                                                         + ")"));
 
-        Bed reservedBed = bedRepository.markReserved(bed.id());
+        Bed reservedBed = bedRepository.markReserved(bed.id(), userId);
         roomRepository.incrementReservedCount(room.id());
         return reservedBed;
     }
@@ -125,15 +128,68 @@ public class RoomService {
      *     package.
      */
     @Transactional
-    public Room purchaseRoom(int type, long packageId) {
+    public Room purchaseRoom(int type, long packageId, UUID userId) {
         validateWholeRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, type);
-        return roomRepository.insert(type, packageId, type, type);
+        return roomRepository.insert(type, packageId, type, type, userId);
+    }
+
+    /**
+     * Réservations de l'utilisateur connecté (GET /users/me/purchases) : chambres entières (type
+     * 2/3) achetées directement, et lits (type 5) réservés individuellement — le tout, les plus
+     * récentes d'abord, avec le label du package rattaché (jointure).
+     */
+    public List<UserPurchase> getPurchasesForUser(UUID userId) {
+        List<Room> purchasedRooms = roomRepository.findByUserId(userId);
+        List<Bed> reservedBeds = bedRepository.findByUserId(userId);
+
+        List<Long> bedRoomIds = reservedBeds.stream().map(Bed::roomId).distinct().toList();
+        Map<Long, Room> roomsByIdForBeds =
+                roomRepository.findByIds(bedRoomIds).stream()
+                        .collect(Collectors.toMap(Room::id, room -> room));
+
+        List<Long> packageIds =
+                Stream.concat(
+                                purchasedRooms.stream().map(Room::packageId),
+                                roomsByIdForBeds.values().stream().map(Room::packageId))
+                        .distinct()
+                        .toList();
+        Map<Long, String> packageLabelsById =
+                packageRepository.findByIds(packageIds).stream()
+                        .collect(Collectors.toMap(OmraPackage::id, OmraPackage::label));
+
+        Stream<UserPurchase> fromPurchasedRooms =
+                purchasedRooms.stream()
+                        .map(
+                                room ->
+                                        new UserPurchase(
+                                                room.type(),
+                                                room.totalCapacity(),
+                                                room.packageId(),
+                                                packageLabelsById.get(room.packageId()),
+                                                room.createdAt(),
+                                                null));
+        Stream<UserPurchase> fromReservedBeds =
+                reservedBeds.stream()
+                        .map(
+                                bed -> {
+                                    Room room = roomsByIdForBeds.get(bed.roomId());
+                                    return new UserPurchase(
+                                            room.type(),
+                                            room.totalCapacity(),
+                                            room.packageId(),
+                                            packageLabelsById.get(room.packageId()),
+                                            bed.createdAt(),
+                                            bed.number());
+                                });
+        return Stream.concat(fromPurchasedRooms, fromReservedBeds)
+                .sorted(Comparator.comparing(UserPurchase::createdAt).reversed())
+                .toList();
     }
 
     private Room openNewSharedRoom(long packageId, int type) {
-        Room room = roomRepository.insert(type, packageId, type, 0);
+        Room room = roomRepository.insert(type, packageId, type, 0, null);
         bedRepository.insertBedsForRoom(room.id(), type);
         return room;
     }

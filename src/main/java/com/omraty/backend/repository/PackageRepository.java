@@ -1,6 +1,8 @@
 package com.omraty.backend.repository;
 
 import com.omraty.backend.entities.OmraPackage;
+import java.sql.Array;
+import java.sql.PreparedStatement;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -35,6 +37,21 @@ public class PackageRepository {
                 .query(PackageTable.SELECT_PACKAGE_BY_ID, PACKAGE_ROW_MAPPER, id)
                 .stream()
                 .findFirst();
+    }
+
+    /** Packages identifiés par ces ids, pour joindre leur label sur une liste d'achats (GET). */
+    public List<OmraPackage> findByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbcTemplate.query(
+                PackageTable.SELECT_PACKAGES_BY_IDS,
+                (PreparedStatement ps) -> {
+                    Array array =
+                            ps.getConnection().createArrayOf("bigint", ids.toArray(new Long[0]));
+                    ps.setArray(1, array);
+                },
+                PACKAGE_ROW_MAPPER);
     }
 
     /**

@@ -3,8 +3,10 @@ package com.omraty.backend.repository;
 import com.omraty.backend.entities.Bed;
 import java.sql.Array;
 import java.sql.PreparedStatement;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.IntStream;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -19,7 +21,9 @@ public class BedRepository {
                             rs.getLong("id"),
                             rs.getInt("number"),
                             rs.getBoolean("reserved"),
-                            rs.getLong("room_id"));
+                            rs.getLong("room_id"),
+                            (UUID) rs.getObject("user_id"),
+                            rs.getObject("created_at", LocalDateTime.class));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -63,8 +67,13 @@ public class BedRepository {
                 BED_ROW_MAPPER);
     }
 
-    public Bed markReserved(long bedId) {
-        return jdbcTemplate.query(BedTable.MARK_RESERVED, BED_ROW_MAPPER, bedId).stream()
+    /** Lits réservés par cet utilisateur, les plus récents d'abord. */
+    public List<Bed> findByUserId(UUID userId) {
+        return jdbcTemplate.query(BedTable.SELECT_BEDS_BY_USER_ID, BED_ROW_MAPPER, userId);
+    }
+
+    public Bed markReserved(long bedId, UUID userId) {
+        return jdbcTemplate.query(BedTable.MARK_RESERVED, BED_ROW_MAPPER, userId, bedId).stream()
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Lit introuvable (id=" + bedId + ")"));
     }

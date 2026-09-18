@@ -15,6 +15,11 @@ final class PackageTable {
     static final String SELECT_PACKAGE_BY_ID_FOR_UPDATE =
             "SELECT " + PACKAGE_COLUMNS + " FROM package WHERE id = ? FOR UPDATE";
 
+    // Pour joindre le label du package sur une liste d'achats (chambres/lits), voir
+    // RoomService.getPurchasesForUser.
+    static final String SELECT_PACKAGES_BY_IDS =
+            "SELECT " + PACKAGE_COLUMNS + " FROM package WHERE id = ANY (?)";
+
     static final String INSERT_PACKAGE =
             "INSERT INTO package (label, group_size, start_date, end_date) VALUES (?, ?, ?, ?)"
                     + " RETURNING "
