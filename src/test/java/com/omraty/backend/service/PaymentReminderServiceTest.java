@@ -31,24 +31,32 @@ class PaymentReminderServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
 
+    private static final int REMINDER_DAYS_BEFORE_DUE = 7;
+
     @Mock private BookingInstallmentRepository bookingInstallmentRepository;
     @Mock private BookingPaymentRepository bookingPaymentRepository;
     @Mock private RoomRepository roomRepository;
     @Mock private BedRepository bedRepository;
     @Mock private NotificationService notificationService;
+    @Mock private AppSettingService appSettingService;
 
     private PaymentReminderService paymentReminderService() {
+        when(appSettingService.getIntValue(
+                        PaymentReminderService.REMINDER_DAYS_BEFORE_DUE_SETTING_KEY))
+                .thenReturn(REMINDER_DAYS_BEFORE_DUE);
         return new PaymentReminderService(
                 bookingInstallmentRepository,
                 bookingPaymentRepository,
                 roomRepository,
                 bedRepository,
-                notificationService);
+                notificationService,
+                appSettingService);
     }
 
     @Test
     void sendDueThirdInstallmentReminders_withNoneDue_returnsZeroWithoutTouchingAnythingElse() {
-        when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder())
+        when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder(
+                        REMINDER_DAYS_BEFORE_DUE))
                 .thenReturn(List.of());
 
         int notifiedCount = paymentReminderService().sendDueThirdInstallmentReminders();
@@ -63,7 +71,8 @@ class PaymentReminderServiceTest {
         BookingInstallment due =
                 new BookingInstallment(
                         1L, 10L, 3, new BigDecimal("20000"), LocalDate.now(), null, null);
-        when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder())
+        when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder(
+                        REMINDER_DAYS_BEFORE_DUE))
                 .thenReturn(List.of(due));
         BookingPayment payment =
                 new BookingPayment(
@@ -85,7 +94,8 @@ class PaymentReminderServiceTest {
         BookingInstallment due =
                 new BookingInstallment(
                         2L, 20L, 3, new BigDecimal("15000"), LocalDate.now(), null, null);
-        when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder())
+        when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder(
+                        REMINDER_DAYS_BEFORE_DUE))
                 .thenReturn(List.of(due));
         BookingPayment payment =
                 new BookingPayment(
@@ -107,7 +117,8 @@ class PaymentReminderServiceTest {
         BookingInstallment due =
                 new BookingInstallment(
                         3L, 99L, 3, new BigDecimal("15000"), LocalDate.now(), null, null);
-        when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder())
+        when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder(
+                        REMINDER_DAYS_BEFORE_DUE))
                 .thenReturn(List.of(due));
         when(bookingPaymentRepository.findByIds(List.of(99L))).thenReturn(List.of());
         when(roomRepository.findByIds(List.of())).thenReturn(List.of());

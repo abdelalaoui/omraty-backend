@@ -32,7 +32,6 @@ public class BookingPaymentService {
 
     private static final BigDecimal FIRST_INSTALLMENT_RATIO = new BigDecimal("0.60");
     private static final BigDecimal SECOND_INSTALLMENT_RATIO = new BigDecimal("0.20");
-    private static final int THIRD_INSTALLMENT_DAYS_BEFORE_END = 7;
 
     private final ServiceTierRepository serviceTierRepository;
     private final BookingPaymentRepository bookingPaymentRepository;
@@ -77,9 +76,9 @@ public class BookingPaymentService {
      * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V25). FULL :
      * une seule ligne booking_payment, considérée payée à la confirmation, aucune tranche.
      * INSTALLMENTS : 3 tranches (60/20/20%) — la 1ère payée à la confirmation ; la 2e due à
-     * mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due {@value
-     * #THIRD_INSTALLMENT_DAYS_BEFORE_END} jours avant pkg.endDate(), avec rappel automatique au
-     * client à cette échéance (voir PaymentReminderService).
+     * mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due à pkg.endDate() (la vraie
+     * échéance limite), avec un rappel automatique au client quelques jours avant (délai
+     * configurable, voir PaymentReminderService/AppSettingService).
      *
      * @throws BookingPaymentException.PackageDatesMissingException si plan = INSTALLMENTS et que le
      *     package n'a pas encore de endDate.
@@ -113,7 +112,7 @@ public class BookingPaymentService {
 
         long daysUntilEnd = ChronoUnit.DAYS.between(reservationDate, packageEndDate);
         LocalDate secondDueDate = reservationDate.plusDays(daysUntilEnd / 2);
-        LocalDate thirdDueDate = packageEndDate.minusDays(THIRD_INSTALLMENT_DAYS_BEFORE_END);
+        LocalDate thirdDueDate = packageEndDate;
 
         bookingInstallmentRepository.insert(
                 payment.id(), 1, firstAmount, reservationDate, LocalDateTime.now());

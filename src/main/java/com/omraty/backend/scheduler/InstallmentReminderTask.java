@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Rappelle chaque jour aux clients ayant choisi le paiement en 3 tranches de régler la 3e tranche
- * dès que son échéance (package.endDate - 7 jours) est atteinte — voir PaymentReminderService.
+ * quelques jours avant son échéance (due_date = package.endDate) — voir PaymentReminderService.
  * Demande explicite du manager, en plus de l'échéance elle-même déjà visible dans GET
  * /users/me/purchases.
  */

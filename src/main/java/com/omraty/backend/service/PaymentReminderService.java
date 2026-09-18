@@ -17,42 +17,53 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 /**
- * Rappelle au client de régler la 3e tranche de son plan de paiement dès que son échéance
- * (package.endDate - 7 jours, voir BookingPaymentService) est atteinte — demande explicite du
- * manager, en plus de l'échéance elle-même. Appelé quotidiennement par InstallmentReminderTask.
+ * Rappelle au client de régler la 3e tranche de son plan de paiement quelques jours avant son
+ * échéance (due_date = package.endDate, voir BookingPaymentService) — délai configurable sans
+ * redéploiement via le réglage {@value #REMINDER_DAYS_BEFORE_DUE_SETTING_KEY} (voir
+ * AppSettingService). Appelé quotidiennement par InstallmentReminderTask.
  */
 @Service
 public class PaymentReminderService {
+
+    static final String REMINDER_DAYS_BEFORE_DUE_SETTING_KEY =
+            "installment_reminder_days_before_due";
 
     private final BookingInstallmentRepository bookingInstallmentRepository;
     private final BookingPaymentRepository bookingPaymentRepository;
     private final RoomRepository roomRepository;
     private final BedRepository bedRepository;
     private final NotificationService notificationService;
+    private final AppSettingService appSettingService;
 
     public PaymentReminderService(
             BookingInstallmentRepository bookingInstallmentRepository,
             BookingPaymentRepository bookingPaymentRepository,
             RoomRepository roomRepository,
             BedRepository bedRepository,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            AppSettingService appSettingService) {
         this.bookingInstallmentRepository = bookingInstallmentRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
         this.notificationService = notificationService;
+        this.appSettingService = appSettingService;
     }
 
     /**
-     * Notifie chaque client dont la 3e tranche arrive à échéance (ou l'a déjà dépassée sans rappel
-     * envoyé), puis marque la tranche comme rappelée pour ne pas la notifier deux fois.
+     * Notifie chaque client dont la 3e tranche arrive à échéance dans moins de N jours (ou l'a déjà
+     * dépassée sans rappel envoyé), puis marque la tranche comme rappelée pour ne pas la notifier
+     * deux fois.
      *
      * @return le nombre de rappels effectivement envoyés (un client sans propriétaire résolu ne
      *     compte pas, mais la tranche est quand même marquée rappelée pour ne pas boucler dessus).
      */
     public int sendDueThirdInstallmentReminders() {
+        int reminderDaysBeforeDue =
+                appSettingService.getIntValue(REMINDER_DAYS_BEFORE_DUE_SETTING_KEY);
         List<BookingInstallment> dueInstallments =
-                bookingInstallmentRepository.findThirdInstallmentsNeedingReminder();
+                bookingInstallmentRepository.findThirdInstallmentsNeedingReminder(
+                        reminderDaysBeforeDue);
         if (dueInstallments.isEmpty()) {
             return 0;
         }

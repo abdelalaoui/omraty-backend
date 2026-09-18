@@ -168,12 +168,13 @@ class BookingPaymentServiceTest {
                 .isEqualByComparingTo("100000");
 
         // Tranche 2 : mi-chemin entre la date de réservation (aujourd'hui) et endDate. Tranche 3 :
-        // endDate - 7 jours (demande explicite du manager).
+        // endDate elle-même (la vraie échéance limite ; le rappel est envoyé quelques jours avant,
+        // voir PaymentReminderService).
         long daysUntilEnd = ChronoUnit.DAYS.between(today, endDate);
         List<LocalDate> dueDates = dueDateCaptor.getAllValues();
         assertThat(dueDates.get(0)).isEqualTo(today);
         assertThat(dueDates.get(1)).isEqualTo(today.plusDays(daysUntilEnd / 2));
-        assertThat(dueDates.get(2)).isEqualTo(endDate.minusDays(7));
+        assertThat(dueDates.get(2)).isEqualTo(endDate);
 
         List<LocalDateTime> paidAts = paidAtCaptor.getAllValues();
         assertThat(paidAts.get(0)).isNotNull();

@@ -85,11 +85,17 @@ public class BookingInstallmentRepository {
                 .findFirst();
     }
 
-    /** 3e tranches non payées dont l'échéance est atteinte et pas encore rappelées. */
-    public List<BookingInstallment> findThirdInstallmentsNeedingReminder() {
+    /**
+     * 3e tranches non payées dont l'échéance arrive dans moins de {@code reminderDaysBeforeDue}
+     * jours (réglage installment_reminder_days_before_due, voir AppSettingService) et pas encore
+     * rappelées.
+     */
+    public List<BookingInstallment> findThirdInstallmentsNeedingReminder(
+            int reminderDaysBeforeDue) {
         return jdbcTemplate.query(
                 BookingInstallmentTable.SELECT_THIRD_INSTALLMENTS_NEEDING_REMINDER,
-                BOOKING_INSTALLMENT_ROW_MAPPER);
+                BOOKING_INSTALLMENT_ROW_MAPPER,
+                reminderDaysBeforeDue);
     }
 
     public void markReminderSent(long id) {
