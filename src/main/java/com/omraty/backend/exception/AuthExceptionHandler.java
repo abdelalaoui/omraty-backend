@@ -175,6 +175,30 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(BookingPaymentException.PriceNotConfiguredException.class)
+    public ResponseEntity<ErrorResponse> handlePriceNotConfigured(
+            BookingPaymentException.PriceNotConfiguredException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(BookingPaymentException.PackageDatesMissingException.class)
+    public ResponseEntity<ErrorResponse> handlePackageDatesMissing(
+            BookingPaymentException.PackageDatesMissingException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(BookingPaymentException.InstallmentNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleInstallmentNotFound(
+            BookingPaymentException.InstallmentNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(BookingPaymentException.InstallmentAlreadyPaidException.class)
+    public ResponseEntity<ErrorResponse> handleInstallmentAlreadyPaid(
+            BookingPaymentException.InstallmentAlreadyPaidException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(AgencyCodeException.InvalidAgencyCodeRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidAgencyCodeRequest(
             AgencyCodeException.InvalidAgencyCodeRequestException e) {
@@ -208,6 +232,12 @@ public class AuthExceptionHandler {
     @ExceptionHandler(TripPackageException.TripPackageNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleTripPackageNotFound(
             TripPackageException.TripPackageNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(AppSettingException.AppSettingNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAppSettingNotFound(
+            AppSettingException.AppSettingNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 

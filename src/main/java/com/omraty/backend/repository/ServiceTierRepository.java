@@ -2,6 +2,7 @@ package com.omraty.backend.repository;
 
 import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.enums.ServiceTierType;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -18,6 +19,7 @@ public class ServiceTierRepository {
                             rs.getLong("id"),
                             ServiceTierType.valueOf(rs.getString("type")),
                             (Integer) rs.getObject("capacity", Integer.class),
+                            rs.getBigDecimal("price"),
                             rs.getString("label_fr"),
                             rs.getString("label_en"),
                             rs.getString("label_ar"),
@@ -45,9 +47,21 @@ public class ServiceTierRepository {
                 .findFirst();
     }
 
+    /** Formule ROOM pour cette capacité (2, 3 ou 5), pour le prix réel d'un achat/réservation. */
+    public Optional<ServiceTier> findRoomTierByCapacity(int capacity) {
+        return jdbcTemplate
+                .query(
+                        ServiceTierTable.SELECT_ROOM_TIER_BY_CAPACITY,
+                        SERVICE_TIER_ROW_MAPPER,
+                        capacity)
+                .stream()
+                .findFirst();
+    }
+
     public ServiceTier insert(
             ServiceTierType type,
             Integer capacity,
+            BigDecimal price,
             String labelFr,
             String labelEn,
             String labelAr,
@@ -60,6 +74,7 @@ public class ServiceTierRepository {
                         SERVICE_TIER_ROW_MAPPER,
                         type.name(),
                         capacity,
+                        price,
                         labelFr,
                         labelEn,
                         labelAr,
@@ -75,6 +90,7 @@ public class ServiceTierRepository {
             long id,
             ServiceTierType type,
             Integer capacity,
+            BigDecimal price,
             String labelFr,
             String labelEn,
             String labelAr,
@@ -87,6 +103,7 @@ public class ServiceTierRepository {
                         SERVICE_TIER_ROW_MAPPER,
                         type == null ? null : type.name(),
                         capacity,
+                        price,
                         labelFr,
                         labelEn,
                         labelAr,

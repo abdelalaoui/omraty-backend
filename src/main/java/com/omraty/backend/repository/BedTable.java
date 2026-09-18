@@ -15,6 +15,11 @@ final class BedTable {
     static final String SELECT_BEDS_BY_ROOM_IDS =
             "SELECT " + BED_COLUMNS + " FROM bed WHERE room_id = ANY (?) ORDER BY room_id, number";
 
+    // Pour PaymentReminderService : retrouver le propriétaire (user_id) d'un lit à partir de
+    // booking_payment.bed_id.
+    static final String SELECT_BEDS_BY_IDS =
+            "SELECT " + BED_COLUMNS + " FROM bed WHERE id = ANY (?)";
+
     // Lits réservés par cet utilisateur, pour GET /users/me/purchases (voir
     // RoomService.getPurchasesForUser). Les lits libres n'ont pas de user_id.
     static final String SELECT_BEDS_BY_USER_ID =

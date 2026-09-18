@@ -1,5 +1,6 @@
 package com.omraty.backend.controller;
 
+import com.omraty.backend.dto.request.OpenRoomRequest;
 import com.omraty.backend.dto.request.PurchaseRoomRequest;
 import com.omraty.backend.dto.request.ReserveBedRequest;
 import com.omraty.backend.dto.response.BedResponse;
@@ -64,7 +65,7 @@ public class RoomController {
      */
     @PostMapping("/rooms/{type}/open")
     public ResponseEntity<RoomBedsResponse> openSharedRoom(
-            @PathVariable int type, @Valid @RequestBody ReserveBedRequest request) {
+            @PathVariable int type, @Valid @RequestBody OpenRoomRequest request) {
         RoomWithBeds roomWithBeds = roomService.openSharedRoom(type, request.packageId());
         return ResponseEntity.ok(RoomMapper.toBedsResponse(roomWithBeds));
     }
@@ -74,7 +75,7 @@ public class RoomController {
             @AuthenticationPrincipal UUID userId,
             @PathVariable int type,
             @Valid @RequestBody ReserveBedRequest request) {
-        Bed bed = roomService.reserveBed(type, request.packageId(), userId);
+        Bed bed = roomService.reserveBed(type, request.packageId(), userId, request.plan());
         return ResponseEntity.status(HttpStatus.CREATED).body(BedMapper.toResponse(bed));
     }
 
@@ -83,7 +84,7 @@ public class RoomController {
             @AuthenticationPrincipal UUID userId,
             @PathVariable int type,
             @Valid @RequestBody PurchaseRoomRequest request) {
-        Room room = roomService.purchaseRoom(type, request.packageId(), userId);
+        Room room = roomService.purchaseRoom(type, request.packageId(), userId, request.plan());
         return ResponseEntity.status(HttpStatus.CREATED).body(RoomMapper.toResponse(room));
     }
 

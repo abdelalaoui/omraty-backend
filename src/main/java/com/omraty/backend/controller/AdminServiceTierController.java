@@ -41,6 +41,7 @@ public class AdminServiceTierController {
                 serviceTierService.createServiceTier(
                         request.type(),
                         request.capacity(),
+                        request.price(),
                         request.labelFr(),
                         request.labelEn(),
                         request.labelAr(),
@@ -59,6 +60,7 @@ public class AdminServiceTierController {
                         id,
                         request.type(),
                         request.capacity(),
+                        request.price(),
                         request.labelFr(),
                         request.labelEn(),
                         request.labelAr(),

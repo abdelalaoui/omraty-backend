@@ -1,6 +1,7 @@
 package com.omraty.backend.dto.request;
 
 import com.omraty.backend.entities.enums.ServiceTierType;
+import java.math.BigDecimal;
 
 /**
  * Mise à jour partielle : tous les champs sont optionnels, seuls ceux fournis (non null) sont
@@ -11,6 +12,7 @@ import com.omraty.backend.entities.enums.ServiceTierType;
 public record UpdateServiceTierRequest(
         ServiceTierType type,
         Integer capacity,
+        BigDecimal price,
         String labelFr,
         String labelEn,
         String labelAr,

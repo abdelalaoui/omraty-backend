@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
+import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.RoomException;
 import com.omraty.backend.repository.BedRepository;
@@ -16,6 +17,7 @@ import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -31,18 +33,20 @@ class RoomServiceTest {
     @Mock private RoomRepository roomRepository;
     @Mock private BedRepository bedRepository;
     @Mock private PackageRepository packageRepository;
+    @Mock private BookingPaymentService bookingPaymentService;
 
     private RoomService roomService() {
         return new RoomService(
                 roomRepository,
                 bedRepository,
                 packageRepository,
-                new PackageCapacityService(roomRepository));
+                new PackageCapacityService(roomRepository),
+                bookingPaymentService);
     }
 
     @Test
     void reserveBed_withInvalidType_throwsException() {
-        assertThatThrownBy(() -> roomService().reserveBed(2, 1L, USER_ID))
+        assertThatThrownBy(() -> roomService().reserveBed(2, 1L, USER_ID, PaymentPlan.FULL))
                 .isInstanceOf(RoomException.InvalidRoomTypeException.class);
     }
 
@@ -50,7 +54,7 @@ class RoomServiceTest {
     void reserveBed_whenPackageNotFound_throwsException() {
         when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> roomService().reserveBed(5, 1L, USER_ID))
+        assertThatThrownBy(() -> roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL))
                 .isInstanceOf(PackageException.PackageNotFoundException.class);
     }
 
@@ -60,7 +64,7 @@ class RoomServiceTest {
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5, null, null)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(5);
 
-        assertThatThrownBy(() -> roomService().reserveBed(5, 1L, USER_ID))
+        assertThatThrownBy(() -> roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL))
                 .isInstanceOf(RoomException.GroupSizeExceededException.class);
 
         verify(roomRepository, never()).findOpenRoomForUpdate(1L, 5);
@@ -78,7 +82,7 @@ class RoomServiceTest {
         when(bedRepository.markReserved(100L, USER_ID))
                 .thenReturn(new Bed(100L, 4, true, 10L, USER_ID, LocalDateTime.now()));
 
-        Bed reserved = roomService().reserveBed(5, 1L, USER_ID);
+        Bed reserved = roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL);
 
         assertThat(reserved.reserved()).isTrue();
         assertThat(reserved.id()).isEqualTo(100L);
@@ -100,7 +104,7 @@ class RoomServiceTest {
         when(bedRepository.markReserved(200L, USER_ID))
                 .thenReturn(new Bed(200L, 1, true, 20L, USER_ID, LocalDateTime.now()));
 
-        Bed reserved = roomService().reserveBed(5, 1L, USER_ID);
+        Bed reserved = roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL);
 
         assertThat(reserved.roomId()).isEqualTo(20L);
         verify(bedRepository).insertBedsForRoom(20L, 5);
@@ -163,7 +167,7 @@ class RoomServiceTest {
 
     @Test
     void purchaseRoom_withInvalidType_throwsException() {
-        assertThatThrownBy(() -> roomService().purchaseRoom(5, 1L, USER_ID))
+        assertThatThrownBy(() -> roomService().purchaseRoom(5, 1L, USER_ID, PaymentPlan.FULL))
                 .isInstanceOf(RoomException.InvalidRoomTypeException.class);
     }
 
@@ -173,7 +177,7 @@ class RoomServiceTest {
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 10, null, null)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(9);
 
-        assertThatThrownBy(() -> roomService().purchaseRoom(2, 1L, USER_ID))
+        assertThatThrownBy(() -> roomService().purchaseRoom(2, 1L, USER_ID, PaymentPlan.FULL))
                 .isInstanceOf(RoomException.GroupSizeExceededException.class);
 
         verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
@@ -187,7 +191,7 @@ class RoomServiceTest {
         Room purchasedRoom = new Room(30L, 3, 1L, 3, 3, USER_ID, LocalDateTime.now());
         when(roomRepository.insert(3, 1L, 3, 3, USER_ID)).thenReturn(purchasedRoom);
 
-        Room result = roomService().purchaseRoom(3, 1L, USER_ID);
+        Room result = roomService().purchaseRoom(3, 1L, USER_ID, PaymentPlan.FULL);
 
         assertThat(result.reservedCount()).isEqualTo(result.totalCapacity());
         assertThat(result.userId()).isEqualTo(USER_ID);
@@ -208,6 +212,9 @@ class RoomServiceTest {
                         List.of(
                                 new OmraPackage(1L, "Omra Ramadan", 10, null, null),
                                 new OmraPackage(2L, "Omra Chaabane", 5, null, null)));
+        when(bookingPaymentService.findPaymentsByRoomIds(List.of(30L))).thenReturn(Map.of());
+        when(bookingPaymentService.findPaymentsByBedIds(List.of(100L))).thenReturn(Map.of());
+        when(bookingPaymentService.findInstallmentsByPaymentIds(List.of())).thenReturn(Map.of());
 
         List<UserPurchase> purchases = roomService().getPurchasesForUser(USER_ID);
 
@@ -226,6 +233,9 @@ class RoomServiceTest {
         when(bedRepository.findByUserId(USER_ID)).thenReturn(List.of());
         when(roomRepository.findByIds(List.of())).thenReturn(List.of());
         when(packageRepository.findByIds(List.of())).thenReturn(List.of());
+        when(bookingPaymentService.findPaymentsByRoomIds(List.of())).thenReturn(Map.of());
+        when(bookingPaymentService.findPaymentsByBedIds(List.of())).thenReturn(Map.of());
+        when(bookingPaymentService.findInstallmentsByPaymentIds(List.of())).thenReturn(Map.of());
 
         assertThat(roomService().getPurchasesForUser(USER_ID)).isEmpty();
     }
