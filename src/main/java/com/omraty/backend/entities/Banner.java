@@ -8,4 +8,5 @@ public record Banner(
         String title,
         String description,
         boolean visible,
+        int displayOrder,
         LocalDateTime updatedAt) {}

@@ -36,8 +36,6 @@ public class SecurityConfig {
                                         .permitAll()
                                         .requestMatchers("/admin/**")
                                         .hasRole("ADMIN")
-                                        .requestMatchers(HttpMethod.PATCH, "/home/banner/**")
-                                        .hasRole("ADMIN")
                                         .requestMatchers(HttpMethod.POST, "/home/service-cards/**")
                                         .hasRole("ADMIN")
                                         .requestMatchers(HttpMethod.PATCH, "/home/service-cards/**")
