@@ -25,6 +25,7 @@ public final class RoomMapper {
                 room.id(),
                 room.totalCapacity(),
                 room.reservedCount(),
+                room.reservedCount() == room.totalCapacity(),
                 BedMapper.toResponseList(roomWithBeds.beds()));
     }
 
