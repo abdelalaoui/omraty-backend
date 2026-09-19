@@ -17,7 +17,7 @@ final class BookingPaymentTable {
     static final String SELECT_BOOKING_PAYMENTS_BY_IDS =
             "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE id = ANY (?)";
 
-    // roomId et bedId : exactement l'un des deux renseigné (voir migration V25, CHECK
+    // roomId et bedId : exactement l'un des deux renseigné (voir migration V30, CHECK
     // chk_booking_payment_exactly_one_target). created_at prend le défaut (now()).
     static final String INSERT_BOOKING_PAYMENT =
             "INSERT INTO booking_payment (room_id, bed_id, plan, total_amount) VALUES (?, ?, ?, ?)"

@@ -76,7 +76,7 @@ public class BookingPaymentRepository {
                 BOOKING_PAYMENT_ROW_MAPPER);
     }
 
-    /** roomId et bedId : exactement l'un des deux renseigné (voir migration V25). */
+    /** roomId et bedId : exactement l'un des deux renseigné (voir migration V30). */
     public BookingPayment insert(
             Long roomId, Long bedId, PaymentPlan plan, BigDecimal totalAmount) {
         return jdbcTemplate

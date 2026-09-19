@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Persiste le plan de paiement choisi à l'achat d'une chambre ou à la réservation d'un lit (voir
- * migration V25) : jusqu'ici ni le plan (complet ou 3 tranches) ni les montants/échéances
+ * migration V30) : jusqu'ici ni le plan (complet ou 3 tranches) ni les montants/échéances
  * n'existaient côté backend, tout était recalculé et affiché en mock côté app (PaymentPlanScreen) à
  * chaque fois. {@link #createPaymentPlan} est appelé par RoomService dans la même transaction que
  * la création de la chambre/du lit.
@@ -73,7 +73,7 @@ public class BookingPaymentService {
 
     /**
      * Crée le plan de paiement d'un achat de chambre (roomId renseigné) ou d'une réservation de lit
-     * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V25). FULL :
+     * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V30). FULL :
      * une seule ligne booking_payment, considérée payée à la confirmation, aucune tranche.
      * INSTALLMENTS : 3 tranches (60/20/20%) — la 1ère payée à la confirmation ; la 2e due à
      * mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due à pkg.endDate() (la vraie
