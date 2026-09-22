@@ -7,6 +7,10 @@ import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
+import com.omraty.backend.exception.UserException;
+import com.omraty.backend.payment.PaymentGatewayClient;
+import com.omraty.backend.payment.PaymentGatewayResult;
+import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
@@ -17,6 +21,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
@@ -36,14 +41,20 @@ public class BookingPaymentService {
     private final ServiceTierRepository serviceTierRepository;
     private final BookingPaymentRepository bookingPaymentRepository;
     private final BookingInstallmentRepository bookingInstallmentRepository;
+    private final AuthRepository authRepository;
+    private final PaymentGatewayClient paymentGatewayClient;
 
     public BookingPaymentService(
             ServiceTierRepository serviceTierRepository,
             BookingPaymentRepository bookingPaymentRepository,
-            BookingInstallmentRepository bookingInstallmentRepository) {
+            BookingInstallmentRepository bookingInstallmentRepository,
+            AuthRepository authRepository,
+            PaymentGatewayClient paymentGatewayClient) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
+        this.authRepository = authRepository;
+        this.paymentGatewayClient = paymentGatewayClient;
     }
 
     /**
@@ -81,11 +92,21 @@ public class BookingPaymentService {
      * (la vraie échéance limite), avec un rappel automatique au client quelques jours avant (délai
      * configurable, voir PaymentReminderService/AppSettingService).
      *
+     * <p>Crée ensuite le paiement côté passerelle (voir PaymentGatewayClient, migration V33) avec
+     * le téléphone de userId, et renseigne paymentCode/transactionId/expiresAt sur booking_payment
+     * : la réservation reste immédiate, mais le paiement lui-même reste PENDING tant qu'il n'est
+     * pas confirmé (voir RoomController).
+     *
      * @throws BookingPaymentException.PackageDatesMissingException si plan = INSTALLMENTS et que le
      *     package n'a pas encore de endDate.
      */
     public BookingPayment createPaymentPlan(
-            Long roomId, Long bedId, PaymentPlan plan, BigDecimal totalAmount, OmraPackage pkg) {
+            Long roomId,
+            Long bedId,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId) {
         if (plan == PaymentPlan.INSTALLMENTS && pkg.endDate() == null) {
             throw new BookingPaymentException.PackageDatesMissingException(
                     "Le paiement en 3 tranches nécessite une date de fin (endDate) sur le package"
@@ -99,7 +120,27 @@ public class BookingPaymentService {
         if (plan == PaymentPlan.INSTALLMENTS) {
             createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate());
         }
-        return payment;
+        return attachGatewayPayment(payment, userId);
+    }
+
+    private BookingPayment attachGatewayPayment(BookingPayment payment, UUID userId) {
+        String phone =
+                authRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new UserException.UserNotFoundException(
+                                                "Utilisateur introuvable (id=" + userId + ")"))
+                        .phone();
+        PaymentGatewayResult result =
+                paymentGatewayClient.createPayment(
+                        phone, payment.totalAmount(), "booking-payment-" + payment.id());
+        return bookingPaymentRepository.attachGatewayResult(
+                payment.id(),
+                result.paymentCode(),
+                result.transactionId(),
+                phone,
+                result.expiresAt());
     }
 
     private void createInstallments(

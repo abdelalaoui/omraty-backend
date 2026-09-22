@@ -3,13 +3,11 @@ package com.omraty.backend.controller;
 import com.omraty.backend.dto.request.OpenRoomRequest;
 import com.omraty.backend.dto.request.PurchaseRoomRequest;
 import com.omraty.backend.dto.request.ReserveBedRequest;
-import com.omraty.backend.dto.response.BedResponse;
+import com.omraty.backend.dto.response.PaymentResponse;
 import com.omraty.backend.dto.response.PurchaseResponse;
 import com.omraty.backend.dto.response.RoomBedsResponse;
-import com.omraty.backend.dto.response.RoomResponse;
-import com.omraty.backend.entities.Bed;
-import com.omraty.backend.entities.Room;
-import com.omraty.backend.mapper.BedMapper;
+import com.omraty.backend.entities.BookingPayment;
+import com.omraty.backend.mapper.PaymentMapper;
 import com.omraty.backend.mapper.PurchaseMapper;
 import com.omraty.backend.mapper.RoomMapper;
 import com.omraty.backend.service.RoomService;
@@ -70,22 +68,34 @@ public class RoomController {
         return ResponseEntity.ok(RoomMapper.toBedsResponse(roomWithBeds));
     }
 
+    /**
+     * La réservation du lit est immédiate, mais la réponse ne confirme pas le paiement : elle
+     * renvoie le code à afficher au client et sa date d'expiration (voir PaymentResponse,
+     * BookingPaymentService.createPaymentPlan).
+     */
     @PostMapping("/rooms/{type}/beds/reserve")
-    public ResponseEntity<BedResponse> reserveBed(
+    public ResponseEntity<PaymentResponse> reserveBed(
             @AuthenticationPrincipal UUID userId,
             @PathVariable int type,
             @Valid @RequestBody ReserveBedRequest request) {
-        Bed bed = roomService.reserveBed(type, request.packageId(), userId, request.plan());
-        return ResponseEntity.status(HttpStatus.CREATED).body(BedMapper.toResponse(bed));
+        BookingPayment payment =
+                roomService.reserveBed(type, request.packageId(), userId, request.plan());
+        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
     }
 
+    /**
+     * L'achat de la chambre est immédiat, mais la réponse ne confirme pas le paiement : elle
+     * renvoie le code à afficher au client et sa date d'expiration (voir PaymentResponse,
+     * BookingPaymentService.createPaymentPlan).
+     */
     @PostMapping("/rooms/{type}/purchase")
-    public ResponseEntity<RoomResponse> purchaseRoom(
+    public ResponseEntity<PaymentResponse> purchaseRoom(
             @AuthenticationPrincipal UUID userId,
             @PathVariable int type,
             @Valid @RequestBody PurchaseRoomRequest request) {
-        Room room = roomService.purchaseRoom(type, request.packageId(), userId, request.plan());
-        return ResponseEntity.status(HttpStatus.CREATED).body(RoomMapper.toResponse(room));
+        BookingPayment payment =
+                roomService.purchaseRoom(type, request.packageId(), userId, request.plan());
+        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
     }
 
     /** Chambres achetées et lits réservés par l'utilisateur connecté, les plus récents d'abord. */

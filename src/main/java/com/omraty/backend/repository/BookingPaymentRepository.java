@@ -105,4 +105,31 @@ public class BookingPaymentRepository {
                                 new IllegalStateException(
                                         "Échec de la création du plan de paiement"));
     }
+
+    /**
+     * Renseigne la référence Moov sur un paiement déjà créé (voir PaymentGatewayClient, migration
+     * V33).
+     */
+    public BookingPayment attachGatewayResult(
+            long paymentId,
+            String moovPaymentCode,
+            String moovTransactionId,
+            String payerPhone,
+            LocalDateTime expiresAt) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.ATTACH_GATEWAY_RESULT,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        moovPaymentCode,
+                        moovTransactionId,
+                        payerPhone,
+                        expiresAt,
+                        paymentId)
+                .stream()
+                .findFirst()
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "Paiement introuvable (id=" + paymentId + ")"));
+    }
 }

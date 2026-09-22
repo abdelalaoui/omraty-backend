@@ -28,7 +28,10 @@ public class MockPaymentGatewayClient implements PaymentGatewayClient {
 
     private static final Logger log = LoggerFactory.getLogger(MockPaymentGatewayClient.class);
 
-    private static final Duration CODE_VALIDITY = Duration.ofMinutes(30);
+    // Aligné sur le délai de libération automatique de la réservation (15 min, voir tâche
+    // "libération automatique" côté RoomService) : le code n'a plus de sens une fois la
+    // réservation relâchée.
+    private static final Duration CODE_VALIDITY = Duration.ofMinutes(15);
     private static final Duration SIMULATED_CONFIRMATION_DELAY = Duration.ofSeconds(10);
 
     private final Map<String, LocalDateTime> createdAtByTransactionId = new ConcurrentHashMap<>();

@@ -24,4 +24,11 @@ final class BookingPaymentTable {
             "INSERT INTO booking_payment (room_id, bed_id, plan, status, total_amount) VALUES (?,"
                     + " ?, ?, ?, ?) RETURNING "
                     + BOOKING_PAYMENT_COLUMNS;
+
+    // Renseigne la référence Moov (colonnes de la migration V33) une fois le paiement créé côté
+    // passerelle (voir PaymentGatewayClient.createPayment).
+    static final String ATTACH_GATEWAY_RESULT =
+            "UPDATE booking_payment SET moov_payment_code = ?, moov_transaction_id = ?, payer_phone"
+                    + " = ?, expires_at = ? WHERE id = ? RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
 }

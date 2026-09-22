@@ -97,14 +97,16 @@ public class RoomService {
 
     /**
      * Réserve un lit pour ce package (type 5 uniquement) : réutilise la chambre ouverte existante
-     * s'il y en a une, sinon en ouvre une nouvelle automatiquement avec ses 5 lits.
+     * s'il y en a une, sinon en ouvre une nouvelle automatiquement avec ses 5 lits. La réservation
+     * est immédiate ; le paiement, lui, démarre PENDING et n'est confirmé qu'une fois la passerelle
+     * de paiement validée (voir BookingPaymentService.createPaymentPlan, RoomController).
      *
      * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
      * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
      *     le prix de la formule ROOM (capacité 5) n'est pas encore saisi par l'admin.
      */
     @Transactional
-    public Bed reserveBed(int type, long packageId, UUID userId, PaymentPlan plan) {
+    public BookingPayment reserveBed(int type, long packageId, UUID userId, PaymentPlan plan) {
         validateSharedRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
@@ -127,13 +129,15 @@ public class RoomService {
 
         Bed reservedBed = bedRepository.markReserved(bed.id(), userId);
         roomRepository.incrementReservedCount(room.id());
-        bookingPaymentService.createPaymentPlan(null, reservedBed.id(), plan, price, pkg);
-        return reservedBed;
+        return bookingPaymentService.createPaymentPlan(
+                null, reservedBed.id(), plan, price, pkg, userId);
     }
 
     /**
      * Achat direct d'une chambre entière (types 2 et 3 uniquement) : pas de suivi lit par lit, la
-     * chambre est créée déjà pleine.
+     * chambre est créée déjà pleine. La réservation est immédiate ; le paiement, lui, démarre
+     * PENDING et n'est confirmé qu'une fois la passerelle de paiement validée (voir
+     * BookingPaymentService.createPaymentPlan, RoomController).
      *
      * @throws RoomException.GroupSizeExceededException si l'achat dépasserait le groupSize du
      *     package.
@@ -141,14 +145,13 @@ public class RoomService {
      *     le prix de la formule ROOM (capacité type) n'est pas encore saisi par l'admin.
      */
     @Transactional
-    public Room purchaseRoom(int type, long packageId, UUID userId, PaymentPlan plan) {
+    public BookingPayment purchaseRoom(int type, long packageId, UUID userId, PaymentPlan plan) {
         validateWholeRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, type);
         BigDecimal price = bookingPaymentService.resolvePrice(type);
         Room room = roomRepository.insert(type, packageId, type, type, userId);
-        bookingPaymentService.createPaymentPlan(room.id(), null, plan, price, pkg);
-        return room;
+        return bookingPaymentService.createPaymentPlan(room.id(), null, plan, price, pkg, userId);
     }
 
     /**
