@@ -12,6 +12,7 @@ import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.enums.PaymentPlan;
+import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.entities.enums.ServiceTierType;
 import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.repository.BookingInstallmentRepository;
@@ -85,8 +86,16 @@ class BookingPaymentServiceTest {
     void createPaymentPlan_full_insertsSinglePaymentWithoutInstallments() {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
         BookingPayment inserted =
-                new BookingPayment(10L, 30L, null, PaymentPlan.FULL, new BigDecimal("90000"), null);
-        when(bookingPaymentRepository.insert(30L, null, PaymentPlan.FULL, new BigDecimal("90000")))
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000"),
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L, null, PaymentPlan.FULL, PaymentStatus.PENDING, new BigDecimal("90000")))
                 .thenReturn(inserted);
 
         BookingPayment result =
@@ -114,7 +123,7 @@ class BookingPaymentServiceTest {
                                                 pkg))
                 .isInstanceOf(BookingPaymentException.PackageDatesMissingException.class);
 
-        verify(bookingPaymentRepository, never()).insert(any(), any(), any(), any());
+        verify(bookingPaymentRepository, never()).insert(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -124,9 +133,19 @@ class BookingPaymentServiceTest {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, endDate);
         BookingPayment inserted =
                 new BookingPayment(
-                        10L, null, 200L, PaymentPlan.INSTALLMENTS, new BigDecimal("100000"), null);
+                        10L,
+                        null,
+                        200L,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("100000"),
+                        null);
         when(bookingPaymentRepository.insert(
-                        null, 200L, PaymentPlan.INSTALLMENTS, new BigDecimal("100000")))
+                        null,
+                        200L,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("100000")))
                 .thenReturn(inserted);
 
         bookingPaymentService()
@@ -176,8 +195,10 @@ class BookingPaymentServiceTest {
         assertThat(dueDates.get(1)).isEqualTo(today.plusDays(daysUntilEnd / 2));
         assertThat(dueDates.get(2)).isEqualTo(endDate);
 
+        // Les 3 tranches démarrent non payées : le paiement est PENDING tant qu'il n'est pas
+        // confirmé par la passerelle de paiement.
         List<LocalDateTime> paidAts = paidAtCaptor.getAllValues();
-        assertThat(paidAts.get(0)).isNotNull();
+        assertThat(paidAts.get(0)).isNull();
         assertThat(paidAts.get(1)).isNull();
         assertThat(paidAts.get(2)).isNull();
     }
@@ -234,7 +255,14 @@ class BookingPaymentServiceTest {
     @Test
     void toPurchasePayment_full_isFullyPaidWithNoInstallments() {
         BookingPayment payment =
-                new BookingPayment(1L, 30L, null, PaymentPlan.FULL, new BigDecimal("90000"), null);
+                new BookingPayment(
+                        1L,
+                        30L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.CONFIRMED,
+                        new BigDecimal("90000"),
+                        null);
 
         UserPurchasePayment result = bookingPaymentService().toPurchasePayment(payment, List.of());
 
@@ -249,7 +277,13 @@ class BookingPaymentServiceTest {
     void toPurchasePayment_installments_computesPaidRemainingAndNextDueDate() {
         BookingPayment payment =
                 new BookingPayment(
-                        1L, null, 200L, PaymentPlan.INSTALLMENTS, new BigDecimal("100000"), null);
+                        1L,
+                        null,
+                        200L,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.CONFIRMED,
+                        new BigDecimal("100000"),
+                        null);
         LocalDate secondDueDate = LocalDate.of(2026, 4, 1);
         LocalDate thirdDueDate = LocalDate.of(2026, 5, 1);
         List<BookingInstallment> installments =

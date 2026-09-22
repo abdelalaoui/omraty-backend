@@ -5,6 +5,7 @@ import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.enums.PaymentPlan;
+import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
@@ -12,7 +13,6 @@ import com.omraty.backend.repository.ServiceTierRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
@@ -73,11 +73,12 @@ public class BookingPaymentService {
 
     /**
      * Crée le plan de paiement d'un achat de chambre (roomId renseigné) ou d'une réservation de lit
-     * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V30). FULL :
-     * une seule ligne booking_payment, considérée payée à la confirmation, aucune tranche.
-     * INSTALLMENTS : 3 tranches (60/20/20%) — la 1ère payée à la confirmation ; la 2e due à
-     * mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due à pkg.endDate() (la vraie
-     * échéance limite), avec un rappel automatique au client quelques jours avant (délai
+     * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V30). Le
+     * paiement démarre au statut PENDING (voir PaymentStatus, migration V32), quel que soit le plan
+     * — aucune tranche n'est marquée payée à la création. FULL : une seule ligne booking_payment,
+     * aucune tranche. INSTALLMENTS : 3 tranches (60/20/20%), toutes non payées à la création ; la 2e
+     * due à mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due à pkg.endDate() (la
+     * vraie échéance limite), avec un rappel automatique au client quelques jours avant (délai
      * configurable, voir PaymentReminderService/AppSettingService).
      *
      * @throws BookingPaymentException.PackageDatesMissingException si plan = INSTALLMENTS et que le
@@ -92,7 +93,9 @@ public class BookingPaymentService {
                             + pkg.id()
                             + ")");
         }
-        BookingPayment payment = bookingPaymentRepository.insert(roomId, bedId, plan, totalAmount);
+        BookingPayment payment =
+                bookingPaymentRepository.insert(
+                        roomId, bedId, plan, PaymentStatus.PENDING, totalAmount);
         if (plan == PaymentPlan.INSTALLMENTS) {
             createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate());
         }
@@ -114,8 +117,7 @@ public class BookingPaymentService {
         LocalDate secondDueDate = reservationDate.plusDays(daysUntilEnd / 2);
         LocalDate thirdDueDate = packageEndDate;
 
-        bookingInstallmentRepository.insert(
-                payment.id(), 1, firstAmount, reservationDate, LocalDateTime.now());
+        bookingInstallmentRepository.insert(payment.id(), 1, firstAmount, reservationDate, null);
         bookingInstallmentRepository.insert(payment.id(), 2, secondAmount, secondDueDate, null);
         bookingInstallmentRepository.insert(payment.id(), 3, thirdAmount, thirdDueDate, null);
     }

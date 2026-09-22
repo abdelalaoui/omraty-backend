@@ -12,6 +12,7 @@ import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.enums.PaymentPlan;
+import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
@@ -76,7 +77,13 @@ class PaymentReminderServiceTest {
                 .thenReturn(List.of(due));
         BookingPayment payment =
                 new BookingPayment(
-                        10L, 30L, null, PaymentPlan.INSTALLMENTS, new BigDecimal("100000"), null);
+                        10L,
+                        30L,
+                        null,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.CONFIRMED,
+                        new BigDecimal("100000"),
+                        null);
         when(bookingPaymentRepository.findByIds(List.of(10L))).thenReturn(List.of(payment));
         Room room = new Room(30L, 3, 1L, 3, 3, USER_ID, LocalDateTime.now());
         when(roomRepository.findByIds(List.of(30L))).thenReturn(List.of(room));
@@ -99,7 +106,13 @@ class PaymentReminderServiceTest {
                 .thenReturn(List.of(due));
         BookingPayment payment =
                 new BookingPayment(
-                        20L, null, 200L, PaymentPlan.INSTALLMENTS, new BigDecimal("75000"), null);
+                        20L,
+                        null,
+                        200L,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.CONFIRMED,
+                        new BigDecimal("75000"),
+                        null);
         when(bookingPaymentRepository.findByIds(List.of(20L))).thenReturn(List.of(payment));
         when(roomRepository.findByIds(List.of())).thenReturn(List.of());
         Bed bed = new Bed(200L, 1, true, 5L, USER_ID, LocalDateTime.now());
