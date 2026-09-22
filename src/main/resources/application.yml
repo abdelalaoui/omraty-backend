@@ -21,6 +21,12 @@ jwt:
   accessTokenExpirationMinutes: ${JWT_ACCESS_EXP_MINUTES:15}
   refreshTokenExpirationDays: ${JWT_REFRESH_EXP_DAYS:30}
 
+payment:
+  gateway:
+    # mock (par défaut, dev/test, voir MockPaymentGatewayClient) | moov (une fois la vraie
+    # implémentation MoovPaymentGatewayClient écrite, voir PaymentGatewayClient)
+    provider: ${PAYMENT_GATEWAY_PROVIDER:mock}
+
 app:
   vip:
     offer-expiration-hours: ${VIP_OFFER_EXPIRATION_HOURS:24}
