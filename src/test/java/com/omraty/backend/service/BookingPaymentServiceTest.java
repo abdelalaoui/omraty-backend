@@ -93,6 +93,10 @@ class BookingPaymentServiceTest {
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("90000"),
+                        null,
+                        null,
+                        null,
+                        null,
                         null);
         when(bookingPaymentRepository.insert(
                         30L,
@@ -143,6 +147,10 @@ class BookingPaymentServiceTest {
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.PENDING,
                         new BigDecimal("100000"),
+                        null,
+                        null,
+                        null,
+                        null,
                         null);
         when(bookingPaymentRepository.insert(
                         null,
@@ -266,6 +274,10 @@ class BookingPaymentServiceTest {
                         PaymentPlan.FULL,
                         PaymentStatus.CONFIRMED,
                         new BigDecimal("90000"),
+                        null,
+                        null,
+                        null,
+                        null,
                         null);
 
         UserPurchasePayment result = bookingPaymentService().toPurchasePayment(payment, List.of());
@@ -287,6 +299,10 @@ class BookingPaymentServiceTest {
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.CONFIRMED,
                         new BigDecimal("100000"),
+                        null,
+                        null,
+                        null,
+                        null,
                         null);
         LocalDate secondDueDate = LocalDate.of(2026, 4, 1);
         LocalDate thirdDueDate = LocalDate.of(2026, 5, 1);

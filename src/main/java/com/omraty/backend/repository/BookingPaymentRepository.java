@@ -24,6 +24,10 @@ public class BookingPaymentRepository {
                             PaymentPlan.valueOf(rs.getString("plan")),
                             PaymentStatus.valueOf(rs.getString("status")),
                             rs.getBigDecimal("total_amount"),
+                            rs.getString("moov_payment_code"),
+                            rs.getString("moov_transaction_id"),
+                            rs.getString("payer_phone"),
+                            rs.getObject("expires_at", LocalDateTime.class),
                             rs.getObject("created_at", LocalDateTime.class));
 
     private final JdbcTemplate jdbcTemplate;

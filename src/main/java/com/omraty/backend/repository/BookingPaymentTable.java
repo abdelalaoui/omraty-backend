@@ -5,7 +5,8 @@ final class BookingPaymentTable {
     private BookingPaymentTable() {}
 
     static final String BOOKING_PAYMENT_COLUMNS =
-            "id, room_id, bed_id, plan, status, total_amount, created_at";
+            "id, room_id, bed_id, plan, status, total_amount, moov_payment_code,"
+                    + " moov_transaction_id, payer_phone, expires_at, created_at";
 
     static final String SELECT_BOOKING_PAYMENTS_BY_ROOM_IDS =
             "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE room_id = ANY (?)";

@@ -83,6 +83,10 @@ class PaymentReminderServiceTest {
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.CONFIRMED,
                         new BigDecimal("100000"),
+                        null,
+                        null,
+                        null,
+                        null,
                         null);
         when(bookingPaymentRepository.findByIds(List.of(10L))).thenReturn(List.of(payment));
         Room room = new Room(30L, 3, 1L, 3, 3, USER_ID, LocalDateTime.now());
@@ -112,6 +116,10 @@ class PaymentReminderServiceTest {
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.CONFIRMED,
                         new BigDecimal("75000"),
+                        null,
+                        null,
+                        null,
+                        null,
                         null);
         when(bookingPaymentRepository.findByIds(List.of(20L))).thenReturn(List.of(payment));
         when(roomRepository.findByIds(List.of())).thenReturn(List.of());
