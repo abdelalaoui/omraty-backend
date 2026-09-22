@@ -95,7 +95,11 @@ class BookingPaymentServiceTest {
                         new BigDecimal("90000"),
                         null);
         when(bookingPaymentRepository.insert(
-                        30L, null, PaymentPlan.FULL, PaymentStatus.PENDING, new BigDecimal("90000")))
+                        30L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000")))
                 .thenReturn(inserted);
 
         BookingPayment result =

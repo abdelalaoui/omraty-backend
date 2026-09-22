@@ -76,9 +76,9 @@ public class BookingPaymentService {
      * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V30). Le
      * paiement démarre au statut PENDING (voir PaymentStatus, migration V32), quel que soit le plan
      * — aucune tranche n'est marquée payée à la création. FULL : une seule ligne booking_payment,
-     * aucune tranche. INSTALLMENTS : 3 tranches (60/20/20%), toutes non payées à la création ; la 2e
-     * due à mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due à pkg.endDate() (la
-     * vraie échéance limite), avec un rappel automatique au client quelques jours avant (délai
+     * aucune tranche. INSTALLMENTS : 3 tranches (60/20/20%), toutes non payées à la création ; la
+     * 2e due à mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due à pkg.endDate()
+     * (la vraie échéance limite), avec un rappel automatique au client quelques jours avant (délai
      * configurable, voir PaymentReminderService/AppSettingService).
      *
      * @throws BookingPaymentException.PackageDatesMissingException si plan = INSTALLMENTS et que le

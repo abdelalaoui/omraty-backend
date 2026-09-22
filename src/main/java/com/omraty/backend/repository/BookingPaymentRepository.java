@@ -80,7 +80,11 @@ public class BookingPaymentRepository {
 
     /** roomId et bedId : exactement l'un des deux renseigné (voir migration V30). */
     public BookingPayment insert(
-            Long roomId, Long bedId, PaymentPlan plan, PaymentStatus status, BigDecimal totalAmount) {
+            Long roomId,
+            Long bedId,
+            PaymentPlan plan,
+            PaymentStatus status,
+            BigDecimal totalAmount) {
         return jdbcTemplate
                 .query(
                         BookingPaymentTable.INSERT_BOOKING_PAYMENT,
