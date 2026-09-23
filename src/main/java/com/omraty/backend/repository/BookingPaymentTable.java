@@ -8,7 +8,7 @@ final class BookingPaymentTable {
             "id, room_id, bed_id, plan, status, total_amount, moov_payment_code,"
                     + " moov_transaction_id, payer_phone, expires_at, created_at";
 
-    // status <> 'EXPIRED' : depuis la migration V34, une chambre/un lit expiré(e) peut être
+    // status <> 'EXPIRED' : depuis la migration V35, une chambre/un lit expiré(e) peut être
     // réservé(e) de nouveau, donc plusieurs lignes peuvent exister pour un même room_id au fil du
     // temps — celles-ci ne comptent plus pour GET /users/me/purchases (voir
     // RoomService.getPurchasesForUser, qui suppose au plus un paiement actif par room_id via
@@ -18,7 +18,7 @@ final class BookingPaymentTable {
                     + BOOKING_PAYMENT_COLUMNS
                     + " FROM booking_payment WHERE room_id = ANY (?) AND status <> 'EXPIRED'";
 
-    // Même raison que SELECT_BOOKING_PAYMENTS_BY_ROOM_IDS, côté lits (migration V34).
+    // Même raison que SELECT_BOOKING_PAYMENTS_BY_ROOM_IDS, côté lits (migration V35).
     static final String SELECT_BOOKING_PAYMENTS_BY_BED_IDS =
             "SELECT "
                     + BOOKING_PAYMENT_COLUMNS
