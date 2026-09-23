@@ -83,6 +83,17 @@ public class BookingPaymentRepository {
                 .findFirst();
     }
 
+    /** Paiement identifié par son id, pour GET /payments/{id} (voir BookingPaymentService). */
+    public Optional<BookingPayment> findById(long id) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.SELECT_BOOKING_PAYMENT_BY_ID,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        id)
+                .stream()
+                .findFirst();
+    }
+
     /** Plans de paiement identifiés par ces ids, pour PaymentReminderService. */
     public List<BookingPayment> findByIds(List<Long> ids) {
         if (ids.isEmpty()) {

@@ -22,6 +22,11 @@ final class BookingPaymentTable {
                     + BOOKING_PAYMENT_COLUMNS
                     + " FROM booking_payment WHERE moov_transaction_id = ?";
 
+    // Pour GET /payments/{id} (polling app pendant l'attente du webhook, voir
+    // BookingPaymentService.getStatusForUser).
+    static final String SELECT_BOOKING_PAYMENT_BY_ID =
+            "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE id = ?";
+
     // Pour PaymentReminderService : retrouver le roomId/bedId d'une tranche à rappeler.
     static final String SELECT_BOOKING_PAYMENTS_BY_IDS =
             "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE id = ANY (?)";
