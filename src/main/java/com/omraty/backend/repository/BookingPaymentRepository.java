@@ -8,6 +8,7 @@ import java.sql.Array;
 import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -65,6 +66,21 @@ public class BookingPaymentRepository {
                     ps.setArray(1, array);
                 },
                 BOOKING_PAYMENT_ROW_MAPPER);
+    }
+
+    /**
+     * Retrouve l'achat à partir de l'identifiant de transaction renvoyé par Moov — seul lien entre
+     * le webhook de confirmation et le booking_payment concerné (voir migration V33,
+     * BookingPaymentService.confirmFromGateway).
+     */
+    public Optional<BookingPayment> findByMoovTransactionId(String moovTransactionId) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.SELECT_BOOKING_PAYMENT_BY_MOOV_TRANSACTION_ID,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        moovTransactionId)
+                .stream()
+                .findFirst();
     }
 
     /** Plans de paiement identifiés par ces ids, pour PaymentReminderService. */
@@ -131,5 +147,23 @@ public class BookingPaymentRepository {
                         () ->
                                 new IllegalStateException(
                                         "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
+     * Passe un paiement PENDING à CONFIRMED ou FAILED à la réception du webhook (voir
+     * BookingPaymentService.confirmFromGateway).
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était plus PENDING — un
+     *     webhook rejoué ne doit pas écraser un statut déjà tranché.
+     */
+    public Optional<BookingPayment> updateStatusIfPending(long paymentId, PaymentStatus status) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.UPDATE_STATUS_IF_PENDING,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        status.name(),
+                        paymentId)
+                .stream()
+                .findFirst();
     }
 }

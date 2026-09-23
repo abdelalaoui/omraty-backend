@@ -14,6 +14,14 @@ final class BookingPaymentTable {
     static final String SELECT_BOOKING_PAYMENTS_BY_BED_IDS =
             "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE bed_id = ANY (?)";
 
+    // Pour le webhook de confirmation (POST /webhooks/moov) : retrouver l'achat à partir du seul
+    // identifiant renvoyé par la banque. Index unique en base (voir migration V33), donc au plus
+    // une ligne.
+    static final String SELECT_BOOKING_PAYMENT_BY_MOOV_TRANSACTION_ID =
+            "SELECT "
+                    + BOOKING_PAYMENT_COLUMNS
+                    + " FROM booking_payment WHERE moov_transaction_id = ?";
+
     // Pour PaymentReminderService : retrouver le roomId/bedId d'une tranche à rappeler.
     static final String SELECT_BOOKING_PAYMENTS_BY_IDS =
             "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE id = ANY (?)";
@@ -30,5 +38,12 @@ final class BookingPaymentTable {
     static final String ATTACH_GATEWAY_RESULT =
             "UPDATE booking_payment SET moov_payment_code = ?, moov_transaction_id = ?, payer_phone"
                     + " = ?, expires_at = ? WHERE id = ? RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
+
+    // Passage PENDING -> CONFIRMED/FAILED à la réception du webhook (voir
+    // BookingPaymentService.confirmFromGateway). La clause status = 'PENDING' rend l'appel
+    // idempotent jusqu'en base : un webhook rejoué ne met à jour aucune ligne.
+    static final String UPDATE_STATUS_IF_PENDING =
+            "UPDATE booking_payment SET status = ? WHERE id = ? AND status = 'PENDING' RETURNING "
                     + BOOKING_PAYMENT_COLUMNS;
 }

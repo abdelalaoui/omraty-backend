@@ -30,6 +30,12 @@ public class SecurityConfig {
                         auth ->
                                 auth.requestMatchers(
                                                 "/auth/**",
+                                                // Appelé par la banque (Moov) sans JWT : voir
+                                                // MoovWebhookController. Sa sécurité ne peut pas
+                                                // reposer sur le JWT du client — un secret partagé
+                                                // / une signature sera ajouté une fois la doc Moov
+                                                // reçue.
+                                                "/webhooks/**",
                                                 "/v3/api-docs/**",
                                                 "/swagger-ui/**",
                                                 "/swagger-ui.html")

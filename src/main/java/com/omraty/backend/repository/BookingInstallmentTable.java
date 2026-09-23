@@ -13,6 +13,13 @@ final class BookingInstallmentTable {
                     + " FROM booking_installment WHERE booking_payment_id = ANY (?) ORDER BY"
                     + " booking_payment_id, sequence";
 
+    // Le webhook de confirmation marque la 1ère tranche payée (sequence = 1) : voir
+    // BookingPaymentService.confirmFromGateway.
+    static final String SELECT_INSTALLMENT_BY_PAYMENT_AND_SEQUENCE =
+            "SELECT "
+                    + BOOKING_INSTALLMENT_COLUMNS
+                    + " FROM booking_installment WHERE booking_payment_id = ? AND sequence = ?";
+
     static final String SELECT_INSTALLMENT_BY_ID =
             "SELECT " + BOOKING_INSTALLMENT_COLUMNS + " FROM booking_installment WHERE id = ?";
 

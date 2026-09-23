@@ -2,14 +2,18 @@ package com.omraty.backend.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
+import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.enums.PaymentPlan;
@@ -19,8 +23,10 @@ import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
 import com.omraty.backend.repository.AuthRepository;
+import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -45,6 +51,9 @@ class BookingPaymentServiceTest {
     @Mock private BookingInstallmentRepository bookingInstallmentRepository;
     @Mock private AuthRepository authRepository;
     @Mock private PaymentGatewayClient paymentGatewayClient;
+    @Mock private RoomRepository roomRepository;
+    @Mock private BedRepository bedRepository;
+    @Mock private NotificationService notificationService;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
@@ -52,7 +61,10 @@ class BookingPaymentServiceTest {
                 bookingPaymentRepository,
                 bookingInstallmentRepository,
                 authRepository,
-                paymentGatewayClient);
+                paymentGatewayClient,
+                roomRepository,
+                bedRepository,
+                notificationService);
     }
 
     private User user(String phone) {
@@ -382,6 +394,146 @@ class BookingPaymentServiceTest {
         assertThat(result.remainingAmount()).isEqualByComparingTo("40000");
         assertThat(result.nextDueDate()).isEqualTo(secondDueDate);
         assertThat(result.installments()).hasSize(3);
+    }
+
+    private BookingPayment pendingPayment(Long roomId, Long bedId, PaymentPlan plan) {
+        return new BookingPayment(
+                10L,
+                roomId,
+                bedId,
+                plan,
+                PaymentStatus.PENDING,
+                new BigDecimal("90000"),
+                "CODE123",
+                "txn-1",
+                "+22890000000",
+                LocalDateTime.now().plusMinutes(15),
+                LocalDateTime.now());
+    }
+
+    private BookingPayment withStatus(BookingPayment payment, PaymentStatus status) {
+        return new BookingPayment(
+                payment.id(),
+                payment.roomId(),
+                payment.bedId(),
+                payment.plan(),
+                status,
+                payment.totalAmount(),
+                payment.moovPaymentCode(),
+                payment.moovTransactionId(),
+                payment.payerPhone(),
+                payment.expiresAt(),
+                payment.createdAt());
+    }
+
+    @Test
+    void confirmFromGateway_whenTransactionIdUnknown_throwsException() {
+        when(bookingPaymentRepository.findByMoovTransactionId("inconnu"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().confirmFromGateway("inconnu", "SUCCESS"))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+
+        verify(bookingPaymentRepository, never()).updateStatusIfPending(anyLongV(), any());
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void confirmFromGateway_whenSuccessAndFullPlan_confirmsAndNotifiesOwner() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findByMoovTransactionId("txn-1"))
+                .thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.updateStatusIfPending(10L, PaymentStatus.CONFIRMED))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.CONFIRMED)));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        bookingPaymentService().confirmFromGateway("txn-1", "SUCCESS");
+
+        verify(bookingPaymentRepository).updateStatusIfPending(10L, PaymentStatus.CONFIRMED);
+        // Plan FULL : aucune tranche à marquer payée.
+        verify(bookingInstallmentRepository, never())
+                .findByPaymentIdAndSequence(anyLongV(), anyIntV());
+        verify(notificationService).create(eq(USER_ID), eq("Paiement confirmé"), anyString());
+    }
+
+    @Test
+    void confirmFromGateway_whenSuccessAndInstallments_marksFirstInstallmentPaid() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.INSTALLMENTS);
+        when(bookingPaymentRepository.findByMoovTransactionId("txn-1"))
+                .thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.updateStatusIfPending(10L, PaymentStatus.CONFIRMED))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.CONFIRMED)));
+        when(bookingInstallmentRepository.findByPaymentIdAndSequence(10L, 1))
+                .thenReturn(
+                        Optional.of(
+                                new BookingInstallment(
+                                        1L,
+                                        10L,
+                                        1,
+                                        new BigDecimal("54000"),
+                                        LocalDate.now(),
+                                        null,
+                                        null)));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        bookingPaymentService().confirmFromGateway("txn-1", "success");
+
+        // Seule la 1ère tranche est réglée à la confirmation : les 2 autres restent dues.
+        verify(bookingInstallmentRepository).markPaid(1L);
+        verify(notificationService).create(eq(USER_ID), eq("Paiement confirmé"), anyString());
+    }
+
+    @Test
+    void confirmFromGateway_whenStatusIsNotASuccess_marksFailedAndLeavesInstallmentsUnpaid() {
+        BookingPayment payment = pendingPayment(null, 200L, PaymentPlan.INSTALLMENTS);
+        when(bookingPaymentRepository.findByMoovTransactionId("txn-1"))
+                .thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.updateStatusIfPending(10L, PaymentStatus.FAILED))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.FAILED)));
+        when(bedRepository.findByIds(List.of(200L)))
+                .thenReturn(List.of(new Bed(200L, 1, true, 30L, USER_ID, LocalDateTime.now())));
+
+        // Statut inconnu de la doc Moov : traité comme un échec, jamais comme une confirmation.
+        bookingPaymentService().confirmFromGateway("txn-1", "REJECTED");
+
+        verify(bookingPaymentRepository).updateStatusIfPending(10L, PaymentStatus.FAILED);
+        verify(bookingInstallmentRepository, never()).markPaid(anyLongV());
+        verify(notificationService).create(eq(USER_ID), eq("Paiement échoué"), anyString());
+    }
+
+    @Test
+    void confirmFromGateway_forBedBooking_notifiesTheBedOwner() {
+        BookingPayment payment = pendingPayment(null, 200L, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findByMoovTransactionId("txn-1"))
+                .thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.updateStatusIfPending(10L, PaymentStatus.CONFIRMED))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.CONFIRMED)));
+        when(bedRepository.findByIds(List.of(200L)))
+                .thenReturn(List.of(new Bed(200L, 1, true, 30L, USER_ID, LocalDateTime.now())));
+
+        bookingPaymentService().confirmFromGateway("txn-1", "CONFIRMED");
+
+        verify(notificationService).create(eq(USER_ID), eq("Paiement confirmé"), anyString());
+    }
+
+    @Test
+    void confirmFromGateway_whenPaymentNoLongerPending_doesNothing() {
+        BookingPayment alreadyConfirmed =
+                withStatus(
+                        pendingPayment(30L, null, PaymentPlan.INSTALLMENTS),
+                        PaymentStatus.CONFIRMED);
+        when(bookingPaymentRepository.findByMoovTransactionId("txn-1"))
+                .thenReturn(Optional.of(alreadyConfirmed));
+        // La clause SQL status = 'PENDING' n'a mis à jour aucune ligne : webhook rejoué par Moov.
+        when(bookingPaymentRepository.updateStatusIfPending(10L, PaymentStatus.CONFIRMED))
+                .thenReturn(Optional.empty());
+
+        bookingPaymentService().confirmFromGateway("txn-1", "SUCCESS");
+
+        verify(bookingInstallmentRepository, never()).markPaid(anyLongV());
+        verifyNoInteractions(notificationService);
     }
 
     private static long anyLongV() {

@@ -1,8 +1,10 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
+import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
@@ -11,8 +13,10 @@ import com.omraty.backend.exception.UserException;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
 import com.omraty.backend.repository.AuthRepository;
+import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -20,10 +24,16 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Persiste le plan de paiement choisi à l'achat d'une chambre ou à la réservation d'un lit (voir
@@ -31,30 +41,56 @@ import org.springframework.stereotype.Service;
  * n'existaient côté backend, tout était recalculé et affiché en mock côté app (PaymentPlanScreen) à
  * chaque fois. {@link #createPaymentPlan} est appelé par RoomService dans la même transaction que
  * la création de la chambre/du lit.
+ *
+ * <p>{@link #confirmFromGateway} ferme le cycle : c'est le seul endroit qui fait passer un
+ * booking_payment de PENDING à CONFIRMED/FAILED, appelé par le webhook Moov (voir
+ * MoovWebhookController).
  */
 @Service
 public class BookingPaymentService {
 
+    private static final Logger log = LoggerFactory.getLogger(BookingPaymentService.class);
+
     private static final BigDecimal FIRST_INSTALLMENT_RATIO = new BigDecimal("0.60");
     private static final BigDecimal SECOND_INSTALLMENT_RATIO = new BigDecimal("0.20");
+
+    private static final int FIRST_INSTALLMENT_SEQUENCE = 1;
+
+    /**
+     * Valeurs du champ status du webhook considérées comme un paiement réussi (voir {@link
+     * #confirmFromGateway}). Liste volontairement large, comparée sans tenir compte de la casse :
+     * la doc Moov n'étant pas encore reçue, on ne sait pas laquelle sera utilisée. À réduire à la
+     * valeur réelle une fois la doc en main.
+     */
+    private static final Set<String> SUCCESS_STATUSES =
+            Set.of("SUCCESS", "SUCCESSFUL", "CONFIRMED", "COMPLETED", "PAID", "OK");
 
     private final ServiceTierRepository serviceTierRepository;
     private final BookingPaymentRepository bookingPaymentRepository;
     private final BookingInstallmentRepository bookingInstallmentRepository;
     private final AuthRepository authRepository;
     private final PaymentGatewayClient paymentGatewayClient;
+    private final RoomRepository roomRepository;
+    private final BedRepository bedRepository;
+    private final NotificationService notificationService;
 
     public BookingPaymentService(
             ServiceTierRepository serviceTierRepository,
             BookingPaymentRepository bookingPaymentRepository,
             BookingInstallmentRepository bookingInstallmentRepository,
             AuthRepository authRepository,
-            PaymentGatewayClient paymentGatewayClient) {
+            PaymentGatewayClient paymentGatewayClient,
+            RoomRepository roomRepository,
+            BedRepository bedRepository,
+            NotificationService notificationService) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
         this.authRepository = authRepository;
         this.paymentGatewayClient = paymentGatewayClient;
+        this.roomRepository = roomRepository;
+        this.bedRepository = bedRepository;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -194,6 +230,126 @@ public class BookingPaymentService {
                         () ->
                                 new BookingPaymentException.InstallmentNotFoundException(
                                         "Tranche introuvable (id=" + installmentId + ")"));
+    }
+
+    /**
+     * Applique la confirmation de paiement reçue de la passerelle (webhook Moov, voir
+     * MoovWebhookController) : retrouve l'achat par son identifiant de transaction, le passe à
+     * CONFIRMED ou FAILED selon {@code gatewayStatus}, marque la 1ère tranche payée si le plan est
+     * INSTALLMENTS (elle ne l'est plus à la création depuis l'ajout du statut PENDING, voir
+     * migration V32), puis notifie le client dans les deux cas.
+     *
+     * <p>Idempotent : le passage de statut est conditionné à PENDING jusqu'en base (voir
+     * BookingPaymentRepository.updateStatusIfPending), donc un webhook rejoué par Moov ne rejoue ni
+     * la tranche ni la notification.
+     *
+     * <p>{@code gatewayStatus} est le champ brut du webhook : tant que la doc Moov n'est pas reçue,
+     * tout ce qui n'est pas dans {@link #SUCCESS_STATUSES} est traité comme un échec (voir {@link
+     * #toPaymentStatus}).
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si aucun paiement ne porte ce
+     *     transactionId.
+     */
+    @Transactional
+    public void confirmFromGateway(String transactionId, String gatewayStatus) {
+        BookingPayment payment =
+                bookingPaymentRepository
+                        .findByMoovTransactionId(transactionId)
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotFoundException(
+                                                "Aucun paiement ne correspond à cette transaction"
+                                                        + " (transactionId="
+                                                        + transactionId
+                                                        + ")"));
+        PaymentStatus newStatus = toPaymentStatus(gatewayStatus);
+        Optional<BookingPayment> updated =
+                bookingPaymentRepository.updateStatusIfPending(payment.id(), newStatus);
+        if (updated.isEmpty()) {
+            // Webhook rejoué (ou paiement déjà expiré/tranché) : on ne retouche ni la tranche ni
+            // la notification déjà envoyée.
+            log.info(
+                    "Webhook Moov ignoré, paiement déjà au statut {} (id={}, transactionId={})",
+                    payment.status(),
+                    payment.id(),
+                    transactionId);
+            return;
+        }
+        if (newStatus == PaymentStatus.CONFIRMED && payment.plan() == PaymentPlan.INSTALLMENTS) {
+            markFirstInstallmentPaid(payment.id());
+        }
+        notifyPaymentOutcome(payment, newStatus);
+    }
+
+    /**
+     * Statut de paiement déduit du champ status brut du webhook. Comparaison insensible à la casse
+     * ; toute valeur inconnue est traitée comme un échec — plutôt laisser un achat en FAILED (que
+     * l'admin peut rattraper, voir AdminInstallmentController) que confirmer un paiement qui n'a
+     * pas eu lieu.
+     */
+    private static PaymentStatus toPaymentStatus(String gatewayStatus) {
+        String normalized = gatewayStatus.trim().toUpperCase(Locale.ROOT);
+        return SUCCESS_STATUSES.contains(normalized)
+                ? PaymentStatus.CONFIRMED
+                : PaymentStatus.FAILED;
+    }
+
+    /**
+     * Marque la 1ère tranche payée à la confirmation du paiement : c'est elle que le client règle
+     * au moment de l'achat (60% du total, voir {@link #createInstallments}), les 2 suivantes
+     * restent dues.
+     */
+    private void markFirstInstallmentPaid(long paymentId) {
+        bookingInstallmentRepository
+                .findByPaymentIdAndSequence(paymentId, FIRST_INSTALLMENT_SEQUENCE)
+                .filter(installment -> installment.paidAt() == null)
+                .ifPresent(installment -> bookingInstallmentRepository.markPaid(installment.id()));
+    }
+
+    /**
+     * Prévient le client du résultat de son paiement (voir NotificationService : in-app + push
+     * FCM). Le propriétaire est porté par la chambre (types 2/3) ou par le lit (type 5) — voir
+     * PaymentReminderService, même résolution. Si le propriétaire n'est pas résolvable, le
+     * changement de statut reste acquis : on ne fait pas échouer le webhook pour une notification.
+     */
+    private void notifyPaymentOutcome(BookingPayment payment, PaymentStatus status) {
+        UUID userId = resolveOwnerUserId(payment);
+        if (userId == null) {
+            log.warn(
+                    "Paiement {} passé à {} mais propriétaire introuvable : aucune notification"
+                            + " envoyée",
+                    payment.id(),
+                    status);
+            return;
+        }
+        if (status == PaymentStatus.CONFIRMED) {
+            notificationService.create(
+                    userId,
+                    "Paiement confirmé",
+                    "Votre paiement de "
+                            + payment.totalAmount()
+                            + " a bien été confirmé. Votre réservation est validée.");
+        } else {
+            notificationService.create(
+                    userId,
+                    "Paiement échoué",
+                    "Votre paiement de "
+                            + payment.totalAmount()
+                            + " n'a pas pu être confirmé. Merci de réessayer.");
+        }
+    }
+
+    private UUID resolveOwnerUserId(BookingPayment payment) {
+        if (payment.roomId() != null) {
+            return roomRepository.findByIds(List.of(payment.roomId())).stream()
+                    .findFirst()
+                    .map(Room::userId)
+                    .orElse(null);
+        }
+        return bedRepository.findByIds(List.of(payment.bedId())).stream()
+                .findFirst()
+                .map(Bed::userId)
+                .orElse(null);
     }
 
     /** Plans de paiement des chambres achetées (types 2/3), indexés par roomId. */
