@@ -155,6 +155,24 @@ public class RoomService {
     }
 
     /**
+     * Libère la chambre ou le lit d'un paiement expiré (voir PaymentExpirationService) — exactement
+     * l'un des deux renseigné, comme booking_payment (voir migration V30). Chambre entière (types
+     * 2/3) : remise à disposition dans le plafond group_size du package (voir
+     * PackageCapacityService), la ligne room elle-même n'est pas supprimée (booking_payment.room_id
+     * la référence encore). Lit (type 5) : redevient sélectionnable, et la chambre partagée rouvre
+     * si elle était pleine (reserved_count décrémenté).
+     */
+    @Transactional
+    public void releaseReservation(Long roomId, Long bedId) {
+        if (roomId != null) {
+            roomRepository.release(roomId);
+        } else {
+            Bed bed = bedRepository.release(bedId);
+            roomRepository.decrementReservedCount(bed.roomId());
+        }
+    }
+
+    /**
      * Réservations de l'utilisateur connecté (GET /users/me/purchases) : chambres entières (type
      * 2/3) achetées directement, et lits (type 5) réservés individuellement — le tout, les plus
      * récentes d'abord, avec le label du package rattaché (jointure).

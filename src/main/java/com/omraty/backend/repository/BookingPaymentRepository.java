@@ -8,6 +8,7 @@ import java.sql.Array;
 import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -131,5 +132,31 @@ public class BookingPaymentRepository {
                         () ->
                                 new IllegalStateException(
                                         "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
+     * Paiements PENDING dont l'expiration est dépassée, pour le job d'expiration (voir
+     * PaymentExpirationService).
+     */
+    public List<BookingPayment> findPendingExpiredBefore(LocalDateTime now) {
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_PENDING_EXPIRED_BEFORE, BOOKING_PAYMENT_ROW_MAPPER, now);
+    }
+
+    /**
+     * Passe un paiement PENDING à EXPIRED (voir PaymentExpirationService).
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était plus PENDING — une
+     *     confirmation concurrente (webhook ou job de secours, tâche 07) ne doit jamais être
+     *     écrasée par une expiration.
+     */
+    public Optional<BookingPayment> markExpiredIfPending(long paymentId) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.UPDATE_STATUS_TO_EXPIRED_IF_PENDING,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        paymentId)
+                .stream()
+                .findFirst();
     }
 }
