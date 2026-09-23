@@ -26,6 +26,10 @@ payment:
     # mock (par défaut, dev/test, voir MockPaymentGatewayClient) | moov (une fois la vraie
     # implémentation MoovPaymentGatewayClient écrite, voir PaymentGatewayClient)
     provider: ${PAYMENT_GATEWAY_PROVIDER:mock}
+    # Fréquence du job de vérification de secours des paiements PENDING (voir
+    # PendingPaymentCheckTask). Le seuil d'âge à partir duquel un paiement est vérifié est lui
+    # configurable en base sans redéploiement (voir migration V34, AppSettingService).
+    pending-check-interval-ms: ${PAYMENT_PENDING_CHECK_INTERVAL_MS:60000}
 
 app:
   vip:
