@@ -37,6 +37,7 @@ class RoomServiceTest {
                     1L,
                     null,
                     null,
+                    null,
                     PaymentPlan.FULL,
                     PaymentStatus.PENDING,
                     BigDecimal.TEN,

@@ -3,6 +3,8 @@ package com.omraty.backend.repository;
 import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.VipRequestStatus;
 import java.math.BigDecimal;
+import java.sql.Array;
+import java.sql.PreparedStatement;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -64,6 +66,21 @@ public class VipRequestRepository {
     public List<VipRequest> findByUserId(UUID userId) {
         return jdbcTemplate.query(
                 VipRequestTable.SELECT_VIP_REQUESTS_BY_USER, VIP_REQUEST_ROW_MAPPER, userId);
+    }
+
+    /** Pour BookingPaymentService.resolveOwnerUserId (paiement d'une offre VIP acceptée). */
+    public List<VipRequest> findByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbcTemplate.query(
+                VipRequestTable.SELECT_VIP_REQUESTS_BY_IDS,
+                (PreparedStatement ps) -> {
+                    Array array =
+                            ps.getConnection().createArrayOf("bigint", ids.toArray(new Long[0]));
+                    ps.setArray(1, array);
+                },
+                VIP_REQUEST_ROW_MAPPER);
     }
 
     public VipRequest insert(

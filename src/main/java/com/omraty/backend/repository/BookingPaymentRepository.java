@@ -22,6 +22,7 @@ public class BookingPaymentRepository {
                             rs.getLong("id"),
                             (Long) rs.getObject("room_id", Long.class),
                             (Long) rs.getObject("bed_id", Long.class),
+                            (Long) rs.getObject("vip_request_id", Long.class),
                             PaymentPlan.valueOf(rs.getString("plan")),
                             PaymentStatus.valueOf(rs.getString("status")),
                             rs.getBigDecimal("total_amount"),
@@ -109,10 +110,13 @@ public class BookingPaymentRepository {
                 BOOKING_PAYMENT_ROW_MAPPER);
     }
 
-    /** roomId et bedId : exactement l'un des deux renseigné (voir migration V30). */
+    /**
+     * roomId, bedId et vipRequestId : exactement l'un des trois renseigné (voir migration V30/V36).
+     */
     public BookingPayment insert(
             Long roomId,
             Long bedId,
+            Long vipRequestId,
             PaymentPlan plan,
             PaymentStatus status,
             BigDecimal totalAmount) {
@@ -122,6 +126,7 @@ public class BookingPaymentRepository {
                         BOOKING_PAYMENT_ROW_MAPPER,
                         roomId,
                         bedId,
+                        vipRequestId,
                         plan.name(),
                         status.name(),
                         totalAmount)

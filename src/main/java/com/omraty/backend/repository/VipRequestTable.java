@@ -22,6 +22,12 @@ final class VipRequestTable {
                     + VIP_REQUEST_COLUMNS
                     + " FROM vip_request WHERE user_id = ? ORDER BY created_at DESC";
 
+    // Pour BookingPaymentService.resolveOwnerUserId (paiement d'une offre VIP acceptée, voir
+    // migration V36) : retrouver le propriétaire à partir de vip_request_id, sans verrou (lecture
+    // seule, contrairement à SELECT_VIP_REQUEST_BY_ID_FOR_UPDATE).
+    static final String SELECT_VIP_REQUESTS_BY_IDS =
+            "SELECT " + VIP_REQUEST_COLUMNS + " FROM vip_request WHERE id = ANY (?)";
+
     static final String INSERT_VIP_REQUEST =
             "INSERT INTO vip_request (user_id, package_id, mecca_hotel_id, mecca_check_in,"
                     + " mecca_check_out, medina_hotel_id, medina_check_in, medina_check_out, seats,"

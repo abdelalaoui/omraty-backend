@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.Hotel;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.HotelCity;
+import com.omraty.backend.entities.enums.PaymentPlan;
+import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.entities.enums.VipRequestStatus;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.RoomException;
@@ -38,6 +41,7 @@ class VipRequestServiceTest {
     @Mock private HotelRepository hotelRepository;
     @Mock private PackageRepository packageRepository;
     @Mock private RoomRepository roomRepository;
+    @Mock private BookingPaymentService bookingPaymentService;
     @Mock private NotificationService notificationService;
 
     private VipRequestService vipRequestService() {
@@ -46,6 +50,7 @@ class VipRequestServiceTest {
                 hotelRepository,
                 packageRepository,
                 new PackageCapacityService(roomRepository),
+                bookingPaymentService,
                 notificationService,
                 OFFER_EXPIRATION_HOURS);
     }
@@ -354,19 +359,36 @@ class VipRequestServiceTest {
     }
 
     @Test
-    void accept_byOwnerBeforeExpiration_setsAccepted() {
+    void accept_byOwnerBeforeExpiration_createsVipPaymentPlanWithProposedPrice() {
         when(vipRequestRepository.findByIdForUpdate(1L))
                 .thenReturn(
                         Optional.of(
                                 vipRequest(
                                         VipRequestStatus.OFFER_SENT,
                                         LocalDateTime.now().plusHours(1))));
-        when(vipRequestRepository.updateAccept(1L))
-                .thenReturn(vipRequest(VipRequestStatus.ACCEPTED, null));
+        VipRequest accepted = vipRequest(VipRequestStatus.ACCEPTED, null);
+        when(vipRequestRepository.updateAccept(1L)).thenReturn(accepted);
+        BookingPayment payment =
+                new BookingPayment(
+                        20L,
+                        null,
+                        null,
+                        1L,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("5000.00"),
+                        "CODE123",
+                        "txn-1",
+                        "+22890000000",
+                        LocalDateTime.now().plusMinutes(15),
+                        LocalDateTime.now());
+        when(bookingPaymentService.createVipPaymentPlan(1L, new BigDecimal("5000.00"), USER_ID))
+                .thenReturn(payment);
 
-        VipRequest result = vipRequestService().accept(USER_ID, 1L);
+        BookingPayment result = vipRequestService().accept(USER_ID, 1L);
 
-        assertThat(result.status()).isEqualTo(VipRequestStatus.ACCEPTED);
+        assertThat(result).isEqualTo(payment);
+        verify(bookingPaymentService).createVipPaymentPlan(1L, new BigDecimal("5000.00"), USER_ID);
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.ServiceTier;
+import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
@@ -20,6 +21,7 @@ import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
+import com.omraty.backend.repository.VipRequestRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -74,6 +76,7 @@ public class BookingPaymentService {
     private final PaymentGatewayClient paymentGatewayClient;
     private final RoomRepository roomRepository;
     private final BedRepository bedRepository;
+    private final VipRequestRepository vipRequestRepository;
     private final NotificationService notificationService;
 
     public BookingPaymentService(
@@ -84,6 +87,7 @@ public class BookingPaymentService {
             PaymentGatewayClient paymentGatewayClient,
             RoomRepository roomRepository,
             BedRepository bedRepository,
+            VipRequestRepository vipRequestRepository,
             NotificationService notificationService) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
@@ -92,6 +96,7 @@ public class BookingPaymentService {
         this.paymentGatewayClient = paymentGatewayClient;
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
+        this.vipRequestRepository = vipRequestRepository;
         this.notificationService = notificationService;
     }
 
@@ -145,6 +150,29 @@ public class BookingPaymentService {
             BigDecimal totalAmount,
             OmraPackage pkg,
             UUID userId) {
+        return createPaymentPlan(roomId, bedId, null, plan, totalAmount, pkg, userId);
+    }
+
+    /**
+     * Crée le paiement d'une offre VIP acceptée (vipRequestId renseigné, voir migration V36,
+     * VipRequestService.accept) : même mécanisme que {@link #createPaymentPlan}, toujours en plan
+     * FULL (une offre VIP n'a qu'un montant global, pas de tranches) avec proposedPrice comme
+     * montant.
+     */
+    public BookingPayment createVipPaymentPlan(
+            long vipRequestId, BigDecimal proposedPrice, UUID userId) {
+        return createPaymentPlan(
+                null, null, vipRequestId, PaymentPlan.FULL, proposedPrice, null, userId);
+    }
+
+    private BookingPayment createPaymentPlan(
+            Long roomId,
+            Long bedId,
+            Long vipRequestId,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId) {
         if (plan == PaymentPlan.INSTALLMENTS && pkg.endDate() == null) {
             throw new BookingPaymentException.PackageDatesMissingException(
                     "Le paiement en 3 tranches nécessite une date de fin (endDate) sur le package"
@@ -154,7 +182,7 @@ public class BookingPaymentService {
         }
         BookingPayment payment =
                 bookingPaymentRepository.insert(
-                        roomId, bedId, plan, PaymentStatus.PENDING, totalAmount);
+                        roomId, bedId, vipRequestId, plan, PaymentStatus.PENDING, totalAmount);
         if (plan == PaymentPlan.INSTALLMENTS) {
             createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate());
         }
@@ -373,9 +401,15 @@ public class BookingPaymentService {
                     .map(Room::userId)
                     .orElse(null);
         }
-        return bedRepository.findByIds(List.of(payment.bedId())).stream()
+        if (payment.bedId() != null) {
+            return bedRepository.findByIds(List.of(payment.bedId())).stream()
+                    .findFirst()
+                    .map(Bed::userId)
+                    .orElse(null);
+        }
+        return vipRequestRepository.findByIds(List.of(payment.vipRequestId())).stream()
                 .findFirst()
-                .map(Bed::userId)
+                .map(VipRequest::userId)
                 .orElse(null);
     }
 

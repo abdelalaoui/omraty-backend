@@ -17,9 +17,11 @@ import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.User;
+import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.entities.enums.ServiceTierType;
+import com.omraty.backend.entities.enums.VipRequestStatus;
 import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
@@ -29,6 +31,7 @@ import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
+import com.omraty.backend.repository.VipRequestRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -54,6 +57,7 @@ class BookingPaymentServiceTest {
     @Mock private PaymentGatewayClient paymentGatewayClient;
     @Mock private RoomRepository roomRepository;
     @Mock private BedRepository bedRepository;
+    @Mock private VipRequestRepository vipRequestRepository;
     @Mock private NotificationService notificationService;
 
     private BookingPaymentService bookingPaymentService() {
@@ -65,6 +69,7 @@ class BookingPaymentServiceTest {
                 paymentGatewayClient,
                 roomRepository,
                 bedRepository,
+                vipRequestRepository,
                 notificationService);
     }
 
@@ -121,6 +126,7 @@ class BookingPaymentServiceTest {
                         10L,
                         30L,
                         null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("90000"),
@@ -131,6 +137,7 @@ class BookingPaymentServiceTest {
                         null);
         when(bookingPaymentRepository.insert(
                         30L,
+                        null,
                         null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
@@ -145,6 +152,7 @@ class BookingPaymentServiceTest {
                 new BookingPayment(
                         10L,
                         30L,
+                        null,
                         null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
@@ -184,7 +192,7 @@ class BookingPaymentServiceTest {
                                                 USER_ID))
                 .isInstanceOf(BookingPaymentException.PackageDatesMissingException.class);
 
-        verify(bookingPaymentRepository, never()).insert(any(), any(), any(), any(), any());
+        verify(bookingPaymentRepository, never()).insert(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -197,6 +205,7 @@ class BookingPaymentServiceTest {
                         10L,
                         null,
                         200L,
+                        null,
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.PENDING,
                         new BigDecimal("100000"),
@@ -208,6 +217,7 @@ class BookingPaymentServiceTest {
         when(bookingPaymentRepository.insert(
                         null,
                         200L,
+                        null,
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.PENDING,
                         new BigDecimal("100000")))
@@ -282,6 +292,63 @@ class BookingPaymentServiceTest {
     }
 
     @Test
+    void createVipPaymentPlan_insertsFullPaymentLinkedToVipRequestWithoutInstallments() {
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        null,
+                        null,
+                        5L,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("5000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        null,
+                        null,
+                        5L,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("5000.00")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(15);
+        when(paymentGatewayClient.createPayment(
+                        "+22890000000", new BigDecimal("5000.00"), "booking-payment-10"))
+                .thenReturn(new PaymentGatewayResult("CODE789", "txn-vip-1", expiresAt));
+        BookingPayment withGateway =
+                new BookingPayment(
+                        10L,
+                        null,
+                        null,
+                        5L,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("5000.00"),
+                        "CODE789",
+                        "txn-vip-1",
+                        "+22890000000",
+                        expiresAt,
+                        null);
+        when(bookingPaymentRepository.attachGatewayResult(
+                        10L, "CODE789", "txn-vip-1", "+22890000000", expiresAt))
+                .thenReturn(withGateway);
+
+        BookingPayment result =
+                bookingPaymentService()
+                        .createVipPaymentPlan(5L, new BigDecimal("5000.00"), USER_ID);
+
+        assertThat(result).isEqualTo(withGateway);
+        assertThat(result.vipRequestId()).isEqualTo(5L);
+        verify(bookingInstallmentRepository, never())
+                .insert(anyLongV(), anyIntV(), any(), any(), any());
+    }
+
+    @Test
     void markInstallmentPaid_whenNotFound_throwsException() {
         when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.empty());
 
@@ -337,6 +404,7 @@ class BookingPaymentServiceTest {
                         1L,
                         30L,
                         null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.CONFIRMED,
                         new BigDecimal("90000"),
@@ -362,6 +430,7 @@ class BookingPaymentServiceTest {
                         1L,
                         null,
                         200L,
+                        null,
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.CONFIRMED,
                         new BigDecimal("100000"),
@@ -398,10 +467,39 @@ class BookingPaymentServiceTest {
     }
 
     private BookingPayment pendingPayment(Long roomId, Long bedId, PaymentPlan plan) {
+        return pendingPayment(roomId, bedId, null, plan);
+    }
+
+    private BookingPayment vipPendingPayment(long vipRequestId, PaymentPlan plan) {
+        return pendingPayment(null, null, vipRequestId, plan);
+    }
+
+    private VipRequest vipRequest(long id) {
+        return new VipRequest(
+                id,
+                USER_ID,
+                1L,
+                1L,
+                LocalDate.now().plusDays(10),
+                LocalDate.now().plusDays(15),
+                2L,
+                LocalDate.now().plusDays(15),
+                LocalDate.now().plusDays(20),
+                4,
+                "Royal Air Maroc",
+                VipRequestStatus.ACCEPTED,
+                new BigDecimal("5000.00"),
+                null,
+                LocalDateTime.now());
+    }
+
+    private BookingPayment pendingPayment(
+            Long roomId, Long bedId, Long vipRequestId, PaymentPlan plan) {
         return new BookingPayment(
                 10L,
                 roomId,
                 bedId,
+                vipRequestId,
                 plan,
                 PaymentStatus.PENDING,
                 new BigDecimal("90000"),
@@ -417,6 +515,7 @@ class BookingPaymentServiceTest {
                 payment.id(),
                 payment.roomId(),
                 payment.bedId(),
+                payment.vipRequestId(),
                 payment.plan(),
                 status,
                 payment.totalAmount(),
@@ -520,6 +619,20 @@ class BookingPaymentServiceTest {
     }
 
     @Test
+    void confirmFromGateway_forVipRequestBooking_notifiesTheVipRequestOwner() {
+        BookingPayment payment = vipPendingPayment(5L, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findByMoovTransactionId("txn-1"))
+                .thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.updateStatusIfPending(10L, PaymentStatus.CONFIRMED))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.CONFIRMED)));
+        when(vipRequestRepository.findByIds(List.of(5L))).thenReturn(List.of(vipRequest(5L)));
+
+        bookingPaymentService().confirmFromGateway("txn-1", "CONFIRMED");
+
+        verify(notificationService).create(eq(USER_ID), eq("Paiement confirmé"), anyString());
+    }
+
+    @Test
     void confirmFromGateway_whenPaymentNoLongerPending_doesNothing() {
         BookingPayment alreadyConfirmed =
                 withStatus(
@@ -583,6 +696,17 @@ class BookingPaymentServiceTest {
         when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
         when(bedRepository.findByIds(List.of(200L)))
                 .thenReturn(List.of(new Bed(200L, 1, true, 30L, USER_ID, LocalDateTime.now())));
+
+        PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
+
+        assertThat(result.status()).isEqualTo(PaymentStatus.PENDING);
+    }
+
+    @Test
+    void getStatusForUser_whenOwnedVipRequestPayment_returnsStatus() {
+        BookingPayment payment = vipPendingPayment(5L, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(vipRequestRepository.findByIds(List.of(5L))).thenReturn(List.of(vipRequest(5L)));
 
         PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
 

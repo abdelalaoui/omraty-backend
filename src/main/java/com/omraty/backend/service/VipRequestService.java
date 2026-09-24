@@ -1,5 +1,6 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.Hotel;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.VipRequest;
@@ -33,6 +34,7 @@ public class VipRequestService {
     private final HotelRepository hotelRepository;
     private final PackageRepository packageRepository;
     private final PackageCapacityService packageCapacityService;
+    private final BookingPaymentService bookingPaymentService;
     private final NotificationService notificationService;
     private final long offerExpirationHours;
 
@@ -41,12 +43,14 @@ public class VipRequestService {
             HotelRepository hotelRepository,
             PackageRepository packageRepository,
             PackageCapacityService packageCapacityService,
+            BookingPaymentService bookingPaymentService,
             NotificationService notificationService,
             @Value("${app.vip.offer-expiration-hours}") long offerExpirationHours) {
         this.vipRequestRepository = vipRequestRepository;
         this.hotelRepository = hotelRepository;
         this.packageRepository = packageRepository;
         this.packageCapacityService = packageCapacityService;
+        this.bookingPaymentService = bookingPaymentService;
         this.notificationService = notificationService;
         this.offerExpirationHours = offerExpirationHours;
     }
@@ -146,9 +150,14 @@ public class VipRequestService {
     /**
      * Le client accepte l'offre reçue, avant expiration. Ownership vérifiée : une demande d'un
      * autre utilisateur est traitée comme introuvable (pas de fuite d'existence).
+     *
+     * <p>Déclenche la création du paiement de proposedPrice (voir migration V36,
+     * BookingPaymentService.createVipPaymentPlan) : plus de paiement hors app pour le VIP, même
+     * mécanisme que l'achat d'une chambre/d'un lit (tâches 01-10) — code de paiement renvoyé au
+     * client, confirmation asynchrone par webhook.
      */
     @Transactional
-    public VipRequest accept(UUID userId, long id) {
+    public BookingPayment accept(UUID userId, long id) {
         VipRequest request = lockOrThrow(id);
         if (!request.userId().equals(userId)) {
             throw new VipRequestException.VipRequestNotFoundException(
@@ -161,7 +170,9 @@ public class VipRequestService {
             throw new VipRequestException.VipRequestStateException(
                     "L'offre a expiré, soumettez une nouvelle demande");
         }
-        return vipRequestRepository.updateAccept(id);
+        VipRequest accepted = vipRequestRepository.updateAccept(id);
+        return bookingPaymentService.createVipPaymentPlan(
+                accepted.id(), accepted.proposedPrice(), userId);
     }
 
     private OmraPackage lockPackageOrThrow(long packageId) {
