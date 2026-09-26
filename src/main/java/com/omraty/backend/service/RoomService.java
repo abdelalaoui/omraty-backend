@@ -155,6 +155,32 @@ public class RoomService {
     }
 
     /**
+     * Libère la chambre ou le lit d'un paiement expiré (voir PaymentExpirationService) — exactement
+     * l'un des deux renseigné, comme booking_payment (voir migration V30). Chambre entière (types
+     * 2/3) : remise à disposition dans le plafond group_size du package (voir
+     * PackageCapacityService), la ligne room elle-même n'est pas supprimée (booking_payment.room_id
+     * la référence encore). Lit (type 5) : redevient sélectionnable, et la chambre partagée rouvre
+     * si elle était pleine (reserved_count décrémenté).
+     */
+    /**
+     * Libère la place réservée pour un paiement expiré — chambre (roomId), lit (bedId) ou offre VIP
+     * (vipRequestId), exactement l'un des trois renseigné comme sur {@link
+     * com.omraty.backend.entities.BookingPayment}. Pour le VIP, aucune chambre/lit n'a été réservé
+     * par l'offre elle-même : no-op volontaire ici (minimum acceptable pour éviter le crash, voir
+     * revue PR) — que faire de la VipRequest elle-même (repasser à OFFER_SENT pour permettre un
+     * nouvel essai ?) reste une question produit ouverte, pas encore tranchée.
+     */
+    @Transactional
+    public void releaseReservation(Long roomId, Long bedId, Long vipRequestId) {
+        if (roomId != null) {
+            roomRepository.release(roomId);
+        } else if (bedId != null) {
+            Bed bed = bedRepository.release(bedId);
+            roomRepository.decrementReservedCount(bed.roomId());
+        }
+    }
+
+    /**
      * Réservations de l'utilisateur connecté (GET /users/me/purchases) : chambres entières (type
      * 2/3) achetées directement, et lits (type 5) réservés individuellement — le tout, les plus
      * récentes d'abord, avec le label du package rattaché (jointure).

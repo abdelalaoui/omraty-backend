@@ -92,4 +92,14 @@ public class BedRepository {
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Lit introuvable (id=" + bedId + ")"));
     }
+
+    /**
+     * Libère un lit dont le paiement a expiré (voir PaymentExpirationService,
+     * RoomService.releaseReservation).
+     */
+    public Bed release(long bedId) {
+        return jdbcTemplate.query(BedTable.RELEASE_BED, BED_ROW_MAPPER, bedId).stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Lit introuvable (id=" + bedId + ")"));
+    }
 }

@@ -118,4 +118,28 @@ public class RoomRepository {
                 .orElseThrow(
                         () -> new IllegalStateException("Chambre introuvable (id=" + roomId + ")"));
     }
+
+    /**
+     * Un lit de cette chambre vient d'être libéré (voir BedRepository.release,
+     * PaymentExpirationService) : décrémente reserved_count pour rouvrir la chambre si besoin.
+     */
+    public Room decrementReservedCount(long roomId) {
+        return jdbcTemplate
+                .query(RoomTable.DECREMENT_RESERVED_COUNT, ROOM_ROW_MAPPER, roomId)
+                .stream()
+                .findFirst()
+                .orElseThrow(
+                        () -> new IllegalStateException("Chambre introuvable (id=" + roomId + ")"));
+    }
+
+    /**
+     * Libère une chambre entière (types 2/3) dont le paiement a expiré (voir
+     * PaymentExpirationService, RoomService.releaseReservation).
+     */
+    public Room release(long roomId) {
+        return jdbcTemplate.query(RoomTable.RELEASE_ROOM, ROOM_ROW_MAPPER, roomId).stream()
+                .findFirst()
+                .orElseThrow(
+                        () -> new IllegalStateException("Chambre introuvable (id=" + roomId + ")"));
+    }
 }
