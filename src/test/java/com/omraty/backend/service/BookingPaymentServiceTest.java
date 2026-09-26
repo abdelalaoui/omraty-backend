@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -537,6 +538,46 @@ class BookingPaymentServiceTest {
 
         verify(bookingInstallmentRepository, never()).markPaid(anyLongV());
         verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void confirmFromGateway_calledTwiceForSameTransactionId_confirmsOnlyOnce() {
+        // Tâche 9 : le webhook Moov peut rejouer le même événement, et le job de vérification de
+        // secours (PendingPaymentCheckService) peut se déclencher en parallèle sur le même
+        // transactionId. Les deux passent par confirmFromGateway ; seul le 1er appel doit
+        // effectivement confirmer, marquer la tranche et notifier.
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.INSTALLMENTS);
+        when(bookingPaymentRepository.findByMoovTransactionId("txn-1"))
+                .thenReturn(Optional.of(payment));
+        // 1er appel : la clause SQL status = 'PENDING' matche, la ligne est mise à jour. 2e appel :
+        // le paiement n'est plus PENDING, 0 ligne affectée -> Optional.empty (voir
+        // BookingPaymentRepository.updateStatusIfPending).
+        when(bookingPaymentRepository.updateStatusIfPending(10L, PaymentStatus.CONFIRMED))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.CONFIRMED)))
+                .thenReturn(Optional.empty());
+        when(bookingInstallmentRepository.findByPaymentIdAndSequence(10L, 1))
+                .thenReturn(
+                        Optional.of(
+                                new BookingInstallment(
+                                        1L,
+                                        10L,
+                                        1,
+                                        new BigDecimal("54000"),
+                                        LocalDate.now(),
+                                        null,
+                                        null)));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+        BookingPaymentService service = bookingPaymentService();
+
+        service.confirmFromGateway("txn-1", "SUCCESS");
+        service.confirmFromGateway("txn-1", "SUCCESS");
+
+        verify(bookingPaymentRepository, times(2))
+                .updateStatusIfPending(10L, PaymentStatus.CONFIRMED);
+        verify(bookingInstallmentRepository, times(1)).markPaid(1L);
+        verify(notificationService, times(1))
+                .create(eq(USER_ID), eq("Paiement confirmé"), anyString());
     }
 
     @Test
