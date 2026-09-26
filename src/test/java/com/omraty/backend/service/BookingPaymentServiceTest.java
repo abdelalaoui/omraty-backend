@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.omraty.backend.dto.response.PaymentStatusResponse;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
@@ -212,8 +214,10 @@ class BookingPaymentServiceTest {
                         new BigDecimal("100000")))
                 .thenReturn(inserted);
         when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        // La passerelle ne doit recevoir que la 1ère tranche (60%), pas le total : le client paie
+        // 60000 maintenant, pas les 100000 du montant complet.
         when(paymentGatewayClient.createPayment(
-                        eq("+22890000000"), eq(new BigDecimal("100000")), any()))
+                        eq("+22890000000"), eq(new BigDecimal("60000.00")), any()))
                 .thenReturn(
                         new PaymentGatewayResult(
                                 "CODE456", "txn-2", LocalDateTime.now().plusMinutes(15)));
@@ -534,6 +538,98 @@ class BookingPaymentServiceTest {
 
         verify(bookingInstallmentRepository, never()).markPaid(anyLongV());
         verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void confirmFromGateway_calledTwiceForSameTransactionId_confirmsOnlyOnce() {
+        // Tâche 9 : le webhook Moov peut rejouer le même événement, et le job de vérification de
+        // secours (PendingPaymentCheckService) peut se déclencher en parallèle sur le même
+        // transactionId. Les deux passent par confirmFromGateway ; seul le 1er appel doit
+        // effectivement confirmer, marquer la tranche et notifier.
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.INSTALLMENTS);
+        when(bookingPaymentRepository.findByMoovTransactionId("txn-1"))
+                .thenReturn(Optional.of(payment));
+        // 1er appel : la clause SQL status = 'PENDING' matche, la ligne est mise à jour. 2e appel :
+        // le paiement n'est plus PENDING, 0 ligne affectée -> Optional.empty (voir
+        // BookingPaymentRepository.updateStatusIfPending).
+        when(bookingPaymentRepository.updateStatusIfPending(10L, PaymentStatus.CONFIRMED))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.CONFIRMED)))
+                .thenReturn(Optional.empty());
+        when(bookingInstallmentRepository.findByPaymentIdAndSequence(10L, 1))
+                .thenReturn(
+                        Optional.of(
+                                new BookingInstallment(
+                                        1L,
+                                        10L,
+                                        1,
+                                        new BigDecimal("54000"),
+                                        LocalDate.now(),
+                                        null,
+                                        null)));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+        BookingPaymentService service = bookingPaymentService();
+
+        service.confirmFromGateway("txn-1", "SUCCESS");
+        service.confirmFromGateway("txn-1", "SUCCESS");
+
+        verify(bookingPaymentRepository, times(2))
+                .updateStatusIfPending(10L, PaymentStatus.CONFIRMED);
+        verify(bookingInstallmentRepository, times(1)).markPaid(1L);
+        verify(notificationService, times(1))
+                .create(eq(USER_ID), eq("Paiement confirmé"), anyString());
+    }
+
+    @Test
+    void getStatusForUser_whenPaymentDoesNotExist_throwsException() {
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().getStatusForUser(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+    }
+
+    @Test
+    void getStatusForUser_whenPaymentBelongsToAnotherUser_throwsException() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(
+                        List.of(
+                                new Room(
+                                        30L, 2, 1L, 2, 2, UUID.randomUUID(), LocalDateTime.now())));
+
+        assertThatThrownBy(() -> bookingPaymentService().getStatusForUser(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+    }
+
+    @Test
+    void getStatusForUser_whenOwnedRoomPayment_returnsStatus() {
+        BookingPayment payment =
+                withStatus(
+                        pendingPayment(30L, null, PaymentPlan.INSTALLMENTS),
+                        PaymentStatus.CONFIRMED);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
+
+        assertThat(result.id()).isEqualTo(10L);
+        assertThat(result.status()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(result.paymentCode()).isEqualTo(payment.moovPaymentCode());
+        assertThat(result.expiresAt()).isEqualTo(payment.expiresAt());
+    }
+
+    @Test
+    void getStatusForUser_whenOwnedBedPayment_returnsStatus() {
+        BookingPayment payment = pendingPayment(null, 200L, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bedRepository.findByIds(List.of(200L)))
+                .thenReturn(List.of(new Bed(200L, 1, true, 30L, USER_ID, LocalDateTime.now())));
+
+        PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
+
+        assertThat(result.status()).isEqualTo(PaymentStatus.PENDING);
     }
 
     private static long anyLongV() {

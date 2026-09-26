@@ -36,4 +36,11 @@ final class BedTable {
             "UPDATE bed SET reserved = TRUE, user_id = ?, created_at = now() WHERE id = ?"
                     + " RETURNING "
                     + BED_COLUMNS;
+
+    // Libère un lit dont le paiement a expiré (voir PaymentExpirationService,
+    // RoomService.releaseReservation) : redevient sélectionnable par
+    // SELECT_FIRST_UNRESERVED_BED_FOR_UPDATE. room.reserved_count est décrémenté séparément (voir
+    // RoomRepository.decrementReservedCount).
+    static final String RELEASE_BED =
+            "UPDATE bed SET reserved = FALSE, user_id = NULL WHERE id = ? RETURNING " + BED_COLUMNS;
 }

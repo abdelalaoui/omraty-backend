@@ -52,4 +52,22 @@ final class RoomTable {
     static final String INCREMENT_RESERVED_COUNT =
             "UPDATE room SET reserved_count = reserved_count + 1 WHERE id = ? RETURNING "
                     + ROOM_COLUMNS;
+
+    // Un lit libéré (voir DECREMENT du même nom côté bed) rend la chambre à nouveau "ouverte" pour
+    // reserved_count < total_capacity (voir SELECT_OPEN_ROOM_FOR_UPDATE) : GREATEST évite de passer
+    // sous 0 si le job de libération (voir PaymentExpirationService) était rejoué par erreur.
+    static final String DECREMENT_RESERVED_COUNT =
+            "UPDATE room SET reserved_count = GREATEST(reserved_count - 1, 0) WHERE id = ?"
+                    + " RETURNING "
+                    + ROOM_COLUMNS;
+
+    // Libère une chambre entière (types 2/3) dont le paiement a expiré (voir
+    // PaymentExpirationService) : remet reserved_count à 0 pour libérer la place dans le plafond
+    // group_size (voir PackageCapacityService.committedSeats) et détache l'utilisateur. La ligne
+    // room elle-même n'est pas supprimée (booking_payment.room_id la référence encore, pour garder
+    // la trace du paiement expiré) — RoomService.purchaseRoom en crée toujours une nouvelle à
+    // l'achat suivant, celle-ci ne sera donc plus jamais réutilisée.
+    static final String RELEASE_ROOM =
+            "UPDATE room SET reserved_count = 0, user_id = NULL WHERE id = ? RETURNING "
+                    + ROOM_COLUMNS;
 }
