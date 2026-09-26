@@ -13,17 +13,19 @@ final class TripPackageTable {
 
     // Chaque filtre est passé deux fois (une pour le test IS NULL, une pour la comparaison) : JDBC
     // ne permet pas de réutiliser un même "?" à plusieurs endroits d'une requête.
-    // Cast explicite (?::varchar / ?::numeric) sur le premier ? de chaque "? IS NULL" : sans lui,
-    // Postgres ne peut pas déduire le type du paramètre à partir d'un simple IS NULL et rejette la
-    // requête ("could not determine data type of parameter $1").
+    // Cast explicite (?::varchar / ?::numeric) sur CHAQUE paramètre : en protocole étendu (celui
+    // utilisé par le driver JDBC), Postgres résout le type de tous les "?" de la requête en une
+    // seule passe avant exécution — un "? IS NULL" ou un "?" passé à CONCAT (variadique) sans
+    // contexte de type suffisant fait échouer toute la requête ("could not determine data type of
+    // parameter $N"), même pour les "?" comparés directement à une colonne typée.
     static final String SELECT_VISIBLE_TRIP_PACKAGES_FILTERED =
             "SELECT "
                     + TRIP_PACKAGE_COLUMNS
                     + " FROM trip_package WHERE visible = TRUE"
-                    + " AND (?::varchar IS NULL OR destination ILIKE CONCAT('%', ?, '%'))"
-                    + " AND (?::varchar IS NULL OR category = ?)"
-                    + " AND (?::numeric IS NULL OR price >= ?)"
-                    + " AND (?::numeric IS NULL OR price <= ?)"
+                    + " AND (?::varchar IS NULL OR destination ILIKE CONCAT('%', ?::varchar, '%'))"
+                    + " AND (?::varchar IS NULL OR category = ?::varchar)"
+                    + " AND (?::numeric IS NULL OR price >= ?::numeric)"
+                    + " AND (?::numeric IS NULL OR price <= ?::numeric)"
                     + " ORDER BY id ASC";
 
     static final String INSERT_TRIP_PACKAGE =
