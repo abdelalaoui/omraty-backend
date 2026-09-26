@@ -5,7 +5,8 @@ final class BookingInstallmentTable {
     private BookingInstallmentTable() {}
 
     static final String BOOKING_INSTALLMENT_COLUMNS =
-            "id, booking_payment_id, sequence, amount, due_date, paid_at, reminder_sent_at";
+            "id, booking_payment_id, sequence, amount, due_date, paid_at, reminder_sent_at,"
+                    + " paid_by_admin_id, paid_manually";
 
     static final String SELECT_INSTALLMENTS_BY_PAYMENT_IDS =
             "SELECT "
@@ -40,6 +41,14 @@ final class BookingInstallmentTable {
 
     static final String MARK_PAID =
             "UPDATE booking_installment SET paid_at = now() WHERE id = ? RETURNING "
+                    + BOOKING_INSTALLMENT_COLUMNS;
+
+    // Réconciliation manuelle admin (filet de sécurité, voir AdminInstallmentController) :
+    // distincte de MARK_PAID pour tracer qui l'a déclenchée et que ce n'est pas une confirmation
+    // Moov.
+    static final String MARK_PAID_MANUALLY =
+            "UPDATE booking_installment SET paid_at = now(), paid_by_admin_id = ?, paid_manually ="
+                    + " true WHERE id = ? RETURNING "
                     + BOOKING_INSTALLMENT_COLUMNS;
 
     static final String MARK_REMINDER_SENT =

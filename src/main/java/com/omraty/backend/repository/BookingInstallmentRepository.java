@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -24,7 +25,9 @@ public class BookingInstallmentRepository {
                             rs.getBigDecimal("amount"),
                             rs.getObject("due_date", LocalDate.class),
                             rs.getObject("paid_at", LocalDateTime.class),
-                            rs.getObject("reminder_sent_at", LocalDateTime.class));
+                            rs.getObject("reminder_sent_at", LocalDateTime.class),
+                            rs.getObject("paid_by_admin_id", UUID.class),
+                            rs.getBoolean("paid_manually"));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -98,6 +101,18 @@ public class BookingInstallmentRepository {
     public Optional<BookingInstallment> markPaid(long id) {
         return jdbcTemplate
                 .query(BookingInstallmentTable.MARK_PAID, BOOKING_INSTALLMENT_ROW_MAPPER, id)
+                .stream()
+                .findFirst();
+    }
+
+    /** Réconciliation manuelle admin (filet de sécurité), voir AdminInstallmentController. */
+    public Optional<BookingInstallment> markPaidManually(long id, UUID adminId) {
+        return jdbcTemplate
+                .query(
+                        BookingInstallmentTable.MARK_PAID_MANUALLY,
+                        BOOKING_INSTALLMENT_ROW_MAPPER,
+                        adminId,
+                        id)
                 .stream()
                 .findFirst();
     }
