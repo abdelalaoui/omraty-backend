@@ -265,6 +265,27 @@ class RoomServiceTest {
         assertThat(roomService().getPurchasesForUser(USER_ID)).isEmpty();
     }
 
+    @Test
+    void releaseReservation_withRoomId_releasesTheWholeRoomOnly() {
+        roomService().releaseReservation(30L, null);
+
+        verify(roomRepository).release(30L);
+        verify(bedRepository, never()).release(anyLong());
+        verify(roomRepository, never()).decrementReservedCount(anyLong());
+    }
+
+    @Test
+    void releaseReservation_withBedId_releasesTheBedAndDecrementsItsRoom() {
+        when(bedRepository.release(100L))
+                .thenReturn(new Bed(100L, 4, false, 10L, null, LocalDateTime.now()));
+
+        roomService().releaseReservation(null, 100L);
+
+        verify(bedRepository).release(100L);
+        verify(roomRepository).decrementReservedCount(10L);
+        verify(roomRepository, never()).release(anyLong());
+    }
+
     private static int anyInt() {
         return org.mockito.ArgumentMatchers.anyInt();
     }

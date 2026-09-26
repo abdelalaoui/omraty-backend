@@ -94,6 +94,19 @@ public class BookingPaymentRepository {
                 .findFirst();
     }
 
+    /**
+     * Paiements PENDING créés il y a plus de {@code thresholdMinutes} minutes, pour le job de
+     * vérification de secours (voir PendingPaymentCheckService, migration V34) : le webhook Moov
+     * est le chemin normal de confirmation, ce job ne fait qu'interroger nous-mêmes la passerelle
+     * pour les paiements qu'il n'aurait pas confirmés à temps.
+     */
+    public List<BookingPayment> findPendingOlderThan(int thresholdMinutes) {
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_PENDING_PAYMENTS_OLDER_THAN,
+                BOOKING_PAYMENT_ROW_MAPPER,
+                thresholdMinutes);
+    }
+
     /** Plans de paiement identifiés par ces ids, pour PaymentReminderService. */
     public List<BookingPayment> findByIds(List<Long> ids) {
         if (ids.isEmpty()) {
@@ -158,6 +171,32 @@ public class BookingPaymentRepository {
                         () ->
                                 new IllegalStateException(
                                         "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
+     * Paiements PENDING dont l'expiration est dépassée, pour le job d'expiration (voir
+     * PaymentExpirationService).
+     */
+    public List<BookingPayment> findPendingExpiredBefore(LocalDateTime now) {
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_PENDING_EXPIRED_BEFORE, BOOKING_PAYMENT_ROW_MAPPER, now);
+    }
+
+    /**
+     * Passe un paiement PENDING à EXPIRED (voir PaymentExpirationService).
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était plus PENDING — une
+     *     confirmation concurrente (webhook ou job de secours, tâche 07) ne doit jamais être
+     *     écrasée par une expiration.
+     */
+    public Optional<BookingPayment> markExpiredIfPending(long paymentId) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.UPDATE_STATUS_TO_EXPIRED_IF_PENDING,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        paymentId)
+                .stream()
+                .findFirst();
     }
 
     /**
