@@ -83,6 +83,19 @@ public class BookingPaymentRepository {
                 .findFirst();
     }
 
+    /**
+     * Paiements PENDING créés il y a plus de {@code thresholdMinutes} minutes, pour le job de
+     * vérification de secours (voir PendingPaymentCheckService, migration V34) : le webhook Moov
+     * est le chemin normal de confirmation, ce job ne fait qu'interroger nous-mêmes la passerelle
+     * pour les paiements qu'il n'aurait pas confirmés à temps.
+     */
+    public List<BookingPayment> findPendingOlderThan(int thresholdMinutes) {
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_PENDING_PAYMENTS_OLDER_THAN,
+                BOOKING_PAYMENT_ROW_MAPPER,
+                thresholdMinutes);
+    }
+
     /** Plans de paiement identifiés par ces ids, pour PaymentReminderService. */
     public List<BookingPayment> findByIds(List<Long> ids) {
         if (ids.isEmpty()) {
