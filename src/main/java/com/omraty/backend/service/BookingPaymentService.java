@@ -1,5 +1,6 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.dto.response.PaymentStatusResponse;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
@@ -10,6 +11,7 @@ import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.exception.UserException;
+import com.omraty.backend.mapper.PaymentMapper;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
 import com.omraty.backend.repository.AuthRepository;
@@ -153,13 +155,17 @@ public class BookingPaymentService {
         BookingPayment payment =
                 bookingPaymentRepository.insert(
                         roomId, bedId, plan, PaymentStatus.PENDING, totalAmount);
-        if (plan == PaymentPlan.INSTALLMENTS) {
-            createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate());
-        }
-        return attachGatewayPayment(payment, userId);
+        // Montant réellement dû à la création : le total en FULL, seulement la 1ère tranche (60%)
+        // en INSTALLMENTS — le client ne doit pas payer les 3 tranches d'un coup à la passerelle.
+        BigDecimal amountDueNow =
+                plan == PaymentPlan.INSTALLMENTS
+                        ? createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate())
+                        : totalAmount;
+        return attachGatewayPayment(payment, userId, amountDueNow);
     }
 
-    private BookingPayment attachGatewayPayment(BookingPayment payment, UUID userId) {
+    private BookingPayment attachGatewayPayment(
+            BookingPayment payment, UUID userId, BigDecimal amountDueNow) {
         String phone =
                 authRepository
                         .findById(userId)
@@ -170,7 +176,7 @@ public class BookingPaymentService {
                         .phone();
         PaymentGatewayResult result =
                 paymentGatewayClient.createPayment(
-                        phone, payment.totalAmount(), "booking-payment-" + payment.id());
+                        phone, amountDueNow, "booking-payment-" + payment.id());
         return bookingPaymentRepository.attachGatewayResult(
                 payment.id(),
                 result.paymentCode(),
@@ -179,7 +185,11 @@ public class BookingPaymentService {
                 result.expiresAt());
     }
 
-    private void createInstallments(
+    /**
+     * Crée les 3 tranches (60/20/20%) et retourne le montant de la 1ère, pour éviter de recalculer
+     * le ratio à l'appel (voir {@link #createPaymentPlan}, qui l'envoie tel quel à la passerelle).
+     */
+    private BigDecimal createInstallments(
             BookingPayment payment,
             BigDecimal totalAmount,
             LocalDate reservationDate,
@@ -197,6 +207,7 @@ public class BookingPaymentService {
         bookingInstallmentRepository.insert(payment.id(), 1, firstAmount, reservationDate, null);
         bookingInstallmentRepository.insert(payment.id(), 2, secondAmount, secondDueDate, null);
         bookingInstallmentRepository.insert(payment.id(), 3, thirdAmount, thirdDueDate, null);
+        return firstAmount;
     }
 
     private static BigDecimal round(BigDecimal amount) {
@@ -337,6 +348,31 @@ public class BookingPaymentService {
                             + payment.totalAmount()
                             + " n'a pas pu être confirmé. Merci de réessayer.");
         }
+    }
+
+    /**
+     * Statut courant d'un paiement pour GET /payments/{id} : l'app interroge cet endpoint en
+     * arrière-plan pendant l'attente de la confirmation asynchrone (webhook Moov, voir
+     * MoovWebhookController) jusqu'à ce que le statut passe à CONFIRMED/FAILED. N'a pas besoin
+     * d'appeler l'API Moov : ne lit que notre propre base.
+     *
+     * <p>Ownership vérifiée comme dans PaymentReminderService.resolveOwnerUserId (via room.user_id
+     * ou bed.user_id) : un paiement qui n'appartient pas à userId est traité comme introuvable (pas
+     * de fuite d'existence, comme NotificationService.markAsRead).
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas ou
+     *     n'appartient pas à userId.
+     */
+    public PaymentStatusResponse getStatusForUser(UUID userId, long paymentId) {
+        BookingPayment payment =
+                bookingPaymentRepository
+                        .findById(paymentId)
+                        .filter(candidate -> userId.equals(resolveOwnerUserId(candidate)))
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotFoundException(
+                                                "Paiement introuvable (id=" + paymentId + ")"));
+        return PaymentMapper.toStatusResponse(payment);
     }
 
     private UUID resolveOwnerUserId(BookingPayment payment) {

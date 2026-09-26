@@ -24,9 +24,12 @@ public class BookingPaymentException extends RuntimeException {
     }
 
     /**
-     * Aucun booking_payment ne porte le transactionId reçu dans le webhook Moov (voir
-     * BookingPaymentService.confirmFromGateway) : transactionId erroné, paiement jamais créé côté
-     * backend, ou webhook adressé au mauvais environnement.
+     * Paiement introuvable, dans deux cas : aucun booking_payment ne porte le transactionId reçu
+     * dans le webhook Moov (voir BookingPaymentService.confirmFromGateway) ; ou GET /payments/{id}
+     * demandé pour un id inexistant ou qui n'appartient pas à l'utilisateur authentifié (voir
+     * BookingPaymentService.getStatusForUser) — même id renvoyé pour les deux cas, pour ne pas
+     * révéler l'existence du paiement d'un autre utilisateur (comme
+     * NotificationService.markAsRead).
      */
     public static class PaymentNotFoundException extends BookingPaymentException {
         public PaymentNotFoundException(String message) {

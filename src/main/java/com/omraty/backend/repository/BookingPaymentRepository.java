@@ -83,6 +83,17 @@ public class BookingPaymentRepository {
                 .findFirst();
     }
 
+    /** Paiement identifié par son id, pour GET /payments/{id} (voir BookingPaymentService). */
+    public Optional<BookingPayment> findById(long id) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.SELECT_BOOKING_PAYMENT_BY_ID,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        id)
+                .stream()
+                .findFirst();
+    }
+
     /**
      * Paiements PENDING créés il y a plus de {@code thresholdMinutes} minutes, pour le job de
      * vérification de secours (voir PendingPaymentCheckService, migration V34) : le webhook Moov
@@ -160,6 +171,32 @@ public class BookingPaymentRepository {
                         () ->
                                 new IllegalStateException(
                                         "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
+     * Paiements PENDING dont l'expiration est dépassée, pour le job d'expiration (voir
+     * PaymentExpirationService).
+     */
+    public List<BookingPayment> findPendingExpiredBefore(LocalDateTime now) {
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_PENDING_EXPIRED_BEFORE, BOOKING_PAYMENT_ROW_MAPPER, now);
+    }
+
+    /**
+     * Passe un paiement PENDING à EXPIRED (voir PaymentExpirationService).
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était plus PENDING — une
+     *     confirmation concurrente (webhook ou job de secours, tâche 07) ne doit jamais être
+     *     écrasée par une expiration.
+     */
+    public Optional<BookingPayment> markExpiredIfPending(long paymentId) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.UPDATE_STATUS_TO_EXPIRED_IF_PENDING,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        paymentId)
+                .stream()
+                .findFirst();
     }
 
     /**
