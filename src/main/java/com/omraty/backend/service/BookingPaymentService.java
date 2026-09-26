@@ -153,13 +153,17 @@ public class BookingPaymentService {
         BookingPayment payment =
                 bookingPaymentRepository.insert(
                         roomId, bedId, plan, PaymentStatus.PENDING, totalAmount);
-        if (plan == PaymentPlan.INSTALLMENTS) {
-            createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate());
-        }
-        return attachGatewayPayment(payment, userId);
+        // Montant réellement dû à la création : le total en FULL, seulement la 1ère tranche (60%)
+        // en INSTALLMENTS — le client ne doit pas payer les 3 tranches d'un coup à la passerelle.
+        BigDecimal amountDueNow =
+                plan == PaymentPlan.INSTALLMENTS
+                        ? createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate())
+                        : totalAmount;
+        return attachGatewayPayment(payment, userId, amountDueNow);
     }
 
-    private BookingPayment attachGatewayPayment(BookingPayment payment, UUID userId) {
+    private BookingPayment attachGatewayPayment(
+            BookingPayment payment, UUID userId, BigDecimal amountDueNow) {
         String phone =
                 authRepository
                         .findById(userId)
@@ -170,7 +174,7 @@ public class BookingPaymentService {
                         .phone();
         PaymentGatewayResult result =
                 paymentGatewayClient.createPayment(
-                        phone, payment.totalAmount(), "booking-payment-" + payment.id());
+                        phone, amountDueNow, "booking-payment-" + payment.id());
         return bookingPaymentRepository.attachGatewayResult(
                 payment.id(),
                 result.paymentCode(),
@@ -179,7 +183,11 @@ public class BookingPaymentService {
                 result.expiresAt());
     }
 
-    private void createInstallments(
+    /**
+     * Crée les 3 tranches (60/20/20%) et retourne le montant de la 1ère, pour éviter de recalculer
+     * le ratio à l'appel (voir {@link #createPaymentPlan}, qui l'envoie tel quel à la passerelle).
+     */
+    private BigDecimal createInstallments(
             BookingPayment payment,
             BigDecimal totalAmount,
             LocalDate reservationDate,
@@ -197,6 +205,7 @@ public class BookingPaymentService {
         bookingInstallmentRepository.insert(payment.id(), 1, firstAmount, reservationDate, null);
         bookingInstallmentRepository.insert(payment.id(), 2, secondAmount, secondDueDate, null);
         bookingInstallmentRepository.insert(payment.id(), 3, thirdAmount, thirdDueDate, null);
+        return firstAmount;
     }
 
     private static BigDecimal round(BigDecimal amount) {
