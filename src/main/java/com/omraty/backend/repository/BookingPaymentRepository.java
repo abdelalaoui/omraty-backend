@@ -68,6 +68,34 @@ public class BookingPaymentRepository {
                 BOOKING_PAYMENT_ROW_MAPPER);
     }
 
+    /**
+     * Retrouve l'achat à partir de l'identifiant de transaction renvoyé par Moov — seul lien entre
+     * le webhook de confirmation et le booking_payment concerné (voir migration V33,
+     * BookingPaymentService.confirmFromGateway).
+     */
+    public Optional<BookingPayment> findByMoovTransactionId(String moovTransactionId) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.SELECT_BOOKING_PAYMENT_BY_MOOV_TRANSACTION_ID,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        moovTransactionId)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * Paiements PENDING créés il y a plus de {@code thresholdMinutes} minutes, pour le job de
+     * vérification de secours (voir PendingPaymentCheckService, migration V34) : le webhook Moov
+     * est le chemin normal de confirmation, ce job ne fait qu'interroger nous-mêmes la passerelle
+     * pour les paiements qu'il n'aurait pas confirmés à temps.
+     */
+    public List<BookingPayment> findPendingOlderThan(int thresholdMinutes) {
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_PENDING_PAYMENTS_OLDER_THAN,
+                BOOKING_PAYMENT_ROW_MAPPER,
+                thresholdMinutes);
+    }
+
     /** Plans de paiement identifiés par ces ids, pour PaymentReminderService. */
     public List<BookingPayment> findByIds(List<Long> ids) {
         if (ids.isEmpty()) {
@@ -155,6 +183,24 @@ public class BookingPaymentRepository {
                 .query(
                         BookingPaymentTable.UPDATE_STATUS_TO_EXPIRED_IF_PENDING,
                         BOOKING_PAYMENT_ROW_MAPPER,
+                        paymentId)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * Passe un paiement PENDING à CONFIRMED ou FAILED à la réception du webhook (voir
+     * BookingPaymentService.confirmFromGateway).
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était plus PENDING — un
+     *     webhook rejoué ne doit pas écraser un statut déjà tranché.
+     */
+    public Optional<BookingPayment> updateStatusIfPending(long paymentId, PaymentStatus status) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.UPDATE_STATUS_IF_PENDING,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        status.name(),
                         paymentId)
                 .stream()
                 .findFirst();

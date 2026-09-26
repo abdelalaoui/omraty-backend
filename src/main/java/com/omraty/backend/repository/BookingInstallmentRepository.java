@@ -49,6 +49,22 @@ public class BookingInstallmentRepository {
                 BOOKING_INSTALLMENT_ROW_MAPPER);
     }
 
+    /**
+     * Tranche d'un plan identifiée par son rang (1/2/3) — la 1ère est marquée payée à la
+     * confirmation du paiement par la passerelle (voir BookingPaymentService.confirmFromGateway).
+     */
+    public Optional<BookingInstallment> findByPaymentIdAndSequence(
+            long bookingPaymentId, int sequence) {
+        return jdbcTemplate
+                .query(
+                        BookingInstallmentTable.SELECT_INSTALLMENT_BY_PAYMENT_AND_SEQUENCE,
+                        BOOKING_INSTALLMENT_ROW_MAPPER,
+                        bookingPaymentId,
+                        sequence)
+                .stream()
+                .findFirst();
+    }
+
     public Optional<BookingInstallment> findById(long id) {
         return jdbcTemplate
                 .query(
@@ -60,8 +76,9 @@ public class BookingInstallmentRepository {
     }
 
     /**
-     * paidAt : now() pour la 1ère tranche (payée à la confirmation), null pour les 2 autres — voir
-     * BookingPaymentService.createPaymentPlan.
+     * paidAt : null pour les 3 tranches à la création — le paiement démarre PENDING et la 1ère
+     * tranche n'est marquée payée qu'à la confirmation de la passerelle (voir
+     * BookingPaymentService.createPaymentPlan / confirmFromGateway).
      */
     public void insert(
             long bookingPaymentId,

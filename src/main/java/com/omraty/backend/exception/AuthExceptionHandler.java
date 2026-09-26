@@ -187,6 +187,12 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(BookingPaymentException.PaymentNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handlePaymentNotFound(
+            BookingPaymentException.PaymentNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(BookingPaymentException.InstallmentNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleInstallmentNotFound(
             BookingPaymentException.InstallmentNotFoundException e) {
