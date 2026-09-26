@@ -162,11 +162,19 @@ public class RoomService {
      * la référence encore). Lit (type 5) : redevient sélectionnable, et la chambre partagée rouvre
      * si elle était pleine (reserved_count décrémenté).
      */
+    /**
+     * Libère la place réservée pour un paiement expiré — chambre (roomId), lit (bedId) ou offre VIP
+     * (vipRequestId), exactement l'un des trois renseigné comme sur {@link
+     * com.omraty.backend.entities.BookingPayment}. Pour le VIP, aucune chambre/lit n'a été réservé
+     * par l'offre elle-même : no-op volontaire ici (minimum acceptable pour éviter le crash, voir
+     * revue PR) — que faire de la VipRequest elle-même (repasser à OFFER_SENT pour permettre un
+     * nouvel essai ?) reste une question produit ouverte, pas encore tranchée.
+     */
     @Transactional
-    public void releaseReservation(Long roomId, Long bedId) {
+    public void releaseReservation(Long roomId, Long bedId, Long vipRequestId) {
         if (roomId != null) {
             roomRepository.release(roomId);
-        } else {
+        } else if (bedId != null) {
             Bed bed = bedRepository.release(bedId);
             roomRepository.decrementReservedCount(bed.roomId());
         }

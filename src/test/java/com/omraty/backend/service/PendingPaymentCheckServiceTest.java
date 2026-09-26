@@ -47,6 +47,7 @@ class PendingPaymentCheckServiceTest {
                 id,
                 30L,
                 null,
+                null,
                 PaymentPlan.FULL,
                 PaymentStatus.PENDING,
                 new BigDecimal("90000"),

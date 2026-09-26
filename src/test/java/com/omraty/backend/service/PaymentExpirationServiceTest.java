@@ -31,11 +31,12 @@ class PaymentExpirationServiceTest {
         return new PaymentExpirationService(bookingPaymentRepository, roomService);
     }
 
-    private BookingPayment overduePayment(long id, Long roomId, Long bedId) {
+    private BookingPayment overduePayment(long id, Long roomId, Long bedId, Long vipRequestId) {
         return new BookingPayment(
                 id,
                 roomId,
                 bedId,
+                vipRequestId,
                 PaymentPlan.FULL,
                 PaymentStatus.PENDING,
                 new BigDecimal("90000"),
@@ -58,7 +59,7 @@ class PaymentExpirationServiceTest {
 
     @Test
     void expireOverduePayments_forWholeRoomPayment_marksExpiredAndReleasesTheRoom() {
-        BookingPayment payment = overduePayment(1L, 30L, null);
+        BookingPayment payment = overduePayment(1L, 30L, null, null);
         when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
         when(bookingPaymentRepository.markExpiredIfPending(1L))
                 .thenReturn(Optional.of(withStatus(payment, PaymentStatus.EXPIRED)));
@@ -66,12 +67,12 @@ class PaymentExpirationServiceTest {
         int expiredCount = paymentExpirationService().expireOverduePayments();
 
         assertThat(expiredCount).isEqualTo(1);
-        verify(roomService).releaseReservation(30L, null);
+        verify(roomService).releaseReservation(30L, null, null);
     }
 
     @Test
     void expireOverduePayments_forBedPayment_marksExpiredAndReleasesTheBed() {
-        BookingPayment payment = overduePayment(2L, null, 200L);
+        BookingPayment payment = overduePayment(2L, null, 200L, null);
         when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
         when(bookingPaymentRepository.markExpiredIfPending(2L))
                 .thenReturn(Optional.of(withStatus(payment, PaymentStatus.EXPIRED)));
@@ -79,27 +80,42 @@ class PaymentExpirationServiceTest {
         int expiredCount = paymentExpirationService().expireOverduePayments();
 
         assertThat(expiredCount).isEqualTo(1);
-        verify(roomService).releaseReservation(isNull(), eq(200L));
+        verify(roomService).releaseReservation(isNull(), eq(200L), isNull());
+    }
+
+    @Test
+    void expireOverduePayments_forVipPayment_marksExpiredAndReleasesWithoutCrashing() {
+        // Bug d'origine : releaseReservation(null, null) faisait un NPE (unboxing de bedId côté
+        // else). vipRequestId doit maintenant être transmis à RoomService.releaseReservation.
+        BookingPayment payment = overduePayment(4L, null, null, 5L);
+        when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
+        when(bookingPaymentRepository.markExpiredIfPending(4L))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.EXPIRED)));
+
+        int expiredCount = paymentExpirationService().expireOverduePayments();
+
+        assertThat(expiredCount).isEqualTo(1);
+        verify(roomService).releaseReservation(isNull(), isNull(), eq(5L));
     }
 
     @Test
     void expireOverduePayments_whenAlreadyConfirmedConcurrently_doesNotReleaseAnything() {
         // markExpiredIfPending renvoie vide : la clause status = 'PENDING' n'a rien mis à jour, le
         // paiement a été confirmé entre-temps (webhook ou job de secours, tâche 07).
-        BookingPayment payment = overduePayment(3L, 30L, null);
+        BookingPayment payment = overduePayment(3L, 30L, null, null);
         when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
         when(bookingPaymentRepository.markExpiredIfPending(3L)).thenReturn(Optional.empty());
 
         int expiredCount = paymentExpirationService().expireOverduePayments();
 
         assertThat(expiredCount).isZero();
-        verify(roomService, never()).releaseReservation(any(), any());
+        verify(roomService, never()).releaseReservation(any(), any(), any());
     }
 
     @Test
     void expireOverduePayments_withSeveralPayments_processesEachIndependently() {
-        BookingPayment stillConfirming = overduePayment(1L, 30L, null);
-        BookingPayment overdue = overduePayment(2L, null, 200L);
+        BookingPayment stillConfirming = overduePayment(1L, 30L, null, null);
+        BookingPayment overdue = overduePayment(2L, null, 200L, null);
         when(bookingPaymentRepository.findPendingExpiredBefore(any()))
                 .thenReturn(List.of(stillConfirming, overdue));
         when(bookingPaymentRepository.markExpiredIfPending(1L)).thenReturn(Optional.empty());
@@ -109,8 +125,8 @@ class PaymentExpirationServiceTest {
         int expiredCount = paymentExpirationService().expireOverduePayments();
 
         assertThat(expiredCount).isEqualTo(1);
-        verify(roomService, never()).releaseReservation(eq(30L), any());
-        verify(roomService).releaseReservation(isNull(), eq(200L));
+        verify(roomService, never()).releaseReservation(eq(30L), any(), any());
+        verify(roomService).releaseReservation(isNull(), eq(200L), isNull());
     }
 
     private static BookingPayment withStatus(BookingPayment payment, PaymentStatus status) {
@@ -118,6 +134,7 @@ class PaymentExpirationServiceTest {
                 payment.id(),
                 payment.roomId(),
                 payment.bedId(),
+                payment.vipRequestId(),
                 payment.plan(),
                 status,
                 payment.totalAmount(),

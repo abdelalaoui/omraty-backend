@@ -1,8 +1,11 @@
 package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.request.CreateVipRequestRequest;
+import com.omraty.backend.dto.response.PaymentResponse;
 import com.omraty.backend.dto.response.VipRequestResponse;
+import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.VipRequest;
+import com.omraty.backend.mapper.PaymentMapper;
 import com.omraty.backend.mapper.VipRequestMapper;
 import com.omraty.backend.service.VipRequestService;
 import jakarta.validation.Valid;
@@ -58,9 +61,16 @@ public class VipRequestController {
                 VipRequestMapper.toResponseList(vipRequestService.getRequestsForUser(userId)));
     }
 
+    /**
+     * L'acceptation est immédiate, mais la réponse ne confirme pas le paiement : elle renvoie le
+     * code à afficher au client et sa date d'expiration (voir PaymentResponse,
+     * BookingPaymentService.createVipPaymentPlan), comme pour l'achat d'une chambre/d'un lit (voir
+     * RoomController).
+     */
     @PostMapping("/users/me/vip-requests/{id}/accept")
-    public ResponseEntity<VipRequestResponse> acceptOffer(
+    public ResponseEntity<PaymentResponse> acceptOffer(
             @AuthenticationPrincipal UUID userId, @PathVariable long id) {
-        return ResponseEntity.ok(VipRequestMapper.toResponse(vipRequestService.accept(userId, id)));
+        BookingPayment payment = vipRequestService.accept(userId, id);
+        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
     }
 }

@@ -22,6 +22,7 @@ public class BookingPaymentRepository {
                             rs.getLong("id"),
                             (Long) rs.getObject("room_id", Long.class),
                             (Long) rs.getObject("bed_id", Long.class),
+                            (Long) rs.getObject("vip_request_id", Long.class),
                             PaymentPlan.valueOf(rs.getString("plan")),
                             PaymentStatus.valueOf(rs.getString("status")),
                             rs.getBigDecimal("total_amount"),
@@ -122,10 +123,13 @@ public class BookingPaymentRepository {
                 BOOKING_PAYMENT_ROW_MAPPER);
     }
 
-    /** roomId et bedId : exactement l'un des deux renseigné (voir migration V30). */
+    /**
+     * roomId, bedId et vipRequestId : exactement l'un des trois renseigné (voir migration V30/V36).
+     */
     public BookingPayment insert(
             Long roomId,
             Long bedId,
+            Long vipRequestId,
             PaymentPlan plan,
             PaymentStatus status,
             BigDecimal totalAmount) {
@@ -135,6 +139,7 @@ public class BookingPaymentRepository {
                         BOOKING_PAYMENT_ROW_MAPPER,
                         roomId,
                         bedId,
+                        vipRequestId,
                         plan.name(),
                         status.name(),
                         totalAmount)
@@ -174,6 +179,24 @@ public class BookingPaymentRepository {
     }
 
     /**
+     * Passe un paiement PENDING à CONFIRMED ou FAILED à la réception du webhook (voir
+     * BookingPaymentService.confirmFromGateway).
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était plus PENDING — un
+     *     webhook rejoué ne doit pas écraser un statut déjà tranché.
+     */
+    public Optional<BookingPayment> updateStatusIfPending(long paymentId, PaymentStatus status) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.UPDATE_STATUS_IF_PENDING,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        status.name(),
+                        paymentId)
+                .stream()
+                .findFirst();
+    }
+
+    /**
      * Paiements PENDING dont l'expiration est dépassée, pour le job d'expiration (voir
      * PaymentExpirationService).
      */
@@ -194,24 +217,6 @@ public class BookingPaymentRepository {
                 .query(
                         BookingPaymentTable.UPDATE_STATUS_TO_EXPIRED_IF_PENDING,
                         BOOKING_PAYMENT_ROW_MAPPER,
-                        paymentId)
-                .stream()
-                .findFirst();
-    }
-
-    /**
-     * Passe un paiement PENDING à CONFIRMED ou FAILED à la réception du webhook (voir
-     * BookingPaymentService.confirmFromGateway).
-     *
-     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était plus PENDING — un
-     *     webhook rejoué ne doit pas écraser un statut déjà tranché.
-     */
-    public Optional<BookingPayment> updateStatusIfPending(long paymentId, PaymentStatus status) {
-        return jdbcTemplate
-                .query(
-                        BookingPaymentTable.UPDATE_STATUS_IF_PENDING,
-                        BOOKING_PAYMENT_ROW_MAPPER,
-                        status.name(),
                         paymentId)
                 .stream()
                 .findFirst();

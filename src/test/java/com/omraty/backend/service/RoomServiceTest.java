@@ -37,6 +37,7 @@ class RoomServiceTest {
                     1L,
                     null,
                     null,
+                    null,
                     PaymentPlan.FULL,
                     PaymentStatus.PENDING,
                     BigDecimal.TEN,
@@ -267,7 +268,7 @@ class RoomServiceTest {
 
     @Test
     void releaseReservation_withRoomId_releasesTheWholeRoomOnly() {
-        roomService().releaseReservation(30L, null);
+        roomService().releaseReservation(30L, null, null);
 
         verify(roomRepository).release(30L);
         verify(bedRepository, never()).release(anyLong());
@@ -279,11 +280,20 @@ class RoomServiceTest {
         when(bedRepository.release(100L))
                 .thenReturn(new Bed(100L, 4, false, 10L, null, LocalDateTime.now()));
 
-        roomService().releaseReservation(null, 100L);
+        roomService().releaseReservation(null, 100L, null);
 
         verify(bedRepository).release(100L);
         verify(roomRepository).decrementReservedCount(10L);
         verify(roomRepository, never()).release(anyLong());
+    }
+
+    @Test
+    void releaseReservation_withVipRequestId_isANoOp() {
+        roomService().releaseReservation(null, null, 5L);
+
+        verify(roomRepository, never()).release(anyLong());
+        verify(bedRepository, never()).release(anyLong());
+        verify(roomRepository, never()).decrementReservedCount(anyLong());
     }
 
     private static int anyInt() {

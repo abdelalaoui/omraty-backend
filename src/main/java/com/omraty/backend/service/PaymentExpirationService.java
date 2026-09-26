@@ -84,7 +84,8 @@ public class PaymentExpirationService {
                 .markExpiredIfPending(payment.id())
                 .map(
                         expired -> {
-                            roomService.releaseReservation(payment.roomId(), payment.bedId());
+                            roomService.releaseReservation(
+                                    payment.roomId(), payment.bedId(), payment.vipRequestId());
                             return true;
                         })
                 .orElse(false);
