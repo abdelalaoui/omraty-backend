@@ -11,9 +11,14 @@ import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.ServiceTier;
+import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.enums.PaymentPlan;
+import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.entities.enums.ServiceTierType;
 import com.omraty.backend.exception.BookingPaymentException;
+import com.omraty.backend.payment.PaymentGatewayClient;
+import com.omraty.backend.payment.PaymentGatewayResult;
+import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
@@ -23,6 +28,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -32,13 +38,26 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class BookingPaymentServiceTest {
 
+    private static final UUID USER_ID = UUID.randomUUID();
+
     @Mock private ServiceTierRepository serviceTierRepository;
     @Mock private BookingPaymentRepository bookingPaymentRepository;
     @Mock private BookingInstallmentRepository bookingInstallmentRepository;
+    @Mock private AuthRepository authRepository;
+    @Mock private PaymentGatewayClient paymentGatewayClient;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
-                serviceTierRepository, bookingPaymentRepository, bookingInstallmentRepository);
+                serviceTierRepository,
+                bookingPaymentRepository,
+                bookingInstallmentRepository,
+                authRepository,
+                paymentGatewayClient);
+    }
+
+    private User user(String phone) {
+        return new User(
+                USER_ID, phone, "hash", "M", null, null, false, LocalDateTime.now(), "USER");
     }
 
     private ServiceTier roomTier(int capacity, BigDecimal price) {
@@ -85,16 +104,53 @@ class BookingPaymentServiceTest {
     void createPaymentPlan_full_insertsSinglePaymentWithoutInstallments() {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
         BookingPayment inserted =
-                new BookingPayment(10L, 30L, null, PaymentPlan.FULL, new BigDecimal("90000"), null);
-        when(bookingPaymentRepository.insert(30L, null, PaymentPlan.FULL, new BigDecimal("90000")))
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000")))
                 .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(15);
+        when(paymentGatewayClient.createPayment(
+                        "+22890000000", new BigDecimal("90000"), "booking-payment-10"))
+                .thenReturn(new PaymentGatewayResult("CODE123", "txn-1", expiresAt));
+        BookingPayment withGateway =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000"),
+                        "CODE123",
+                        "txn-1",
+                        "+22890000000",
+                        expiresAt,
+                        null);
+        when(bookingPaymentRepository.attachGatewayResult(
+                        10L, "CODE123", "txn-1", "+22890000000", expiresAt))
+                .thenReturn(withGateway);
 
         BookingPayment result =
                 bookingPaymentService()
                         .createPaymentPlan(
-                                30L, null, PaymentPlan.FULL, new BigDecimal("90000"), pkg);
+                                30L, null, PaymentPlan.FULL, new BigDecimal("90000"), pkg, USER_ID);
 
-        assertThat(result).isEqualTo(inserted);
+        assertThat(result).isEqualTo(withGateway);
         verify(bookingInstallmentRepository, never())
                 .insert(anyLongV(), anyIntV(), any(), any(), any());
     }
@@ -111,10 +167,11 @@ class BookingPaymentServiceTest {
                                                 null,
                                                 PaymentPlan.INSTALLMENTS,
                                                 new BigDecimal("90000"),
-                                                pkg))
+                                                pkg,
+                                                USER_ID))
                 .isInstanceOf(BookingPaymentException.PackageDatesMissingException.class);
 
-        verify(bookingPaymentRepository, never()).insert(any(), any(), any(), any());
+        verify(bookingPaymentRepository, never()).insert(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -124,14 +181,43 @@ class BookingPaymentServiceTest {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, endDate);
         BookingPayment inserted =
                 new BookingPayment(
-                        10L, null, 200L, PaymentPlan.INSTALLMENTS, new BigDecimal("100000"), null);
+                        10L,
+                        null,
+                        200L,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("100000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
         when(bookingPaymentRepository.insert(
-                        null, 200L, PaymentPlan.INSTALLMENTS, new BigDecimal("100000")))
+                        null,
+                        200L,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("100000")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        // La passerelle ne doit recevoir que la 1ère tranche (60%), pas le total : le client paie
+        // 60000 maintenant, pas les 100000 du montant complet.
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("60000.00")), any()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE456", "txn-2", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(eq(10L), any(), any(), any(), any()))
                 .thenReturn(inserted);
 
         bookingPaymentService()
                 .createPaymentPlan(
-                        null, 200L, PaymentPlan.INSTALLMENTS, new BigDecimal("100000"), pkg);
+                        null,
+                        200L,
+                        PaymentPlan.INSTALLMENTS,
+                        new BigDecimal("100000"),
+                        pkg,
+                        USER_ID);
 
         ArgumentCaptor<BigDecimal> amountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
         ArgumentCaptor<LocalDate> dueDateCaptor = ArgumentCaptor.forClass(LocalDate.class);
@@ -176,8 +262,10 @@ class BookingPaymentServiceTest {
         assertThat(dueDates.get(1)).isEqualTo(today.plusDays(daysUntilEnd / 2));
         assertThat(dueDates.get(2)).isEqualTo(endDate);
 
+        // Les 3 tranches démarrent non payées : le paiement est PENDING tant qu'il n'est pas
+        // confirmé par la passerelle de paiement.
         List<LocalDateTime> paidAts = paidAtCaptor.getAllValues();
-        assertThat(paidAts.get(0)).isNotNull();
+        assertThat(paidAts.get(0)).isNull();
         assertThat(paidAts.get(1)).isNull();
         assertThat(paidAts.get(2)).isNull();
     }
@@ -234,7 +322,18 @@ class BookingPaymentServiceTest {
     @Test
     void toPurchasePayment_full_isFullyPaidWithNoInstallments() {
         BookingPayment payment =
-                new BookingPayment(1L, 30L, null, PaymentPlan.FULL, new BigDecimal("90000"), null);
+                new BookingPayment(
+                        1L,
+                        30L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.CONFIRMED,
+                        new BigDecimal("90000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
 
         UserPurchasePayment result = bookingPaymentService().toPurchasePayment(payment, List.of());
 
@@ -249,7 +348,17 @@ class BookingPaymentServiceTest {
     void toPurchasePayment_installments_computesPaidRemainingAndNextDueDate() {
         BookingPayment payment =
                 new BookingPayment(
-                        1L, null, 200L, PaymentPlan.INSTALLMENTS, new BigDecimal("100000"), null);
+                        1L,
+                        null,
+                        200L,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.CONFIRMED,
+                        new BigDecimal("100000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
         LocalDate secondDueDate = LocalDate.of(2026, 4, 1);
         LocalDate thirdDueDate = LocalDate.of(2026, 5, 1);
         List<BookingInstallment> installments =

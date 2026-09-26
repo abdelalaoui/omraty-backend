@@ -5,18 +5,23 @@ import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.enums.PaymentPlan;
+import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
+import com.omraty.backend.exception.UserException;
+import com.omraty.backend.payment.PaymentGatewayClient;
+import com.omraty.backend.payment.PaymentGatewayResult;
+import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
@@ -36,14 +41,20 @@ public class BookingPaymentService {
     private final ServiceTierRepository serviceTierRepository;
     private final BookingPaymentRepository bookingPaymentRepository;
     private final BookingInstallmentRepository bookingInstallmentRepository;
+    private final AuthRepository authRepository;
+    private final PaymentGatewayClient paymentGatewayClient;
 
     public BookingPaymentService(
             ServiceTierRepository serviceTierRepository,
             BookingPaymentRepository bookingPaymentRepository,
-            BookingInstallmentRepository bookingInstallmentRepository) {
+            BookingInstallmentRepository bookingInstallmentRepository,
+            AuthRepository authRepository,
+            PaymentGatewayClient paymentGatewayClient) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
+        this.authRepository = authRepository;
+        this.paymentGatewayClient = paymentGatewayClient;
     }
 
     /**
@@ -73,18 +84,29 @@ public class BookingPaymentService {
 
     /**
      * Crée le plan de paiement d'un achat de chambre (roomId renseigné) ou d'une réservation de lit
-     * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V30). FULL :
-     * une seule ligne booking_payment, considérée payée à la confirmation, aucune tranche.
-     * INSTALLMENTS : 3 tranches (60/20/20%) — la 1ère payée à la confirmation ; la 2e due à
-     * mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due à pkg.endDate() (la vraie
-     * échéance limite), avec un rappel automatique au client quelques jours avant (délai
+     * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V30). Le
+     * paiement démarre au statut PENDING (voir PaymentStatus, migration V32), quel que soit le plan
+     * — aucune tranche n'est marquée payée à la création. FULL : une seule ligne booking_payment,
+     * aucune tranche. INSTALLMENTS : 3 tranches (60/20/20%), toutes non payées à la création ; la
+     * 2e due à mi-chemin entre la date de réservation et pkg.endDate() ; la 3e due à pkg.endDate()
+     * (la vraie échéance limite), avec un rappel automatique au client quelques jours avant (délai
      * configurable, voir PaymentReminderService/AppSettingService).
+     *
+     * <p>Crée ensuite le paiement côté passerelle (voir PaymentGatewayClient, migration V33) avec
+     * le téléphone de userId, et renseigne paymentCode/transactionId/expiresAt sur booking_payment
+     * : la réservation reste immédiate, mais le paiement lui-même reste PENDING tant qu'il n'est
+     * pas confirmé (voir RoomController).
      *
      * @throws BookingPaymentException.PackageDatesMissingException si plan = INSTALLMENTS et que le
      *     package n'a pas encore de endDate.
      */
     public BookingPayment createPaymentPlan(
-            Long roomId, Long bedId, PaymentPlan plan, BigDecimal totalAmount, OmraPackage pkg) {
+            Long roomId,
+            Long bedId,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId) {
         if (plan == PaymentPlan.INSTALLMENTS && pkg.endDate() == null) {
             throw new BookingPaymentException.PackageDatesMissingException(
                     "Le paiement en 3 tranches nécessite une date de fin (endDate) sur le package"
@@ -92,14 +114,44 @@ public class BookingPaymentService {
                             + pkg.id()
                             + ")");
         }
-        BookingPayment payment = bookingPaymentRepository.insert(roomId, bedId, plan, totalAmount);
-        if (plan == PaymentPlan.INSTALLMENTS) {
-            createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate());
-        }
-        return payment;
+        BookingPayment payment =
+                bookingPaymentRepository.insert(
+                        roomId, bedId, plan, PaymentStatus.PENDING, totalAmount);
+        // Montant réellement dû à la création : le total en FULL, seulement la 1ère tranche (60%)
+        // en INSTALLMENTS — le client ne doit pas payer les 3 tranches d'un coup à la passerelle.
+        BigDecimal amountDueNow =
+                plan == PaymentPlan.INSTALLMENTS
+                        ? createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate())
+                        : totalAmount;
+        return attachGatewayPayment(payment, userId, amountDueNow);
     }
 
-    private void createInstallments(
+    private BookingPayment attachGatewayPayment(
+            BookingPayment payment, UUID userId, BigDecimal amountDueNow) {
+        String phone =
+                authRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new UserException.UserNotFoundException(
+                                                "Utilisateur introuvable (id=" + userId + ")"))
+                        .phone();
+        PaymentGatewayResult result =
+                paymentGatewayClient.createPayment(
+                        phone, amountDueNow, "booking-payment-" + payment.id());
+        return bookingPaymentRepository.attachGatewayResult(
+                payment.id(),
+                result.paymentCode(),
+                result.transactionId(),
+                phone,
+                result.expiresAt());
+    }
+
+    /**
+     * Crée les 3 tranches (60/20/20%) et retourne le montant de la 1ère, pour éviter de recalculer
+     * le ratio à l'appel (voir {@link #createPaymentPlan}, qui l'envoie tel quel à la passerelle).
+     */
+    private BigDecimal createInstallments(
             BookingPayment payment,
             BigDecimal totalAmount,
             LocalDate reservationDate,
@@ -114,10 +166,10 @@ public class BookingPaymentService {
         LocalDate secondDueDate = reservationDate.plusDays(daysUntilEnd / 2);
         LocalDate thirdDueDate = packageEndDate;
 
-        bookingInstallmentRepository.insert(
-                payment.id(), 1, firstAmount, reservationDate, LocalDateTime.now());
+        bookingInstallmentRepository.insert(payment.id(), 1, firstAmount, reservationDate, null);
         bookingInstallmentRepository.insert(payment.id(), 2, secondAmount, secondDueDate, null);
         bookingInstallmentRepository.insert(payment.id(), 3, thirdAmount, thirdDueDate, null);
+        return firstAmount;
     }
 
     private static BigDecimal round(BigDecimal amount) {

@@ -7,14 +7,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.omraty.backend.entities.Bed;
+import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.enums.PaymentPlan;
+import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.RoomException;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +32,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class RoomServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
+    private static final BookingPayment PAYMENT_STUB =
+            new BookingPayment(
+                    1L,
+                    null,
+                    null,
+                    PaymentPlan.FULL,
+                    PaymentStatus.PENDING,
+                    BigDecimal.TEN,
+                    "CODE123",
+                    "txn-1",
+                    "+22890000000",
+                    LocalDateTime.now().plusMinutes(15),
+                    LocalDateTime.now());
 
     @Mock private RoomRepository roomRepository;
     @Mock private BedRepository bedRepository;
@@ -72,8 +88,8 @@ class RoomServiceTest {
 
     @Test
     void reserveBed_withOpenRoomAvailable_reservesInExistingRoomWithoutCreatingANewOne() {
-        when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 40, null, null)));
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(3);
         Room openRoom = new Room(10L, 5, 1L, 5, 3, null, LocalDateTime.now());
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
@@ -81,20 +97,22 @@ class RoomServiceTest {
         when(bedRepository.findFirstUnreservedBedForUpdate(10L)).thenReturn(Optional.of(freeBed));
         when(bedRepository.markReserved(100L, USER_ID))
                 .thenReturn(new Bed(100L, 4, true, 10L, USER_ID, LocalDateTime.now()));
+        when(bookingPaymentService.createPaymentPlan(
+                        null, 100L, PaymentPlan.FULL, null, pkg, USER_ID))
+                .thenReturn(PAYMENT_STUB);
 
-        Bed reserved = roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL);
+        BookingPayment result = roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL);
 
-        assertThat(reserved.reserved()).isTrue();
-        assertThat(reserved.id()).isEqualTo(100L);
-        assertThat(reserved.userId()).isEqualTo(USER_ID);
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+        verify(bedRepository).markReserved(100L, USER_ID);
         verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
         verify(roomRepository).incrementReservedCount(10L);
     }
 
     @Test
     void reserveBed_whenNoOpenRoom_opensNewRoomWithFreshBedsThenReservesInIt() {
-        when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 40, null, null)));
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(5);
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.empty());
         Room newRoom = new Room(20L, 5, 1L, 5, 0, null, LocalDateTime.now());
@@ -103,11 +121,15 @@ class RoomServiceTest {
         when(bedRepository.findFirstUnreservedBedForUpdate(20L)).thenReturn(Optional.of(freeBed));
         when(bedRepository.markReserved(200L, USER_ID))
                 .thenReturn(new Bed(200L, 1, true, 20L, USER_ID, LocalDateTime.now()));
+        when(bookingPaymentService.createPaymentPlan(
+                        null, 200L, PaymentPlan.FULL, null, pkg, USER_ID))
+                .thenReturn(PAYMENT_STUB);
 
-        Bed reserved = roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL);
+        BookingPayment result = roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL);
 
-        assertThat(reserved.roomId()).isEqualTo(20L);
+        assertThat(result).isEqualTo(PAYMENT_STUB);
         verify(bedRepository).insertBedsForRoom(20L, 5);
+        verify(bedRepository).markReserved(200L, USER_ID);
         verify(roomRepository).incrementReservedCount(20L);
     }
 
@@ -185,16 +207,19 @@ class RoomServiceTest {
 
     @Test
     void purchaseRoom_withinGroupSize_createsRoomAlreadyFullAndOwnedByUser() {
-        when(packageRepository.findByIdForUpdate(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 10, null, null)));
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(6);
         Room purchasedRoom = new Room(30L, 3, 1L, 3, 3, USER_ID, LocalDateTime.now());
         when(roomRepository.insert(3, 1L, 3, 3, USER_ID)).thenReturn(purchasedRoom);
+        when(bookingPaymentService.createPaymentPlan(
+                        30L, null, PaymentPlan.FULL, null, pkg, USER_ID))
+                .thenReturn(PAYMENT_STUB);
 
-        Room result = roomService().purchaseRoom(3, 1L, USER_ID, PaymentPlan.FULL);
+        BookingPayment result = roomService().purchaseRoom(3, 1L, USER_ID, PaymentPlan.FULL);
 
-        assertThat(result.reservedCount()).isEqualTo(result.totalCapacity());
-        assertThat(result.userId()).isEqualTo(USER_ID);
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+        verify(roomRepository).insert(3, 1L, 3, 3, USER_ID);
     }
 
     @Test

@@ -5,7 +5,8 @@ final class BookingPaymentTable {
     private BookingPaymentTable() {}
 
     static final String BOOKING_PAYMENT_COLUMNS =
-            "id, room_id, bed_id, plan, total_amount, created_at";
+            "id, room_id, bed_id, plan, status, total_amount, moov_payment_code,"
+                    + " moov_transaction_id, payer_phone, expires_at, created_at";
 
     static final String SELECT_BOOKING_PAYMENTS_BY_ROOM_IDS =
             "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE room_id = ANY (?)";
@@ -20,7 +21,14 @@ final class BookingPaymentTable {
     // roomId et bedId : exactement l'un des deux renseigné (voir migration V30, CHECK
     // chk_booking_payment_exactly_one_target). created_at prend le défaut (now()).
     static final String INSERT_BOOKING_PAYMENT =
-            "INSERT INTO booking_payment (room_id, bed_id, plan, total_amount) VALUES (?, ?, ?, ?)"
-                    + " RETURNING "
+            "INSERT INTO booking_payment (room_id, bed_id, plan, status, total_amount) VALUES (?,"
+                    + " ?, ?, ?, ?) RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
+
+    // Renseigne la référence Moov (colonnes de la migration V33) une fois le paiement créé côté
+    // passerelle (voir PaymentGatewayClient.createPayment).
+    static final String ATTACH_GATEWAY_RESULT =
+            "UPDATE booking_payment SET moov_payment_code = ?, moov_transaction_id = ?, payer_phone"
+                    + " = ?, expires_at = ? WHERE id = ? RETURNING "
                     + BOOKING_PAYMENT_COLUMNS;
 }
