@@ -71,7 +71,14 @@ class PaymentReminderServiceTest {
     void sendDueThirdInstallmentReminders_forRoomPurchase_notifiesRoomOwnerAndMarksReminderSent() {
         BookingInstallment due =
                 new BookingInstallment(
-                        1L, 10L, 3, new BigDecimal("20000"), LocalDate.now(), null, null, null,
+                        1L,
+                        10L,
+                        3,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
                         false);
         when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder(
                         REMINDER_DAYS_BEFORE_DUE))
@@ -106,7 +113,14 @@ class PaymentReminderServiceTest {
     void sendDueThirdInstallmentReminders_forBedReservation_notifiesBedOwner() {
         BookingInstallment due =
                 new BookingInstallment(
-                        2L, 20L, 3, new BigDecimal("15000"), LocalDate.now(), null, null, null,
+                        2L,
+                        20L,
+                        3,
+                        new BigDecimal("15000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
                         false);
         when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder(
                         REMINDER_DAYS_BEFORE_DUE))
@@ -141,7 +155,14 @@ class PaymentReminderServiceTest {
     void sendDueThirdInstallmentReminders_whenPaymentMissing_marksReminderSentWithoutNotifying() {
         BookingInstallment due =
                 new BookingInstallment(
-                        3L, 99L, 3, new BigDecimal("15000"), LocalDate.now(), null, null, null,
+                        3L,
+                        99L,
+                        3,
+                        new BigDecimal("15000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
                         false);
         when(bookingInstallmentRepository.findThirdInstallmentsNeedingReminder(
                         REMINDER_DAYS_BEFORE_DUE))

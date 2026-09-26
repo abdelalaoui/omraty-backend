@@ -13,10 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Réconciliation manuelle des tranches de paiement par l'admin (voir
- * BookingPaymentService.markInstallmentPaidManually) : filet de sécurité pour les cas
- * exceptionnels (litige, paiement reçu autrement, panne prolongée côté Moov) maintenant que le
- * webhook Moov confirme la 1ère tranche. Réservé à ROLE_ADMIN (voir SecurityConfig, préfixe
- * /admin/**).
+ * BookingPaymentService.markInstallmentPaidManually) : filet de sécurité pour les cas exceptionnels
+ * (litige, paiement reçu autrement, panne prolongée côté Moov) maintenant que le webhook Moov
+ * confirme la 1ère tranche. Réservé à ROLE_ADMIN (voir SecurityConfig, préfixe /admin/**).
  */
 @RestController
 @RequestMapping("/admin/installments")

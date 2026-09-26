@@ -356,8 +356,7 @@ class BookingPaymentServiceTest {
     void markInstallmentPaidManually_whenNotFound_throwsException() {
         when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(
-                        () -> bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID))
+        assertThatThrownBy(() -> bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID))
                 .isInstanceOf(BookingPaymentException.InstallmentNotFoundException.class);
     }
 
@@ -376,8 +375,7 @@ class BookingPaymentServiceTest {
                         false);
         when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.of(paid));
 
-        assertThatThrownBy(
-                        () -> bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID))
+        assertThatThrownBy(() -> bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID))
                 .isInstanceOf(BookingPaymentException.InstallmentAlreadyPaidException.class);
 
         verify(bookingInstallmentRepository, never()).markPaidManually(1L, ADMIN_ID);
@@ -387,7 +385,14 @@ class BookingPaymentServiceTest {
     void markInstallmentPaidManually_whenUnpaid_marksItPaidWithAdminAudit() {
         BookingInstallment unpaid =
                 new BookingInstallment(
-                        1L, 10L, 2, new BigDecimal("20000"), LocalDate.now(), null, null, null,
+                        1L,
+                        10L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
                         false);
         BookingInstallment updated =
                 new BookingInstallment(
@@ -404,7 +409,8 @@ class BookingPaymentServiceTest {
         when(bookingInstallmentRepository.markPaidManually(1L, ADMIN_ID))
                 .thenReturn(Optional.of(updated));
 
-        BookingInstallment result = bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID);
+        BookingInstallment result =
+                bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID);
 
         assertThat(result.paidAt()).isNotNull();
         assertThat(result.paidByAdminId()).isEqualTo(ADMIN_ID);
@@ -468,11 +474,25 @@ class BookingPaymentServiceTest {
                                 null,
                                 false),
                         new BookingInstallment(
-                                2L, 1L, 2, new BigDecimal("20000"), secondDueDate, null, null,
-                                null, false),
+                                2L,
+                                1L,
+                                2,
+                                new BigDecimal("20000"),
+                                secondDueDate,
+                                null,
+                                null,
+                                null,
+                                false),
                         new BookingInstallment(
-                                3L, 1L, 3, new BigDecimal("20000"), thirdDueDate, null, null,
-                                null, false));
+                                3L,
+                                1L,
+                                3,
+                                new BigDecimal("20000"),
+                                thirdDueDate,
+                                null,
+                                null,
+                                null,
+                                false));
 
         UserPurchasePayment result =
                 bookingPaymentService().toPurchasePayment(payment, installments);
