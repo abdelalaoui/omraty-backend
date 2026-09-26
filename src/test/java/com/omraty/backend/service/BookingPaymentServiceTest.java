@@ -223,8 +223,10 @@ class BookingPaymentServiceTest {
                         new BigDecimal("100000")))
                 .thenReturn(inserted);
         when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        // La passerelle ne doit recevoir que la 1ère tranche (60%), pas le total : le client paie
+        // 60000 maintenant, pas les 100000 du montant complet.
         when(paymentGatewayClient.createPayment(
-                        eq("+22890000000"), eq(new BigDecimal("100000")), any()))
+                        eq("+22890000000"), eq(new BigDecimal("60000.00")), any()))
                 .thenReturn(
                         new PaymentGatewayResult(
                                 "CODE456", "txn-2", LocalDateTime.now().plusMinutes(15)));
