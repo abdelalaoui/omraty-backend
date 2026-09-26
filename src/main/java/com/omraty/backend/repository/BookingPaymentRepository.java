@@ -83,6 +83,17 @@ public class BookingPaymentRepository {
                 .findFirst();
     }
 
+    /** Paiement identifié par son id, pour GET /payments/{id} (voir BookingPaymentService). */
+    public Optional<BookingPayment> findById(long id) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.SELECT_BOOKING_PAYMENT_BY_ID,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        id)
+                .stream()
+                .findFirst();
+    }
+
     /**
      * Paiements PENDING créés il y a plus de {@code thresholdMinutes} minutes, pour le job de
      * vérification de secours (voir PendingPaymentCheckService, migration V34) : le webhook Moov

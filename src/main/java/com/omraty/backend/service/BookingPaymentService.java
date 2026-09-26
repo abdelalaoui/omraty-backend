@@ -1,5 +1,6 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.dto.response.PaymentStatusResponse;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
@@ -10,6 +11,7 @@ import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.exception.UserException;
+import com.omraty.backend.mapper.PaymentMapper;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
 import com.omraty.backend.repository.AuthRepository;
@@ -346,6 +348,31 @@ public class BookingPaymentService {
                             + payment.totalAmount()
                             + " n'a pas pu être confirmé. Merci de réessayer.");
         }
+    }
+
+    /**
+     * Statut courant d'un paiement pour GET /payments/{id} : l'app interroge cet endpoint en
+     * arrière-plan pendant l'attente de la confirmation asynchrone (webhook Moov, voir
+     * MoovWebhookController) jusqu'à ce que le statut passe à CONFIRMED/FAILED. N'a pas besoin
+     * d'appeler l'API Moov : ne lit que notre propre base.
+     *
+     * <p>Ownership vérifiée comme dans PaymentReminderService.resolveOwnerUserId (via room.user_id
+     * ou bed.user_id) : un paiement qui n'appartient pas à userId est traité comme introuvable (pas
+     * de fuite d'existence, comme NotificationService.markAsRead).
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas ou
+     *     n'appartient pas à userId.
+     */
+    public PaymentStatusResponse getStatusForUser(UUID userId, long paymentId) {
+        BookingPayment payment =
+                bookingPaymentRepository
+                        .findById(paymentId)
+                        .filter(candidate -> userId.equals(resolveOwnerUserId(candidate)))
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotFoundException(
+                                                "Paiement introuvable (id=" + paymentId + ")"));
+        return PaymentMapper.toStatusResponse(payment);
     }
 
     private UUID resolveOwnerUserId(BookingPayment payment) {

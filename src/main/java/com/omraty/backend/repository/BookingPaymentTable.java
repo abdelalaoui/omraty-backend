@@ -32,6 +32,11 @@ final class BookingPaymentTable {
                     + BOOKING_PAYMENT_COLUMNS
                     + " FROM booking_payment WHERE moov_transaction_id = ?";
 
+    // Pour GET /payments/{id} (polling app pendant l'attente du webhook, voir
+    // BookingPaymentService.getStatusForUser).
+    static final String SELECT_BOOKING_PAYMENT_BY_ID =
+            "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE id = ?";
+
     // Paiements PENDING assez vieux pour justifier une vérification de secours auprès de la
     // passerelle (voir PendingPaymentCheckService, migration V34 pour le seuil configurable).
     // moov_transaction_id IS NOT NULL : un paiement dont la création côté passerelle aurait échoué
