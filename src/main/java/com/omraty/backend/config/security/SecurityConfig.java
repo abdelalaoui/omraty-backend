@@ -36,6 +36,7 @@ public class SecurityConfig {
                                                 // / une signature sera ajouté une fois la doc Moov
                                                 // reçue.
                                                 "/webhooks/**",
+                                                "/app/version-check",
                                                 "/v3/api-docs/**",
                                                 "/swagger-ui/**",
                                                 "/swagger-ui.html")
