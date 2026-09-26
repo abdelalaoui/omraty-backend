@@ -13,14 +13,17 @@ final class TripPackageTable {
 
     // Chaque filtre est passé deux fois (une pour le test IS NULL, une pour la comparaison) : JDBC
     // ne permet pas de réutiliser un même "?" à plusieurs endroits d'une requête.
+    // Cast explicite (?::varchar / ?::numeric) sur le premier ? de chaque "? IS NULL" : sans lui,
+    // Postgres ne peut pas déduire le type du paramètre à partir d'un simple IS NULL et rejette la
+    // requête ("could not determine data type of parameter $1").
     static final String SELECT_VISIBLE_TRIP_PACKAGES_FILTERED =
             "SELECT "
                     + TRIP_PACKAGE_COLUMNS
                     + " FROM trip_package WHERE visible = TRUE"
-                    + " AND (? IS NULL OR destination ILIKE CONCAT('%', ?, '%'))"
-                    + " AND (? IS NULL OR category = ?)"
-                    + " AND (? IS NULL OR price >= ?)"
-                    + " AND (? IS NULL OR price <= ?)"
+                    + " AND (?::varchar IS NULL OR destination ILIKE CONCAT('%', ?, '%'))"
+                    + " AND (?::varchar IS NULL OR category = ?)"
+                    + " AND (?::numeric IS NULL OR price >= ?)"
+                    + " AND (?::numeric IS NULL OR price <= ?)"
                     + " ORDER BY id ASC";
 
     static final String INSERT_TRIP_PACKAGE =
