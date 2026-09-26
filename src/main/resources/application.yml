@@ -8,6 +8,12 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    # Les PRs de features indépendantes ajoutent chacune leurs migrations, mais sont mergées dans
+    # leur ordre de dépendance plutôt que dans l'ordre numérique des migrations (ex. le 26/09/2026 :
+    # V34 est passée en prod avant V32/V33) — sans ce réglage, Flyway refuse de démarrer ("Detected
+    # resolved migration not applied to database"). Chaque migration reste indépendante des autres
+    # (voir leur contenu), l'appliquer hors ordre est donc sans risque.
+    out-of-order: true
   servlet:
     multipart:
       max-file-size: 5MB
