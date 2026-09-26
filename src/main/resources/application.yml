@@ -23,9 +23,16 @@ jwt:
 
 payment:
   gateway:
-    # mock (par défaut, dev/test, voir MockPaymentGatewayClient) | moov (une fois la vraie
-    # implémentation MoovPaymentGatewayClient écrite, voir PaymentGatewayClient)
+    # mock (par défaut, dev/test, voir MockPaymentGatewayClient, NoOpWebhookVerifier) | moov (une
+    # fois les vraies implémentations MoovPaymentGatewayClient/MoovWebhookVerifier écrites, voir
+    # PaymentGatewayClient/WebhookVerifier). Ce même réglage pilote aussi la vérification
+    # d'authenticité du webhook Moov (tâche 10) : tant qu'il vaut mock, AUCUNE vérification de
+    # signature n'est faite (voir NoOpWebhookVerifier, warning explicite dans les logs).
     provider: ${PAYMENT_GATEWAY_PROVIDER:mock}
+    # Fréquence du job de vérification de secours des paiements PENDING (voir
+    # PendingPaymentCheckTask). Le seuil d'âge à partir duquel un paiement est vérifié est lui
+    # configurable en base sans redéploiement (voir migration V34, AppSettingService).
+    pending-check-interval-ms: ${PAYMENT_PENDING_CHECK_INTERVAL_MS:60000}
 
 app:
   vip:

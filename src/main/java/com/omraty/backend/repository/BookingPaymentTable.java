@@ -37,6 +37,17 @@ final class BookingPaymentTable {
     static final String SELECT_BOOKING_PAYMENT_BY_ID =
             "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE id = ?";
 
+    // Paiements PENDING assez vieux pour justifier une vérification de secours auprès de la
+    // passerelle (voir PendingPaymentCheckService, migration V34 pour le seuil configurable).
+    // moov_transaction_id IS NOT NULL : un paiement dont la création côté passerelle aurait échoué
+    // n'a rien à vérifier (voir BookingPaymentService.attachGatewayPayment, toujours renseigné en
+    // pratique juste après l'insertion).
+    static final String SELECT_PENDING_PAYMENTS_OLDER_THAN =
+            "SELECT "
+                    + BOOKING_PAYMENT_COLUMNS
+                    + " FROM booking_payment WHERE status = 'PENDING' AND moov_transaction_id IS"
+                    + " NOT NULL AND created_at <= now() - (?::integer * INTERVAL '1 minute')";
+
     // Pour PaymentReminderService : retrouver le roomId/bedId d'une tranche à rappeler.
     static final String SELECT_BOOKING_PAYMENTS_BY_IDS =
             "SELECT " + BOOKING_PAYMENT_COLUMNS + " FROM booking_payment WHERE id = ANY (?)";
