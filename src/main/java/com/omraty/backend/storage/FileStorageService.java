@@ -12,6 +12,12 @@ public interface FileStorageService {
     String store(MultipartFile file, String subDir);
 
     /**
+     * Stocke un contenu généré côté serveur (voir InvoiceService, qui n'a pas de MultipartFile à
+     * transmettre : le PDF est produit en mémoire, pas uploadé par un client).
+     */
+    String store(byte[] content, String filename, String contentType, String subDir);
+
+    /**
      * Generates a short-lived, time-limited URL clients can use to fetch a previously stored file
      * that isn't publicly readable — e.g. identity photos. {@code key} is the value returned by
      * {@link #store}.

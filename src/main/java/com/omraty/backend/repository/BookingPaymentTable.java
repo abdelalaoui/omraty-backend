@@ -89,4 +89,17 @@ final class BookingPaymentTable {
             "UPDATE booking_payment SET status = 'EXPIRED' WHERE id = ? AND status = 'PENDING'"
                     + " RETURNING "
                     + BOOKING_PAYMENT_COLUMNS;
+
+    // Court-circuite InvoiceService avant de générer/stocker le PDF (coûteux) si la facture existe
+    // déjà (voir migration V39).
+    static final String SELECT_HAS_INVOICE_GENERATED =
+            "SELECT invoice_generated_at IS NOT NULL FROM booking_payment WHERE id = ?";
+
+    // Renseigne la référence de la facture une seule fois par achat (voir InvoiceService,
+    // migration V39). La clause invoice_generated_at IS NULL rend l'appel idempotent : un
+    // déclenchement concurrent (webhook + marquage manuel d'une tranche, ou rejeu) ne régénère
+    // jamais la facture déjà stockée.
+    static final String MARK_INVOICE_GENERATED =
+            "UPDATE booking_payment SET invoice_key = ?, invoice_number = ?, invoice_generated_at ="
+                    + " now() WHERE id = ? AND invoice_generated_at IS NULL";
 }

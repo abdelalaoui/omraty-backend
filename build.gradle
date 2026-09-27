@@ -38,6 +38,10 @@ dependencies {
 
 	implementation("com.google.firebase:firebase-admin:9.9.0")
 
+	// Génération des factures PDF (voir InvoiceService) à partir d'un gabarit HTML/CSS : moteur de
+	// rendu simple, mise en page sans flexbox/grid (non supportés).
+	implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
+
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 

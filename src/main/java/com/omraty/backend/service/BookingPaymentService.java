@@ -78,6 +78,7 @@ public class BookingPaymentService {
     private final BedRepository bedRepository;
     private final VipRequestRepository vipRequestRepository;
     private final NotificationService notificationService;
+    private final InvoiceService invoiceService;
 
     public BookingPaymentService(
             ServiceTierRepository serviceTierRepository,
@@ -88,7 +89,8 @@ public class BookingPaymentService {
             RoomRepository roomRepository,
             BedRepository bedRepository,
             VipRequestRepository vipRequestRepository,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            InvoiceService invoiceService) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
@@ -98,6 +100,7 @@ public class BookingPaymentService {
         this.bedRepository = bedRepository;
         this.vipRequestRepository = vipRequestRepository;
         this.notificationService = notificationService;
+        this.invoiceService = invoiceService;
     }
 
     /**
@@ -258,10 +261,17 @@ public class BookingPaymentService {
             throw new BookingPaymentException.InstallmentAlreadyPaidException(
                     "Tranche déjà payée (id=" + installmentId + ")");
         }
-        return bookingInstallmentRepository
-                .markPaidManually(installmentId, adminId)
-                .orElseThrow(
-                        () -> new IllegalStateException("Tranche introuvable après mise à jour"));
+        BookingInstallment updated =
+                bookingInstallmentRepository
+                        .markPaidManually(installmentId, adminId)
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "Tranche introuvable après mise à jour"));
+        // Seule la 3e tranche marquée payée peut amener l'achat à intégralement payé (voir
+        // InvoiceService.generateIfFullyPaid, qui vérifie lui-même que les 3 le sont).
+        invoiceService.generateIfFullyPaid(updated.bookingPaymentId());
+        return updated;
     }
 
     private BookingInstallment getInstallmentOrThrow(long installmentId) {
@@ -320,6 +330,12 @@ public class BookingPaymentService {
             markFirstInstallmentPaid(payment.id());
         }
         notifyPaymentOutcome(payment, newStatus);
+        if (newStatus == PaymentStatus.CONFIRMED) {
+            // Plan FULL : intégralement payé dès cette confirmation. Plan INSTALLMENTS : ne le sera
+            // qu'une fois les 2 tranches restantes marquées payées (voir markInstallmentPaid) —
+            // generateIfFullyPaid vérifie lui-même la condition, ne génère rien ici pour ce cas.
+            invoiceService.generateIfFullyPaid(payment.id());
+        }
     }
 
     /**

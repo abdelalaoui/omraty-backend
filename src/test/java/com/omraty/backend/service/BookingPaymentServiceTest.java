@@ -61,6 +61,7 @@ class BookingPaymentServiceTest {
     @Mock private BedRepository bedRepository;
     @Mock private VipRequestRepository vipRequestRepository;
     @Mock private NotificationService notificationService;
+    @Mock private InvoiceService invoiceService;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
@@ -72,7 +73,8 @@ class BookingPaymentServiceTest {
                 roomRepository,
                 bedRepository,
                 vipRequestRepository,
-                notificationService);
+                notificationService,
+                invoiceService);
     }
 
     private User user(String phone) {
@@ -415,6 +417,9 @@ class BookingPaymentServiceTest {
         assertThat(result.paidAt()).isNotNull();
         assertThat(result.paidByAdminId()).isEqualTo(ADMIN_ID);
         assertThat(result.paidManually()).isTrue();
+        // Peut amener l'achat à intégralement payé (voir InvoiceService.generateIfFullyPaid, qui
+        // vérifie lui-même que les 3 tranches le sont).
+        verify(invoiceService).generateIfFullyPaid(10L);
     }
 
     @Test
@@ -595,6 +600,8 @@ class BookingPaymentServiceTest {
         verify(bookingInstallmentRepository, never())
                 .findByPaymentIdAndSequence(anyLongV(), anyIntV());
         verify(notificationService).create(eq(USER_ID), eq("Paiement confirmé"), anyString());
+        // Plan FULL : intégralement payé dès cette confirmation (voir InvoiceService).
+        verify(invoiceService).generateIfFullyPaid(10L);
     }
 
     @Test
@@ -643,6 +650,7 @@ class BookingPaymentServiceTest {
         verify(bookingPaymentRepository).updateStatusIfPending(10L, PaymentStatus.FAILED);
         verify(bookingInstallmentRepository, never()).markPaid(anyLongV());
         verify(notificationService).create(eq(USER_ID), eq("Paiement échoué"), anyString());
+        verify(invoiceService, never()).generateIfFullyPaid(anyLongV());
     }
 
     @Test
