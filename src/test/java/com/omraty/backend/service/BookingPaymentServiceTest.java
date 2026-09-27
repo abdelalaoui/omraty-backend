@@ -228,7 +228,8 @@ class BookingPaymentServiceTest {
                 .thenReturn(inserted);
 
         bookingPaymentService()
-                .createPaymentPlan(30L, null, PaymentPlan.FULL, new BigDecimal("90000"), pkg, USER_ID);
+                .createPaymentPlan(
+                        30L, null, PaymentPlan.FULL, new BigDecimal("90000"), pkg, USER_ID);
 
         verify(bookingPaymentRepository)
                 .insert(
@@ -276,8 +277,7 @@ class BookingPaymentServiceTest {
                         anyLongV(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(inserted);
 
-        bookingPaymentService()
-                .createVipPaymentPlan(5L, new BigDecimal("50000"), USER_ID);
+        bookingPaymentService().createVipPaymentPlan(5L, new BigDecimal("50000"), USER_ID);
 
         verifyNoInteractions(appSettingService);
     }
