@@ -14,6 +14,8 @@ public final class BookingInstallmentMapper {
                 installment.sequence(),
                 installment.amount(),
                 installment.dueDate(),
-                installment.paidAt());
+                installment.paidAt(),
+                installment.paidByAdminId(),
+                installment.paidManually());
     }
 }

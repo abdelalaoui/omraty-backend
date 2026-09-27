@@ -51,6 +51,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class BookingPaymentServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
+    private static final UUID ADMIN_ID = UUID.randomUUID();
 
     @Mock private ServiceTierRepository serviceTierRepository;
     @Mock private BookingPaymentRepository bookingPaymentRepository;
@@ -357,15 +358,15 @@ class BookingPaymentServiceTest {
     }
 
     @Test
-    void markInstallmentPaid_whenNotFound_throwsException() {
+    void markInstallmentPaidManually_whenNotFound_throwsException() {
         when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> bookingPaymentService().markInstallmentPaid(1L))
+        assertThatThrownBy(() -> bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID))
                 .isInstanceOf(BookingPaymentException.InstallmentNotFoundException.class);
     }
 
     @Test
-    void markInstallmentPaid_whenAlreadyPaid_throwsException() {
+    void markInstallmentPaidManually_whenAlreadyPaid_throwsException() {
         BookingInstallment paid =
                 new BookingInstallment(
                         1L,
@@ -374,20 +375,30 @@ class BookingPaymentServiceTest {
                         new BigDecimal("20000"),
                         LocalDate.now(),
                         LocalDateTime.now(),
-                        null);
+                        null,
+                        null,
+                        false);
         when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.of(paid));
 
-        assertThatThrownBy(() -> bookingPaymentService().markInstallmentPaid(1L))
+        assertThatThrownBy(() -> bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID))
                 .isInstanceOf(BookingPaymentException.InstallmentAlreadyPaidException.class);
 
-        verify(bookingInstallmentRepository, never()).markPaid(1L);
+        verify(bookingInstallmentRepository, never()).markPaidManually(1L, ADMIN_ID);
     }
 
     @Test
-    void markInstallmentPaid_whenUnpaid_marksItPaid() {
+    void markInstallmentPaidManually_whenUnpaid_marksItPaidWithAdminAudit() {
         BookingInstallment unpaid =
                 new BookingInstallment(
-                        1L, 10L, 2, new BigDecimal("20000"), LocalDate.now(), null, null);
+                        1L,
+                        10L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
+                        false);
         BookingInstallment updated =
                 new BookingInstallment(
                         1L,
@@ -396,13 +407,19 @@ class BookingPaymentServiceTest {
                         new BigDecimal("20000"),
                         LocalDate.now(),
                         LocalDateTime.now(),
-                        null);
+                        null,
+                        ADMIN_ID,
+                        true);
         when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.of(unpaid));
-        when(bookingInstallmentRepository.markPaid(1L)).thenReturn(Optional.of(updated));
+        when(bookingInstallmentRepository.markPaidManually(1L, ADMIN_ID))
+                .thenReturn(Optional.of(updated));
 
-        BookingInstallment result = bookingPaymentService().markInstallmentPaid(1L);
+        BookingInstallment result =
+                bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID);
 
         assertThat(result.paidAt()).isNotNull();
+        assertThat(result.paidByAdminId()).isEqualTo(ADMIN_ID);
+        assertThat(result.paidManually()).isTrue();
         // Peut amener l'achat à intégralement payé (voir InvoiceService.generateIfFullyPaid, qui
         // vérifie lui-même que les 3 tranches le sont).
         verify(invoiceService).generateIfFullyPaid(10L);
@@ -427,6 +444,7 @@ class BookingPaymentServiceTest {
 
         UserPurchasePayment result = bookingPaymentService().toPurchasePayment(payment, List.of());
 
+        assertThat(result.id()).isEqualTo(1L);
         assertThat(result.plan()).isEqualTo(PaymentPlan.FULL);
         assertThat(result.paidAmount()).isEqualByComparingTo("90000");
         assertThat(result.remainingAmount()).isEqualByComparingTo("0");
@@ -461,15 +479,34 @@ class BookingPaymentServiceTest {
                                 new BigDecimal("60000"),
                                 LocalDate.now(),
                                 LocalDateTime.now(),
-                                null),
+                                null,
+                                null,
+                                false),
                         new BookingInstallment(
-                                2L, 1L, 2, new BigDecimal("20000"), secondDueDate, null, null),
+                                2L,
+                                1L,
+                                2,
+                                new BigDecimal("20000"),
+                                secondDueDate,
+                                null,
+                                null,
+                                null,
+                                false),
                         new BookingInstallment(
-                                3L, 1L, 3, new BigDecimal("20000"), thirdDueDate, null, null));
+                                3L,
+                                1L,
+                                3,
+                                new BigDecimal("20000"),
+                                thirdDueDate,
+                                null,
+                                null,
+                                null,
+                                false));
 
         UserPurchasePayment result =
                 bookingPaymentService().toPurchasePayment(payment, installments);
 
+        assertThat(result.id()).isEqualTo(1L);
         assertThat(result.plan()).isEqualTo(PaymentPlan.INSTALLMENTS);
         assertThat(result.paidAmount()).isEqualByComparingTo("60000");
         assertThat(result.remainingAmount()).isEqualByComparingTo("40000");
@@ -587,7 +624,9 @@ class BookingPaymentServiceTest {
                                         new BigDecimal("54000"),
                                         LocalDate.now(),
                                         null,
-                                        null)));
+                                        null,
+                                        null,
+                                        false)));
         when(roomRepository.findByIds(List.of(30L)))
                 .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
 
@@ -689,7 +728,9 @@ class BookingPaymentServiceTest {
                                         new BigDecimal("54000"),
                                         LocalDate.now(),
                                         null,
-                                        null)));
+                                        null,
+                                        null,
+                                        false)));
         when(roomRepository.findByIds(List.of(30L)))
                 .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
         BookingPaymentService service = bookingPaymentService();
@@ -742,6 +783,19 @@ class BookingPaymentServiceTest {
         assertThat(result.status()).isEqualTo(PaymentStatus.CONFIRMED);
         assertThat(result.paymentCode()).isEqualTo(payment.moovPaymentCode());
         assertThat(result.expiresAt()).isEqualTo(payment.expiresAt());
+    }
+
+    @Test
+    void getStatusForUser_whenPaymentExpired_returnsExpiredStatus() {
+        BookingPayment payment =
+                withStatus(pendingPayment(30L, null, PaymentPlan.FULL), PaymentStatus.EXPIRED);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
+
+        assertThat(result.status()).isEqualTo(PaymentStatus.EXPIRED);
     }
 
     @Test

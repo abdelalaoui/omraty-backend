@@ -107,4 +107,9 @@ final class BookingPaymentTable {
     // BookingPaymentService.getInvoiceDownloadUrl) : invoice_key reste NULL tant que la facture
     // n'a pas été générée (voir migration V39).
     static final String SELECT_INVOICE_KEY = "SELECT invoice_key FROM booking_payment WHERE id = ?";
+
+    // Tire le prochain numéro de la séquence PostgreSQL invoice_number_seq (voir migration V40) :
+    // atomique par construction, contrairement à un compteur calculé côté Java (voir
+    // InvoiceService).
+    static final String SELECT_NEXT_INVOICE_NUMBER = "SELECT nextval('invoice_number_seq')";
 }

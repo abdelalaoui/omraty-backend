@@ -266,4 +266,14 @@ public class BookingPaymentRepository {
                         paymentId);
         return results.isEmpty() ? Optional.empty() : Optional.ofNullable(results.get(0));
     }
+
+    /**
+     * Tire le prochain numéro de la séquence {@code invoice_number_seq} (voir migration V40 et
+     * InvoiceService.buildInvoiceNumber) — atomique en base, jamais réutilisé même en cas de
+     * génération concurrente de deux factures.
+     */
+    public long nextInvoiceNumberSequenceValue() {
+        return jdbcTemplate.queryForObject(
+                BookingPaymentTable.SELECT_NEXT_INVOICE_NUMBER, Long.class);
+    }
 }
