@@ -256,12 +256,14 @@ public class BookingPaymentRepository {
      * (invoice_key encore NULL, voir migration V39).
      */
     public Optional<String> findInvoiceKey(long paymentId) {
-        return jdbcTemplate
-                .query(
+        // Pas de .stream().findFirst() : invoice_key est NULL tant que la facture n'a pas été
+        // générée, et Stream.findFirst() fait un Optional.of() en interne (NullPointerException sur
+        // un élément null, contrairement à Optional.ofNullable).
+        List<String> results =
+                jdbcTemplate.query(
                         BookingPaymentTable.SELECT_INVOICE_KEY,
                         (rs, rowNum) -> rs.getString("invoice_key"),
-                        paymentId)
-                .stream()
-                .findFirst();
+                        paymentId);
+        return results.isEmpty() ? Optional.empty() : Optional.ofNullable(results.get(0));
     }
 }
