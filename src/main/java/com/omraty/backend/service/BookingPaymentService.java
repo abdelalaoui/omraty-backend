@@ -243,21 +243,23 @@ public class BookingPaymentService {
     }
 
     /**
-     * Marque manuellement une tranche comme payée (PATCH /admin/installments/{id}/mark-paid), en
-     * attendant une vraie passerelle de paiement — réconciliation manuelle par l'admin pour
-     * l'instant.
+     * Marque manuellement une tranche comme payée (PATCH /admin/installments/{id}/mark-paid) —
+     * filet de sécurité pour les cas exceptionnels (litige, paiement reçu autrement, panne
+     * prolongée côté Moov) maintenant que le flux Moov confirme le paiement de la 1ère tranche
+     * (voir {@link #confirmFromGateway}). adminId est tracé (paid_by_admin_id) et la tranche est
+     * marquée paid_manually pour la distinguer d'une confirmation Moov.
      *
      * @throws BookingPaymentException.InstallmentNotFoundException si la tranche n'existe pas.
      * @throws BookingPaymentException.InstallmentAlreadyPaidException si elle est déjà payée.
      */
-    public BookingInstallment markInstallmentPaid(long installmentId) {
+    public BookingInstallment markInstallmentPaidManually(long installmentId, UUID adminId) {
         BookingInstallment installment = getInstallmentOrThrow(installmentId);
         if (installment.paidAt() != null) {
             throw new BookingPaymentException.InstallmentAlreadyPaidException(
                     "Tranche déjà payée (id=" + installmentId + ")");
         }
         return bookingInstallmentRepository
-                .markPaid(installmentId)
+                .markPaidManually(installmentId, adminId)
                 .orElseThrow(
                         () -> new IllegalStateException("Tranche introuvable après mise à jour"));
     }
