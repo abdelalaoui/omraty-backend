@@ -99,7 +99,15 @@ class InvoiceServiceTest {
 
     private BookingInstallment installment(int sequence, LocalDateTime paidAt) {
         return new BookingInstallment(
-                sequence, 10L, sequence, new BigDecimal("30000"), LocalDate.now(), paidAt, null);
+                sequence,
+                10L,
+                sequence,
+                new BigDecimal("30000"),
+                LocalDate.now(),
+                paidAt,
+                null,
+                null,
+                false);
     }
 
     @Test
