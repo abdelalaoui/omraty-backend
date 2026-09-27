@@ -102,4 +102,9 @@ final class BookingPaymentTable {
     static final String MARK_INVOICE_GENERATED =
             "UPDATE booking_payment SET invoice_key = ?, invoice_number = ?, invoice_generated_at ="
                     + " now() WHERE id = ? AND invoice_generated_at IS NULL";
+
+    // Tire le prochain numéro de la séquence PostgreSQL invoice_number_seq (voir migration V40) :
+    // atomique par construction, contrairement à un compteur calculé côté Java (voir
+    // InvoiceService).
+    static final String SELECT_NEXT_INVOICE_NUMBER = "SELECT nextval('invoice_number_seq')";
 }

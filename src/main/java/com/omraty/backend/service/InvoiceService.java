@@ -37,7 +37,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * Génère et stocke la facture PDF d'un achat, une fois celui-ci intégralement payé (voir migration
- * V39 : invoice_key/invoice_number/invoice_generated_at sur booking_payment). Jamais de reçu
+ * V39 : invoice_key/invoice_number/invoice_generated_at sur booking_payment, et V40 : séquence
+ * invoice_number_seq pour la numérotation, voir {@link #buildInvoiceNumber}). Jamais de reçu
  * intermédiaire par tranche : plan FULL, la facture part dès la confirmation ; plan INSTALLMENTS,
  * seulement une fois les 3 tranches payées.
  *
@@ -137,7 +138,7 @@ public class InvoiceService {
                     paymentId);
             return;
         }
-        String invoiceNumber = buildInvoiceNumber(paymentId);
+        String invoiceNumber = buildInvoiceNumber();
         byte[] pdf = renderPdf(payment, installments, purchase, invoiceNumber);
         String invoiceKey =
                 fileStorageService.store(
@@ -164,8 +165,16 @@ public class InvoiceService {
                 && installments.stream().allMatch(installment -> installment.paidAt() != null);
     }
 
-    private static String buildInvoiceNumber(long paymentId) {
-        return String.format("FACT-%d-%06d", LocalDate.now().getYear(), paymentId);
+    /**
+     * Format OMR-{année}-{nextval sur 6 chiffres} (ex. OMR-2026-000114). Le numéro vient de la
+     * séquence PostgreSQL {@code invoice_number_seq} (migration V40), atomique par construction :
+     * contrairement à un compteur calculé côté Java, deux factures générées en même temps ne
+     * peuvent jamais obtenir le même numéro. La séquence elle-même ne se réinitialise jamais, seule
+     * l'étiquette {année} change d'une facture à l'autre.
+     */
+    private String buildInvoiceNumber() {
+        long nextVal = bookingPaymentRepository.nextInvoiceNumberSequenceValue();
+        return String.format("OMR-%d-%06d", LocalDate.now().getYear(), nextVal);
     }
 
     private PurchaseDescription resolvePurchaseDescription(BookingPayment payment) {

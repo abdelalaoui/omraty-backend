@@ -1,10 +1,12 @@
 package com.omraty.backend.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -30,8 +32,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -137,6 +145,7 @@ class InvoiceServiceTest {
         when(bookingInstallmentRepository.findByBookingPaymentIds(List.of(10L)))
                 .thenReturn(List.of());
         when(bookingPaymentRepository.hasInvoiceGenerated(10L)).thenReturn(false);
+        when(bookingPaymentRepository.nextInvoiceNumberSequenceValue()).thenReturn(100114L);
         stubRoomAndOwner();
         when(fileStorageService.store(
                         any(byte[].class), anyString(), eq("application/pdf"), eq("invoices")))
@@ -148,7 +157,61 @@ class InvoiceServiceTest {
 
         verify(fileStorageService)
                 .store(any(byte[].class), anyString(), eq("application/pdf"), eq("invoices"));
-        verify(bookingPaymentRepository).markInvoiceGenerated(eq(10L), anyString(), anyString());
+        // Numéro tiré de la séquence PostgreSQL invoice_number_seq (migration V40), jamais de
+        // l'id technique de booking_payment (voir Tâche 16).
+        verify(bookingPaymentRepository)
+                .markInvoiceGenerated(
+                        eq(10L), anyString(), eq("OMR-" + LocalDate.now().getYear() + "-100114"));
+    }
+
+    @Test
+    void
+            generateIfFullyPaid_whenCalledConcurrentlyForDifferentPayments_assignsDistinctInvoiceNumbers()
+                    throws ExecutionException, InterruptedException {
+        // Simule ce que garantit la séquence PostgreSQL invoice_number_seq (nextval est atomique) :
+        // deux appels concurrents obtiennent toujours des valeurs distinctes, jamais le même numéro
+        // — contrairement à un compteur calculé côté Java (if (max == ...) max++).
+        AtomicLong sequence = new AtomicLong(100000);
+        when(bookingPaymentRepository.nextInvoiceNumberSequenceValue())
+                .thenAnswer(invocation -> sequence.getAndIncrement());
+
+        when(bookingPaymentRepository.findById(10L))
+                .thenReturn(Optional.of(payment(10L, PaymentPlan.FULL, PaymentStatus.CONFIRMED)));
+        when(bookingPaymentRepository.findById(11L))
+                .thenReturn(Optional.of(payment(11L, PaymentPlan.FULL, PaymentStatus.CONFIRMED)));
+        when(bookingInstallmentRepository.findByBookingPaymentIds(List.of(10L)))
+                .thenReturn(List.of());
+        when(bookingInstallmentRepository.findByBookingPaymentIds(List.of(11L)))
+                .thenReturn(List.of());
+        when(bookingPaymentRepository.hasInvoiceGenerated(10L)).thenReturn(false);
+        when(bookingPaymentRepository.hasInvoiceGenerated(11L)).thenReturn(false);
+        stubRoomAndOwner();
+        when(fileStorageService.store(
+                        any(byte[].class), anyString(), eq("application/pdf"), eq("invoices")))
+                .thenReturn("invoices/FACT.pdf");
+        when(bookingPaymentRepository.markInvoiceGenerated(anyLong(), anyString(), anyString()))
+                .thenReturn(true);
+
+        InvoiceService invoiceService = invoiceService();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<?>> futures =
+                    List.of(
+                            executor.submit(() -> invoiceService.generateIfFullyPaid(10L)),
+                            executor.submit(() -> invoiceService.generateIfFullyPaid(11L)));
+            for (Future<?> future : futures) {
+                future.get();
+            }
+        } finally {
+            executor.shutdown();
+        }
+
+        ArgumentCaptor<String> invoiceNumbers = ArgumentCaptor.forClass(String.class);
+        verify(bookingPaymentRepository, times(2))
+                .markInvoiceGenerated(anyLong(), anyString(), invoiceNumbers.capture());
+        List<String> capturedNumbers = invoiceNumbers.getAllValues();
+        assertThat(capturedNumbers).hasSize(2);
+        assertThat(capturedNumbers.get(0)).isNotEqualTo(capturedNumbers.get(1));
     }
 
     @Test
