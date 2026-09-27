@@ -256,6 +256,7 @@ public class BookingPaymentRepository {
      * génération concurrente de deux factures.
      */
     public long nextInvoiceNumberSequenceValue() {
-        return jdbcTemplate.queryForObject(BookingPaymentTable.SELECT_NEXT_INVOICE_NUMBER, Long.class);
+        return jdbcTemplate.queryForObject(
+                BookingPaymentTable.SELECT_NEXT_INVOICE_NUMBER, Long.class);
     }
 }

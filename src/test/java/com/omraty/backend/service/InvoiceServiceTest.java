@@ -153,14 +153,13 @@ class InvoiceServiceTest {
         // l'id technique de booking_payment (voir Tâche 16).
         verify(bookingPaymentRepository)
                 .markInvoiceGenerated(
-                        eq(10L),
-                        anyString(),
-                        eq("OMR-" + LocalDate.now().getYear() + "-100114"));
+                        eq(10L), anyString(), eq("OMR-" + LocalDate.now().getYear() + "-100114"));
     }
 
     @Test
-    void generateIfFullyPaid_whenCalledConcurrentlyForDifferentPayments_assignsDistinctInvoiceNumbers()
-            throws ExecutionException, InterruptedException {
+    void
+            generateIfFullyPaid_whenCalledConcurrentlyForDifferentPayments_assignsDistinctInvoiceNumbers()
+                    throws ExecutionException, InterruptedException {
         // Simule ce que garantit la séquence PostgreSQL invoice_number_seq (nextval est atomique) :
         // deux appels concurrents obtiennent toujours des valeurs distinctes, jamais le même numéro
         // — contrairement à un compteur calculé côté Java (if (max == ...) max++).
