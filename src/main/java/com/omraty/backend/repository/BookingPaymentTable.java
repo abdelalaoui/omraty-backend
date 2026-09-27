@@ -102,4 +102,9 @@ final class BookingPaymentTable {
     static final String MARK_INVOICE_GENERATED =
             "UPDATE booking_payment SET invoice_key = ?, invoice_number = ?, invoice_generated_at ="
                     + " now() WHERE id = ? AND invoice_generated_at IS NULL";
+
+    // Pour GET /users/me/purchases/{id}/invoice (voir
+    // BookingPaymentService.getInvoiceDownloadUrl) : invoice_key reste NULL tant que la facture
+    // n'a pas été générée (voir migration V39).
+    static final String SELECT_INVOICE_KEY = "SELECT invoice_key FROM booking_payment WHERE id = ?";
 }

@@ -48,4 +48,15 @@ public class BookingPaymentException extends RuntimeException {
             super(message);
         }
     }
+
+    /**
+     * GET /users/me/purchases/{id}/invoice demandé pour un achat pas encore intégralement payé
+     * (invoice_key encore null, voir BookingPaymentService.getInvoiceDownloadUrl) — la facture n'a
+     * pas encore été générée (voir InvoiceService.generateIfFullyPaid).
+     */
+    public static class InvoiceNotAvailableException extends BookingPaymentException {
+        public InvoiceNotAvailableException(String message) {
+            super(message);
+        }
+    }
 }

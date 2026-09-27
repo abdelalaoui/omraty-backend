@@ -205,6 +205,12 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(BookingPaymentException.InvoiceNotAvailableException.class)
+    public ResponseEntity<ErrorResponse> handleInvoiceNotAvailable(
+            BookingPaymentException.InvoiceNotAvailableException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(AgencyCodeException.InvalidAgencyCodeRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidAgencyCodeRequest(
             AgencyCodeException.InvalidAgencyCodeRequestException e) {

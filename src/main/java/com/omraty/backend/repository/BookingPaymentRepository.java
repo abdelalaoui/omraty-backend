@@ -249,4 +249,19 @@ public class BookingPaymentRepository {
                         paymentId);
         return updated > 0;
     }
+
+    /**
+     * Clé de stockage du PDF de facture, pour GET /users/me/purchases/{id}/invoice (voir
+     * BookingPaymentService.getInvoiceDownloadUrl) — vide tant que la facture n'a pas été générée
+     * (invoice_key encore NULL, voir migration V39).
+     */
+    public Optional<String> findInvoiceKey(long paymentId) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.SELECT_INVOICE_KEY,
+                        (rs, rowNum) -> rs.getString("invoice_key"),
+                        paymentId)
+                .stream()
+                .findFirst();
+    }
 }

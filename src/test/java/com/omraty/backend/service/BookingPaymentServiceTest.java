@@ -33,6 +33,7 @@ import com.omraty.backend.repository.BookingPaymentRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import com.omraty.backend.repository.VipRequestRepository;
+import com.omraty.backend.storage.FileStorageService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -61,6 +62,7 @@ class BookingPaymentServiceTest {
     @Mock private VipRequestRepository vipRequestRepository;
     @Mock private NotificationService notificationService;
     @Mock private InvoiceService invoiceService;
+    @Mock private FileStorageService fileStorageService;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
@@ -73,7 +75,8 @@ class BookingPaymentServiceTest {
                 bedRepository,
                 vipRequestRepository,
                 notificationService,
-                invoiceService);
+                invoiceService,
+                fileStorageService);
     }
 
     private User user(String phone) {
@@ -762,6 +765,60 @@ class BookingPaymentServiceTest {
         PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
 
         assertThat(result.status()).isEqualTo(PaymentStatus.PENDING);
+    }
+
+    @Test
+    void getInvoiceDownloadUrl_whenPaymentDoesNotExist_throwsException() {
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().getInvoiceDownloadUrl(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+        verifyNoInteractions(fileStorageService);
+    }
+
+    @Test
+    void getInvoiceDownloadUrl_whenPaymentBelongsToAnotherUser_throwsPaymentNotFound() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(
+                        List.of(
+                                new Room(
+                                        30L, 2, 1L, 2, 2, UUID.randomUUID(), LocalDateTime.now())));
+
+        assertThatThrownBy(() -> bookingPaymentService().getInvoiceDownloadUrl(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+        verifyNoInteractions(fileStorageService);
+    }
+
+    @Test
+    void getInvoiceDownloadUrl_whenInvoiceNotYetGenerated_throwsInvoiceNotAvailable() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+        when(bookingPaymentRepository.findInvoiceKey(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().getInvoiceDownloadUrl(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.InvoiceNotAvailableException.class)
+                .hasMessage("Facture pas encore disponible");
+        verifyNoInteractions(fileStorageService);
+    }
+
+    @Test
+    void getInvoiceDownloadUrl_whenInvoiceGenerated_returnsPresignedUrl() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+        when(bookingPaymentRepository.findInvoiceKey(10L))
+                .thenReturn(Optional.of("invoices/OMR-2026-100114.pdf"));
+        when(fileStorageService.generatePresignedUrl("invoices/OMR-2026-100114.pdf"))
+                .thenReturn("https://storage.example.com/signed-url");
+
+        String result = bookingPaymentService().getInvoiceDownloadUrl(USER_ID, 10L);
+
+        assertThat(result).isEqualTo("https://storage.example.com/signed-url");
     }
 
     private static long anyLongV() {
