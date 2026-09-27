@@ -1,5 +1,6 @@
 package com.omraty.backend.controller;
 
+import com.omraty.backend.dto.response.FullPaymentDiscountResponse;
 import com.omraty.backend.dto.response.InvoiceDownloadResponse;
 import com.omraty.backend.dto.response.PaymentStatusResponse;
 import com.omraty.backend.service.BookingPaymentService;
@@ -34,6 +35,19 @@ public class PaymentController {
     public ResponseEntity<PaymentStatusResponse> getStatus(
             @AuthenticationPrincipal UUID userId, @PathVariable long id) {
         return ResponseEntity.ok(bookingPaymentService.getStatusForUser(userId, id));
+    }
+
+    /**
+     * Pourcentage de réduction réellement appliqué au paiement complet (voir
+     * BookingPaymentService.applyFullPaymentDiscount, migration V41) — l'app doit lire cette valeur
+     * plutôt qu'un taux codé en dur (voir payment_plan_screen.dart), pour ne jamais afficher un
+     * montant que le backend n'appliquera pas réellement.
+     */
+    @GetMapping("/payments/full-payment-discount-percentage")
+    public ResponseEntity<FullPaymentDiscountResponse> getFullPaymentDiscountPercentage() {
+        return ResponseEntity.ok(
+                new FullPaymentDiscountResponse(
+                        bookingPaymentService.getFullPaymentDiscountPercentage()));
     }
 
     /**

@@ -4,6 +4,7 @@ import com.omraty.backend.dto.response.VersionCheckResponse;
 import com.omraty.backend.entities.AppSetting;
 import com.omraty.backend.exception.AppSettingException;
 import com.omraty.backend.repository.AppSettingRepository;
+import java.math.BigDecimal;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,6 +41,14 @@ public class AppSettingService {
      */
     public int getIntValue(String key) {
         return Integer.parseInt(getSetting(key).value());
+    }
+
+    /**
+     * Valeur d'un réglage décimal, ex. un pourcentage de réduction (voir
+     * BookingPaymentService.applyFullPaymentDiscount).
+     */
+    public BigDecimal getDecimalValue(String key) {
+        return new BigDecimal(getSetting(key).value());
     }
 
     public AppSetting updateSetting(String key, String value) {

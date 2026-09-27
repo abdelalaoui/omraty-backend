@@ -64,6 +64,7 @@ class BookingPaymentServiceTest {
     @Mock private NotificationService notificationService;
     @Mock private InvoiceService invoiceService;
     @Mock private FileStorageService fileStorageService;
+    @Mock private AppSettingService appSettingService;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
@@ -77,7 +78,8 @@ class BookingPaymentServiceTest {
                 vipRequestRepository,
                 notificationService,
                 invoiceService,
-                fileStorageService);
+                fileStorageService,
+                appSettingService);
     }
 
     private User user(String phone) {
@@ -126,8 +128,12 @@ class BookingPaymentServiceTest {
     }
 
     @Test
-    void createPaymentPlan_full_insertsSinglePaymentWithoutInstallments() {
+    void createPaymentPlan_full_appliesDiscountAndInsertsSinglePaymentWithoutInstallments() {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        // 5% de réduction (voir migration V41) : 90000 -> 85500.00.
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(new BigDecimal("5"));
         BookingPayment inserted =
                 new BookingPayment(
                         10L,
@@ -136,7 +142,7 @@ class BookingPaymentServiceTest {
                         null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
-                        new BigDecimal("90000"),
+                        new BigDecimal("85500.00"),
                         null,
                         null,
                         null,
@@ -148,12 +154,12 @@ class BookingPaymentServiceTest {
                         null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
-                        new BigDecimal("90000")))
+                        new BigDecimal("85500.00")))
                 .thenReturn(inserted);
         when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(15);
         when(paymentGatewayClient.createPayment(
-                        "+22890000000", new BigDecimal("90000"), "booking-payment-10"))
+                        "+22890000000", new BigDecimal("85500.00"), "booking-payment-10"))
                 .thenReturn(new PaymentGatewayResult("CODE123", "txn-1", expiresAt));
         BookingPayment withGateway =
                 new BookingPayment(
@@ -163,7 +169,7 @@ class BookingPaymentServiceTest {
                         null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
-                        new BigDecimal("90000"),
+                        new BigDecimal("85500.00"),
                         "CODE123",
                         "txn-1",
                         "+22890000000",
@@ -181,6 +187,99 @@ class BookingPaymentServiceTest {
         assertThat(result).isEqualTo(withGateway);
         verify(bookingInstallmentRepository, never())
                 .insert(anyLongV(), anyIntV(), any(), any(), any());
+    }
+
+    @Test
+    void createPaymentPlan_full_withZeroDiscountSetting_chargesFullAmount() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(BigDecimal.ZERO);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("90000.00")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+
+        bookingPaymentService()
+                .createPaymentPlan(30L, null, PaymentPlan.FULL, new BigDecimal("90000"), pkg, USER_ID);
+
+        verify(bookingPaymentRepository)
+                .insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"));
+    }
+
+    @Test
+    void createVipPaymentPlan_doesNotApplyFullPaymentDiscount() {
+        // proposedPrice est un montant déjà négocié par l'admin, pas un tarif catalogue — la
+        // réduction ne doit jamais s'y appliquer (voir applyFullPaymentDiscount).
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        null,
+                        null,
+                        5L,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("50000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        null,
+                        null,
+                        5L,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("50000")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("50000")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+
+        bookingPaymentService()
+                .createVipPaymentPlan(5L, new BigDecimal("50000"), USER_ID);
+
+        verifyNoInteractions(appSettingService);
     }
 
     @Test
