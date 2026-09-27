@@ -773,6 +773,19 @@ class BookingPaymentServiceTest {
     }
 
     @Test
+    void getStatusForUser_whenPaymentExpired_returnsExpiredStatus() {
+        BookingPayment payment =
+                withStatus(pendingPayment(30L, null, PaymentPlan.FULL), PaymentStatus.EXPIRED);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
+
+        assertThat(result.status()).isEqualTo(PaymentStatus.EXPIRED);
+    }
+
+    @Test
     void getStatusForUser_whenOwnedBedPayment_returnsStatus() {
         BookingPayment payment = pendingPayment(null, 200L, PaymentPlan.FULL);
         when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
