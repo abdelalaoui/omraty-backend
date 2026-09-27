@@ -449,6 +449,7 @@ public class BookingPaymentService {
             BookingPayment payment, List<BookingInstallment> installments) {
         if (payment.plan() == PaymentPlan.FULL) {
             return new UserPurchasePayment(
+                    payment.id(),
                     PaymentPlan.FULL,
                     payment.totalAmount(),
                     payment.totalAmount(),
@@ -479,6 +480,7 @@ public class BookingPaymentService {
                                                 installment.paidAt()))
                         .toList();
         return new UserPurchasePayment(
+                payment.id(),
                 PaymentPlan.INSTALLMENTS,
                 payment.totalAmount(),
                 paidAmount,
