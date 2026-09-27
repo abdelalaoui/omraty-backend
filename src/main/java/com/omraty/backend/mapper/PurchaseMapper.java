@@ -32,6 +32,7 @@ public final class PurchaseMapper {
             return null;
         }
         return new PurchasePaymentResponse(
+                payment.id(),
                 payment.plan(),
                 payment.totalAmount(),
                 payment.paidAmount(),

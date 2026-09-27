@@ -436,6 +436,7 @@ class BookingPaymentServiceTest {
 
         UserPurchasePayment result = bookingPaymentService().toPurchasePayment(payment, List.of());
 
+        assertThat(result.id()).isEqualTo(1L);
         assertThat(result.plan()).isEqualTo(PaymentPlan.FULL);
         assertThat(result.paidAmount()).isEqualByComparingTo("90000");
         assertThat(result.remainingAmount()).isEqualByComparingTo("0");
@@ -497,6 +498,7 @@ class BookingPaymentServiceTest {
         UserPurchasePayment result =
                 bookingPaymentService().toPurchasePayment(payment, installments);
 
+        assertThat(result.id()).isEqualTo(1L);
         assertThat(result.plan()).isEqualTo(PaymentPlan.INSTALLMENTS);
         assertThat(result.paidAmount()).isEqualByComparingTo("60000");
         assertThat(result.remainingAmount()).isEqualByComparingTo("40000");
