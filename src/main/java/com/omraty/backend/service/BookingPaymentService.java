@@ -22,6 +22,7 @@ import com.omraty.backend.repository.BookingPaymentRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import com.omraty.backend.repository.VipRequestRepository;
+import com.omraty.backend.storage.FileStorageService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -79,6 +80,7 @@ public class BookingPaymentService {
     private final VipRequestRepository vipRequestRepository;
     private final NotificationService notificationService;
     private final InvoiceService invoiceService;
+    private final FileStorageService fileStorageService;
 
     public BookingPaymentService(
             ServiceTierRepository serviceTierRepository,
@@ -90,7 +92,8 @@ public class BookingPaymentService {
             BedRepository bedRepository,
             VipRequestRepository vipRequestRepository,
             NotificationService notificationService,
-            InvoiceService invoiceService) {
+            InvoiceService invoiceService,
+            FileStorageService fileStorageService) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
@@ -101,6 +104,7 @@ public class BookingPaymentService {
         this.vipRequestRepository = vipRequestRepository;
         this.notificationService = notificationService;
         this.invoiceService = invoiceService;
+        this.fileStorageService = fileStorageService;
     }
 
     /**
@@ -419,6 +423,36 @@ public class BookingPaymentService {
                                         new BookingPaymentException.PaymentNotFoundException(
                                                 "Paiement introuvable (id=" + paymentId + ")"));
         return PaymentMapper.toStatusResponse(payment);
+    }
+
+    /**
+     * URL présignée du PDF de facture, pour GET /users/me/purchases/{id}/invoice (voir
+     * InvoiceService, migration V39 pour invoice_key). Même vérification de propriété que {@link
+     * #getStatusForUser} : un paiement qui n'appartient pas à userId est traité comme introuvable,
+     * pour ne pas révéler son existence à un autre utilisateur.
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas ou
+     *     n'appartient pas à userId.
+     * @throws BookingPaymentException.InvoiceNotAvailableException si l'achat n'est pas encore
+     *     intégralement payé (invoice_key encore null : la facture n'a pas encore été générée).
+     */
+    public String getInvoiceDownloadUrl(UUID userId, long paymentId) {
+        BookingPayment payment =
+                bookingPaymentRepository
+                        .findById(paymentId)
+                        .filter(candidate -> userId.equals(resolveOwnerUserId(candidate)))
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotFoundException(
+                                                "Paiement introuvable (id=" + paymentId + ")"));
+        String invoiceKey =
+                bookingPaymentRepository
+                        .findInvoiceKey(payment.id())
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.InvoiceNotAvailableException(
+                                                "Facture pas encore disponible"));
+        return fileStorageService.generatePresignedUrl(invoiceKey);
     }
 
     private UUID resolveOwnerUserId(BookingPayment payment) {

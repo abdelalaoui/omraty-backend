@@ -251,6 +251,23 @@ public class BookingPaymentRepository {
     }
 
     /**
+     * Clé de stockage du PDF de facture, pour GET /users/me/purchases/{id}/invoice (voir
+     * BookingPaymentService.getInvoiceDownloadUrl) — vide tant que la facture n'a pas été générée
+     * (invoice_key encore NULL, voir migration V39).
+     */
+    public Optional<String> findInvoiceKey(long paymentId) {
+        // Pas de .stream().findFirst() : invoice_key est NULL tant que la facture n'a pas été
+        // générée, et Stream.findFirst() fait un Optional.of() en interne (NullPointerException sur
+        // un élément null, contrairement à Optional.ofNullable).
+        List<String> results =
+                jdbcTemplate.query(
+                        BookingPaymentTable.SELECT_INVOICE_KEY,
+                        (rs, rowNum) -> rs.getString("invoice_key"),
+                        paymentId);
+        return results.isEmpty() ? Optional.empty() : Optional.ofNullable(results.get(0));
+    }
+
+    /**
      * Tire le prochain numéro de la séquence {@code invoice_number_seq} (voir migration V40 et
      * InvoiceService.buildInvoiceNumber) — atomique en base, jamais réutilisé même en cas de
      * génération concurrente de deux factures.
