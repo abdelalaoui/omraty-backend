@@ -221,4 +221,32 @@ public class BookingPaymentRepository {
                 .stream()
                 .findFirst();
     }
+
+    /**
+     * true si une facture a déjà été générée pour ce paiement (voir InvoiceService, migration V39)
+     * : évite de regénérer/restocker le PDF (coûteux) à chaque appel.
+     */
+    public boolean hasInvoiceGenerated(long paymentId) {
+        Boolean result =
+                jdbcTemplate.queryForObject(
+                        BookingPaymentTable.SELECT_HAS_INVOICE_GENERATED, Boolean.class, paymentId);
+        return Boolean.TRUE.equals(result);
+    }
+
+    /**
+     * Renseigne invoice_key/invoice_number et marque la date de génération (voir InvoiceService,
+     * migration V39).
+     *
+     * @return true si cet appel a effectivement renseigné la facture, false si elle l'était déjà
+     *     (clause invoice_generated_at IS NULL non satisfaite) — appel idempotent.
+     */
+    public boolean markInvoiceGenerated(long paymentId, String invoiceKey, String invoiceNumber) {
+        int updated =
+                jdbcTemplate.update(
+                        BookingPaymentTable.MARK_INVOICE_GENERATED,
+                        invoiceKey,
+                        invoiceNumber,
+                        paymentId);
+        return updated > 0;
+    }
 }

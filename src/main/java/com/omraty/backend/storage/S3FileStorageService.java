@@ -63,6 +63,15 @@ public class S3FileStorageService implements FileStorageService {
     }
 
     @Override
+    public String store(byte[] content, String filename, String contentType, String subDir) {
+        String key = subDir + "/" + UUID.randomUUID() + FileExtensions.of(filename);
+        s3Client.putObject(
+                PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType).build(),
+                RequestBody.fromBytes(content));
+        return key;
+    }
+
+    @Override
     public String generatePresignedUrl(String key) {
         GetObjectPresignRequest presignRequest =
                 GetObjectPresignRequest.builder()

@@ -53,6 +53,20 @@ public class LocalFileStorageService implements FileStorageService {
     }
 
     @Override
+    public String store(byte[] content, String filename, String contentType, String subDir) {
+        String storedFilename = UUID.randomUUID() + FileExtensions.of(filename);
+        Path targetDir = rootDir.resolve(subDir).normalize();
+        try {
+            Files.createDirectories(targetDir);
+            Files.write(targetDir.resolve(storedFilename), content);
+        } catch (IOException e) {
+            throw new UserException.PhotoStorageException(
+                    "Échec de l'enregistrement du fichier", e);
+        }
+        return baseUrl + "/" + subDir + "/" + storedFilename;
+    }
+
+    @Override
     public String generatePresignedUrl(String key) {
         // Local storage serves files directly from baseUrl; store() already returns a usable URL.
         return key;
