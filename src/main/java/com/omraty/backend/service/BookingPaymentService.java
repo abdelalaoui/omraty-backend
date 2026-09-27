@@ -81,6 +81,9 @@ public class BookingPaymentService {
     private final NotificationService notificationService;
     private final InvoiceService invoiceService;
     private final FileStorageService fileStorageService;
+    private final AppSettingService appSettingService;
+
+    static final String FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY = "full_payment_discount_percentage";
 
     public BookingPaymentService(
             ServiceTierRepository serviceTierRepository,
@@ -93,7 +96,8 @@ public class BookingPaymentService {
             VipRequestRepository vipRequestRepository,
             NotificationService notificationService,
             InvoiceService invoiceService,
-            FileStorageService fileStorageService) {
+            FileStorageService fileStorageService,
+            AppSettingService appSettingService) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
@@ -105,6 +109,7 @@ public class BookingPaymentService {
         this.notificationService = notificationService;
         this.invoiceService = invoiceService;
         this.fileStorageService = fileStorageService;
+        this.appSettingService = appSettingService;
     }
 
     /**
@@ -133,6 +138,15 @@ public class BookingPaymentService {
     }
 
     /**
+     * Pourcentage de réduction réellement appliqué par {@link #applyFullPaymentDiscount} (voir
+     * migration V41) — exposé pour que l'app puisse prévisualiser le montant exact avant de créer
+     * le paiement (voir GET /payments/full-payment-discount-percentage, PaymentController).
+     */
+    public BigDecimal getFullPaymentDiscountPercentage() {
+        return appSettingService.getDecimalValue(FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY);
+    }
+
+    /**
      * Crée le plan de paiement d'un achat de chambre (roomId renseigné) ou d'une réservation de lit
      * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V30). Le
      * paiement démarre au statut PENDING (voir PaymentStatus, migration V32), quel que soit le plan
@@ -157,7 +171,26 @@ public class BookingPaymentService {
             BigDecimal totalAmount,
             OmraPackage pkg,
             UUID userId) {
-        return createPaymentPlan(roomId, bedId, null, plan, totalAmount, pkg, userId);
+        BigDecimal amount =
+                plan == PaymentPlan.FULL ? applyFullPaymentDiscount(totalAmount) : totalAmount;
+        return createPaymentPlan(roomId, bedId, null, plan, amount, pkg, userId);
+    }
+
+    /**
+     * Réduction appliquée au paiement complet d'une chambre/d'un lit (voir migration V41, réglage
+     * {@code full_payment_discount_percentage}) : jusqu'ici affichée côté app
+     * (payment_plan_screen.dart) mais jamais réellement appliquée par le backend — le client voyait
+     * un montant réduit à l'écran mais payait le montant plein. Non appliquée à un paiement VIP
+     * (voir {@link #createVipPaymentPlan}) : proposedPrice est un montant déjà négocié par l'admin,
+     * pas un tarif catalogue.
+     */
+    private BigDecimal applyFullPaymentDiscount(BigDecimal totalAmount) {
+        BigDecimal discountPercentage =
+                appSettingService.getDecimalValue(FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY);
+        BigDecimal multiplier =
+                BigDecimal.ONE.subtract(
+                        discountPercentage.divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP));
+        return totalAmount.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**
