@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.omraty.backend.config.security.JwtService;
+import com.omraty.backend.entities.AppSetting;
 import com.omraty.backend.entities.RefreshToken;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.exception.AuthException;
@@ -38,13 +39,15 @@ class AuthServiceTest {
     @Mock private AuthRepository authRepository;
     @Mock private JwtService jwtService;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private AppSettingService appSettingService;
 
     private AuthService authService;
     private User user;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(authRepository, jwtService, passwordEncoder);
+        authService =
+                new AuthService(authRepository, jwtService, passwordEncoder, appSettingService);
         user =
                 new User(
                         UUID.randomUUID(),
@@ -118,6 +121,45 @@ class AuthServiceTest {
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(result.refreshToken()).isEqualTo("refresh-token");
         assertThat(result.user()).isEqualTo(user);
+    }
+
+    @Test
+    void loginWithOtp_withWrongCode_throwsException() {
+        when(appSettingService.getSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY))
+                .thenReturn(
+                        new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
+
+        assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "000000"))
+                .isInstanceOf(AuthException.InvalidCredentialsException.class);
+
+        verify(authRepository, never()).findByPhone(anyString());
+    }
+
+    @Test
+    void loginWithOtp_withUnknownPhone_throwsException() {
+        when(appSettingService.getSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY))
+                .thenReturn(
+                        new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
+        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "123456"))
+                .isInstanceOf(AuthException.InvalidCredentialsException.class);
+    }
+
+    @Test
+    void loginWithOtp_success_returnsTokens() {
+        when(appSettingService.getSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY))
+                .thenReturn(
+                        new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
+        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(user));
+        stubTokenIssuance("access-token", "refresh-token");
+
+        AuthResult result = authService.loginWithOtp(PHONE, "123456");
+
+        assertThat(result.accessToken()).isEqualTo("access-token");
+        assertThat(result.refreshToken()).isEqualTo("refresh-token");
+        assertThat(result.user()).isEqualTo(user);
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
     }
 
     @Test

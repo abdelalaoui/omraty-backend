@@ -14,15 +14,24 @@ import org.springframework.stereotype.Service;
 @Service
 public class AuthService {
 
+    // Package-private pour les tests (voir AuthServiceTest) — même pattern que
+    // BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY.
+    static final String OTP_STATIC_CODE_SETTING_KEY = "otp_static_test_code";
+
     private final AuthRepository authRepository;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
+    private final AppSettingService appSettingService;
 
     public AuthService(
-            AuthRepository authRepository, JwtService jwtService, PasswordEncoder passwordEncoder) {
+            AuthRepository authRepository,
+            JwtService jwtService,
+            PasswordEncoder passwordEncoder,
+            AppSettingService appSettingService) {
         this.authRepository = authRepository;
         this.jwtService = jwtService;
         this.passwordEncoder = passwordEncoder;
+        this.appSettingService = appSettingService;
     }
 
     public AuthResult register(String phone, String password, String gender) {
@@ -45,6 +54,28 @@ public class AuthService {
         if (!passwordEncoder.matches(password, user.passwordHash())) {
             throw new AuthException.InvalidCredentialsException("Identifiants invalides");
         }
+        return issueTokens(user);
+    }
+
+    /**
+     * Connexion par code OTP — pas de mot de passe. Le code est comparé au réglage
+     * otp_static_test_code (voir migration V42) : valeur de test statique en attendant la vraie
+     * intégration WhatsApp (TODO(otp)). Seuls les numéros déjà inscrits (via /auth/register)
+     * peuvent se connecter ainsi ; un numéro inconnu doit d'abord passer par l'inscription
+     * classique (le profil — genre, etc. — n'est pas collecté par ce flux minimal).
+     */
+    public AuthResult loginWithOtp(String phone, String code) {
+        String expectedCode = appSettingService.getSetting(OTP_STATIC_CODE_SETTING_KEY).value();
+        if (!expectedCode.equals(code)) {
+            throw new AuthException.InvalidCredentialsException("Code invalide");
+        }
+        User user =
+                authRepository
+                        .findByPhone(phone)
+                        .orElseThrow(
+                                () ->
+                                        new AuthException.InvalidCredentialsException(
+                                                "Aucun compte trouvé pour ce numéro"));
         return issueTokens(user);
     }
 
