@@ -14,8 +14,8 @@ import org.springframework.stereotype.Service;
  * Gestion admin des packages promo accessibles depuis la bannière de l'app (voir Banner) :
  * indépendants du catalogue normal ({@link TripPackageService}), avec leurs propres infos et prix
  * par type de chambre (2/3/5, voir PromoPackageTier). Réservé à ROLE_ADMIN (voir SecurityConfig,
- * préfixe /admin/**, et AdminPromoPackageController). Un package promo sans tier n'est pas exposé
- * côté app (filtrage à la charge de l'endpoint public de lecture, hors scope ici).
+ * préfixe /admin/**, et AdminPromoPackageController), sauf {@link #getVisiblePromoPackages}
+ * (lecture publique, voir PromoRoomController).
  */
 @Service
 public class PromoPackageService {
@@ -53,11 +53,35 @@ public class PromoPackageService {
         return new PromoPackageWithTiers(pkg, promoPackageTierRepository.findByPromoPackageId(id));
     }
 
-    /** Ajoute un nouveau package promo, sans tier (ajoutés ensuite via {@link #addTier}). */
-    public PromoPackageWithTiers createPromoPackage(String title, String description) {
+    /**
+     * Packages promo actifs pour l'app (GET /promo-packages, voir migration V45) : visible = true
+     * ET au moins un tier de prix — un package sans tier n'a rien à vendre, il n'a pas sa place
+     * côté app même si l'admin l'a laissé visible.
+     */
+    public List<PromoPackageWithTiers> getVisiblePromoPackages() {
+        List<PromoPackage> packages = promoPackageRepository.findVisible();
+        var tiersByPackageId =
+                promoPackageTierRepository.findByPromoPackageIds(
+                        packages.stream().map(PromoPackage::id).toList());
+        return packages.stream()
+                .map(
+                        pkg ->
+                                new PromoPackageWithTiers(
+                                        pkg, tiersByPackageId.getOrDefault(pkg.id(), List.of())))
+                .filter(packageWithTiers -> !packageWithTiers.tiers().isEmpty())
+                .toList();
+    }
+
+    /**
+     * Ajoute un nouveau package promo, sans tier (ajoutés ensuite via {@link #addTier}). visible
+     * non fourni = visible par défaut (comme TripPackage).
+     */
+    public PromoPackageWithTiers createPromoPackage(
+            String title, String description, Boolean visible) {
         validateTitle(title);
         validateDescription(description);
-        PromoPackage created = promoPackageRepository.insert(title, description);
+        boolean isVisible = visible == null || visible;
+        PromoPackage created = promoPackageRepository.insert(title, description, isVisible);
         return new PromoPackageWithTiers(created, List.of());
     }
 
@@ -65,14 +89,15 @@ public class PromoPackageService {
      * Met à jour un package promo existant. Tous les champs sont optionnels : seuls ceux fournis
      * (non null) sont modifiés.
      */
-    public PromoPackageWithTiers updatePromoPackage(long id, String title, String description) {
+    public PromoPackageWithTiers updatePromoPackage(
+            long id, String title, String description, Boolean visible) {
         if (title != null) {
             validateTitle(title);
         }
         validateDescription(description);
         PromoPackage updated =
                 promoPackageRepository
-                        .update(id, title, description)
+                        .update(id, title, description, visible)
                         .orElseThrow(() -> notFound(id));
         return new PromoPackageWithTiers(
                 updated, promoPackageTierRepository.findByPromoPackageId(id));

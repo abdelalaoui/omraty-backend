@@ -18,6 +18,7 @@ public final class PromoPackageMapper {
                 pkg.title(),
                 pkg.description(),
                 pkg.createdAt(),
+                pkg.visible(),
                 packageWithTiers.tiers().stream().map(PromoPackageMapper::toTierResponse).toList());
     }
 

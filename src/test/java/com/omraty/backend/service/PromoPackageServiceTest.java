@@ -3,6 +3,7 @@ package com.omraty.backend.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
@@ -36,7 +37,7 @@ class PromoPackageServiceTest {
 
     private PromoPackage promoPackage(long id) {
         return new PromoPackage(
-                id, "Offre flash", "Description", LocalDateTime.of(2026, 1, 1, 0, 0));
+                id, "Offre flash", "Description", LocalDateTime.of(2026, 1, 1, 0, 0), true);
     }
 
     private PromoPackageTier tier(long id, long packageId, int type) {
@@ -68,10 +69,10 @@ class PromoPackageServiceTest {
     @Test
     void createPromoPackage_withValidData_delegatesToRepository() {
         PromoPackage created = promoPackage(1L);
-        when(promoPackageRepository.insert("Offre flash", "Description")).thenReturn(created);
+        when(promoPackageRepository.insert("Offre flash", "Description", true)).thenReturn(created);
 
         PromoPackageWithTiers result =
-                promoPackageService().createPromoPackage("Offre flash", "Description");
+                promoPackageService().createPromoPackage("Offre flash", "Description", null);
 
         assertThat(result.promoPackage()).isEqualTo(created);
         assertThat(result.tiers()).isEmpty();
@@ -79,31 +80,45 @@ class PromoPackageServiceTest {
 
     @Test
     void createPromoPackage_withBlankTitle_throwsExceptionWithoutTouchingRepository() {
-        assertThatThrownBy(() -> promoPackageService().createPromoPackage("  ", null))
+        assertThatThrownBy(() -> promoPackageService().createPromoPackage("  ", null, null))
                 .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
 
-        verify(promoPackageRepository, never()).insert(any(), any());
+        verify(promoPackageRepository, never()).insert(any(), any(), anyBoolean());
     }
 
     @Test
     void updatePromoPackage_whenNotFound_throwsException() {
-        when(promoPackageRepository.update(1L, null, null)).thenReturn(Optional.empty());
+        when(promoPackageRepository.update(1L, null, null, null)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> promoPackageService().updatePromoPackage(1L, null, null))
+        assertThatThrownBy(() -> promoPackageService().updatePromoPackage(1L, null, null, null))
                 .isInstanceOf(PromoPackageException.PromoPackageNotFoundException.class);
     }
 
     @Test
     void updatePromoPackage_titleOnly_delegatesToRepository() {
         PromoPackage updated = promoPackage(1L);
-        when(promoPackageRepository.update(1L, "Nouveau titre", null))
+        when(promoPackageRepository.update(1L, "Nouveau titre", null, null))
                 .thenReturn(Optional.of(updated));
         when(promoPackageTierRepository.findByPromoPackageId(1L)).thenReturn(List.of());
 
         PromoPackageWithTiers result =
-                promoPackageService().updatePromoPackage(1L, "Nouveau titre", null);
+                promoPackageService().updatePromoPackage(1L, "Nouveau titre", null, null);
 
         assertThat(result.promoPackage()).isEqualTo(updated);
+    }
+
+    @Test
+    void getVisiblePromoPackages_excludesPackagesWithoutTiers() {
+        PromoPackage withTier = promoPackage(1L);
+        PromoPackage withoutTier = promoPackage(2L);
+        when(promoPackageRepository.findVisible()).thenReturn(List.of(withTier, withoutTier));
+        when(promoPackageTierRepository.findByPromoPackageIds(List.of(1L, 2L)))
+                .thenReturn(Map.of(1L, List.of(tier(10L, 1L, 2))));
+
+        List<PromoPackageWithTiers> result = promoPackageService().getVisiblePromoPackages();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).promoPackage()).isEqualTo(withTier);
     }
 
     @Test

@@ -30,6 +30,8 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.PromoBedRepository;
+import com.omraty.backend.repository.PromoRoomRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import com.omraty.backend.repository.VipRequestRepository;
@@ -60,6 +62,8 @@ class BookingPaymentServiceTest {
     @Mock private PaymentGatewayClient paymentGatewayClient;
     @Mock private RoomRepository roomRepository;
     @Mock private BedRepository bedRepository;
+    @Mock private PromoRoomRepository promoRoomRepository;
+    @Mock private PromoBedRepository promoBedRepository;
     @Mock private VipRequestRepository vipRequestRepository;
     @Mock private NotificationService notificationService;
     @Mock private InvoiceService invoiceService;
@@ -75,6 +79,8 @@ class BookingPaymentServiceTest {
                 paymentGatewayClient,
                 roomRepository,
                 bedRepository,
+                promoRoomRepository,
+                promoBedRepository,
                 vipRequestRepository,
                 notificationService,
                 invoiceService,
@@ -140,6 +146,8 @@ class BookingPaymentServiceTest {
                         30L,
                         null,
                         null,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("85500.00"),
@@ -150,6 +158,8 @@ class BookingPaymentServiceTest {
                         null);
         when(bookingPaymentRepository.insert(
                         30L,
+                        null,
+                        null,
                         null,
                         null,
                         PaymentPlan.FULL,
@@ -165,6 +175,8 @@ class BookingPaymentServiceTest {
                 new BookingPayment(
                         10L,
                         30L,
+                        null,
+                        null,
                         null,
                         null,
                         PaymentPlan.FULL,
@@ -201,6 +213,8 @@ class BookingPaymentServiceTest {
                         30L,
                         null,
                         null,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("90000.00"),
@@ -211,6 +225,8 @@ class BookingPaymentServiceTest {
                         null);
         when(bookingPaymentRepository.insert(
                         30L,
+                        null,
+                        null,
                         null,
                         null,
                         PaymentPlan.FULL,
@@ -236,6 +252,8 @@ class BookingPaymentServiceTest {
                         30L,
                         null,
                         null,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("90000.00"));
@@ -251,6 +269,8 @@ class BookingPaymentServiceTest {
                         null,
                         null,
                         5L,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("50000"),
@@ -263,6 +283,8 @@ class BookingPaymentServiceTest {
                         null,
                         null,
                         5L,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("50000")))
@@ -298,7 +320,8 @@ class BookingPaymentServiceTest {
                                                 USER_ID))
                 .isInstanceOf(BookingPaymentException.PackageDatesMissingException.class);
 
-        verify(bookingPaymentRepository, never()).insert(any(), any(), any(), any(), any(), any());
+        verify(bookingPaymentRepository, never())
+                .insert(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -312,6 +335,8 @@ class BookingPaymentServiceTest {
                         null,
                         200L,
                         null,
+                        null,
+                        null,
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.PENDING,
                         new BigDecimal("100000"),
@@ -323,6 +348,8 @@ class BookingPaymentServiceTest {
         when(bookingPaymentRepository.insert(
                         null,
                         200L,
+                        null,
+                        null,
                         null,
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.PENDING,
@@ -407,6 +434,8 @@ class BookingPaymentServiceTest {
                         null,
                         null,
                         5L,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("5000.00"),
@@ -419,6 +448,8 @@ class BookingPaymentServiceTest {
                         null,
                         null,
                         5L,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("5000.00")))
@@ -434,6 +465,8 @@ class BookingPaymentServiceTest {
                         null,
                         null,
                         5L,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("5000.00"),
@@ -532,6 +565,8 @@ class BookingPaymentServiceTest {
                         30L,
                         null,
                         null,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.CONFIRMED,
                         new BigDecimal("90000"),
@@ -558,6 +593,8 @@ class BookingPaymentServiceTest {
                         1L,
                         null,
                         200L,
+                        null,
+                        null,
                         null,
                         PaymentPlan.INSTALLMENTS,
                         PaymentStatus.CONFIRMED,
@@ -647,6 +684,8 @@ class BookingPaymentServiceTest {
                 roomId,
                 bedId,
                 vipRequestId,
+                null,
+                null,
                 plan,
                 PaymentStatus.PENDING,
                 new BigDecimal("90000"),
@@ -663,6 +702,8 @@ class BookingPaymentServiceTest {
                 payment.roomId(),
                 payment.bedId(),
                 payment.vipRequestId(),
+                payment.promoRoomId(),
+                payment.promoBedId(),
                 payment.plan(),
                 status,
                 payment.totalAmount(),

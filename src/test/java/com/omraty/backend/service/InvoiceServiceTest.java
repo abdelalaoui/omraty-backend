@@ -75,6 +75,8 @@ class InvoiceServiceTest {
                 30L,
                 null,
                 null,
+                null,
+                null,
                 plan,
                 status,
                 new BigDecimal("90000"),

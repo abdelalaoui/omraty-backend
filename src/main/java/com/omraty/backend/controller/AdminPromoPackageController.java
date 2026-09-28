@@ -56,7 +56,9 @@ public class AdminPromoPackageController {
                 .body(
                         PromoPackageMapper.toResponse(
                                 promoPackageService.createPromoPackage(
-                                        request.title(), request.description())));
+                                        request.title(),
+                                        request.description(),
+                                        request.visible())));
     }
 
     @PatchMapping("/{id}")
@@ -65,7 +67,7 @@ public class AdminPromoPackageController {
         return ResponseEntity.ok(
                 PromoPackageMapper.toResponse(
                         promoPackageService.updatePromoPackage(
-                                id, request.title(), request.description())));
+                                id, request.title(), request.description(), request.visible())));
     }
 
     @DeleteMapping("/{id}")

@@ -17,7 +17,8 @@ public class PromoPackageRepository {
                             rs.getLong("id"),
                             rs.getString("title"),
                             rs.getString("description"),
-                            rs.getObject("created_at", LocalDateTime.class));
+                            rs.getObject("created_at", LocalDateTime.class),
+                            rs.getBoolean("visible"));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -30,6 +31,12 @@ public class PromoPackageRepository {
                 PromoPackageTable.SELECT_ALL_PROMO_PACKAGES, PROMO_PACKAGE_ROW_MAPPER);
     }
 
+    /** Packages promo actifs, pour GET /promo-packages (voir migration V45). */
+    public List<PromoPackage> findVisible() {
+        return jdbcTemplate.query(
+                PromoPackageTable.SELECT_VISIBLE_PROMO_PACKAGES, PROMO_PACKAGE_ROW_MAPPER);
+    }
+
     public Optional<PromoPackage> findById(long id) {
         return jdbcTemplate
                 .query(PromoPackageTable.SELECT_PROMO_PACKAGE_BY_ID, PROMO_PACKAGE_ROW_MAPPER, id)
@@ -37,26 +44,43 @@ public class PromoPackageRepository {
                 .findFirst();
     }
 
-    public PromoPackage insert(String title, String description) {
+    /**
+     * Verrouille et renvoie le package promo, s'il existe. À appeler en tout début de transaction
+     * avant de réserver un lit ou d'acheter une chambre dessus (voir PromoRoomService).
+     */
+    public Optional<PromoPackage> findByIdForUpdate(long id) {
+        return jdbcTemplate
+                .query(
+                        PromoPackageTable.SELECT_PROMO_PACKAGE_BY_ID_FOR_UPDATE,
+                        PROMO_PACKAGE_ROW_MAPPER,
+                        id)
+                .stream()
+                .findFirst();
+    }
+
+    public PromoPackage insert(String title, String description, boolean visible) {
         return jdbcTemplate
                 .query(
                         PromoPackageTable.INSERT_PROMO_PACKAGE,
                         PROMO_PACKAGE_ROW_MAPPER,
                         title,
-                        description)
+                        description,
+                        visible)
                 .stream()
                 .findFirst()
                 .orElseThrow(
                         () -> new IllegalStateException("Échec de la création du package promo"));
     }
 
-    public Optional<PromoPackage> update(long id, String title, String description) {
+    public Optional<PromoPackage> update(
+            long id, String title, String description, Boolean visible) {
         return jdbcTemplate
                 .query(
                         PromoPackageTable.UPDATE_PROMO_PACKAGE,
                         PROMO_PACKAGE_ROW_MAPPER,
                         title,
                         description,
+                        visible,
                         id)
                 .stream()
                 .findFirst();

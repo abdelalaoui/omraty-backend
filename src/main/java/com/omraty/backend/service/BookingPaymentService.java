@@ -5,6 +5,8 @@ import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
+import com.omraty.backend.entities.PromoBed;
+import com.omraty.backend.entities.PromoRoom;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.VipRequest;
@@ -19,6 +21,8 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.PromoBedRepository;
+import com.omraty.backend.repository.PromoRoomRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import com.omraty.backend.repository.VipRequestRepository;
@@ -77,6 +81,8 @@ public class BookingPaymentService {
     private final PaymentGatewayClient paymentGatewayClient;
     private final RoomRepository roomRepository;
     private final BedRepository bedRepository;
+    private final PromoRoomRepository promoRoomRepository;
+    private final PromoBedRepository promoBedRepository;
     private final VipRequestRepository vipRequestRepository;
     private final NotificationService notificationService;
     private final InvoiceService invoiceService;
@@ -93,6 +99,8 @@ public class BookingPaymentService {
             PaymentGatewayClient paymentGatewayClient,
             RoomRepository roomRepository,
             BedRepository bedRepository,
+            PromoRoomRepository promoRoomRepository,
+            PromoBedRepository promoBedRepository,
             VipRequestRepository vipRequestRepository,
             NotificationService notificationService,
             InvoiceService invoiceService,
@@ -105,6 +113,8 @@ public class BookingPaymentService {
         this.paymentGatewayClient = paymentGatewayClient;
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
+        this.promoRoomRepository = promoRoomRepository;
+        this.promoBedRepository = promoBedRepository;
         this.vipRequestRepository = vipRequestRepository;
         this.notificationService = notificationService;
         this.invoiceService = invoiceService;
@@ -173,7 +183,7 @@ public class BookingPaymentService {
             UUID userId) {
         BigDecimal amount =
                 plan == PaymentPlan.FULL ? applyFullPaymentDiscount(totalAmount) : totalAmount;
-        return createPaymentPlan(roomId, bedId, null, plan, amount, pkg, userId);
+        return createPaymentPlan(roomId, bedId, null, null, null, plan, amount, pkg, userId);
     }
 
     /**
@@ -202,13 +212,38 @@ public class BookingPaymentService {
     public BookingPayment createVipPaymentPlan(
             long vipRequestId, BigDecimal proposedPrice, UUID userId) {
         return createPaymentPlan(
-                null, null, vipRequestId, PaymentPlan.FULL, proposedPrice, null, userId);
+                null,
+                null,
+                vipRequestId,
+                null,
+                null,
+                PaymentPlan.FULL,
+                proposedPrice,
+                null,
+                userId);
+    }
+
+    /**
+     * Crée le paiement d'un achat sur un package promo (promoRoomId ou promoBedId renseigné, voir
+     * migration V43, PromoRoomService) : même mécanisme que {@link #createPaymentPlan}, toujours en
+     * plan FULL — un package promo n'a pas de date de fin de voyage permettant de calculer des
+     * échéances (voir PromoRoomService.validateFullPlanOnly). La réduction paiement complet
+     * s'applique (contrairement au VIP) : ce prix vient bien d'un tarif catalogue (voir
+     * PromoPackageTier), pas d'un montant négocié.
+     */
+    public BookingPayment createPromoPaymentPlan(
+            Long promoRoomId, Long promoBedId, BigDecimal totalAmount, UUID userId) {
+        BigDecimal amount = applyFullPaymentDiscount(totalAmount);
+        return createPaymentPlan(
+                null, null, null, promoRoomId, promoBedId, PaymentPlan.FULL, amount, null, userId);
     }
 
     private BookingPayment createPaymentPlan(
             Long roomId,
             Long bedId,
             Long vipRequestId,
+            Long promoRoomId,
+            Long promoBedId,
             PaymentPlan plan,
             BigDecimal totalAmount,
             OmraPackage pkg,
@@ -222,7 +257,14 @@ public class BookingPaymentService {
         }
         BookingPayment payment =
                 bookingPaymentRepository.insert(
-                        roomId, bedId, vipRequestId, plan, PaymentStatus.PENDING, totalAmount);
+                        roomId,
+                        bedId,
+                        vipRequestId,
+                        promoRoomId,
+                        promoBedId,
+                        plan,
+                        PaymentStatus.PENDING,
+                        totalAmount);
         // Montant réellement dû à la création : le total en FULL, seulement la 1ère tranche (60%)
         // en INSTALLMENTS — le client ne doit pas payer les 3 tranches d'un coup à la passerelle.
         BigDecimal amountDueNow =
@@ -501,9 +543,21 @@ public class BookingPaymentService {
                     .map(Bed::userId)
                     .orElse(null);
         }
-        return vipRequestRepository.findByIds(List.of(payment.vipRequestId())).stream()
+        if (payment.vipRequestId() != null) {
+            return vipRequestRepository.findByIds(List.of(payment.vipRequestId())).stream()
+                    .findFirst()
+                    .map(VipRequest::userId)
+                    .orElse(null);
+        }
+        if (payment.promoRoomId() != null) {
+            return promoRoomRepository.findByIds(List.of(payment.promoRoomId())).stream()
+                    .findFirst()
+                    .map(PromoRoom::userId)
+                    .orElse(null);
+        }
+        return promoBedRepository.findByIds(List.of(payment.promoBedId())).stream()
                 .findFirst()
-                .map(VipRequest::userId)
+                .map(PromoBed::userId)
                 .orElse(null);
     }
 

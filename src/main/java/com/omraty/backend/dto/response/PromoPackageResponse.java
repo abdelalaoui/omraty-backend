@@ -8,4 +8,5 @@ public record PromoPackageResponse(
         String title,
         String description,
         LocalDateTime createdAt,
+        boolean visible,
         List<PromoPackageTierResponse> tiers) {}

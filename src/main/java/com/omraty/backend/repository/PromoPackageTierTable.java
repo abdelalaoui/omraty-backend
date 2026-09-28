@@ -20,6 +20,13 @@ final class PromoPackageTierTable {
     static final String SELECT_TIER_BY_ID =
             "SELECT " + PROMO_PACKAGE_TIER_COLUMNS + " FROM promo_package_tier WHERE id = ?";
 
+    // Prix réel pour ce package promo et ce type de chambre (2/3/5), pour PromoRoomService (voir
+    // BookingPaymentService.resolvePrice, équivalent catalogue ROOM/service_tier).
+    static final String SELECT_TIER_BY_PACKAGE_AND_TYPE =
+            "SELECT "
+                    + PROMO_PACKAGE_TIER_COLUMNS
+                    + " FROM promo_package_tier WHERE promo_package_id = ? AND type = ?";
+
     static final String INSERT_TIER =
             "INSERT INTO promo_package_tier (promo_package_id, type, capacity, price) VALUES (?,"
                     + " ?, ?, ?) RETURNING "

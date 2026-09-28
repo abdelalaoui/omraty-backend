@@ -62,6 +62,18 @@ public class PromoPackageTierRepository {
                 .findFirst();
     }
 
+    /** Prix réel pour ce package promo et ce type de chambre, pour PromoRoomService. */
+    public Optional<PromoPackageTier> findByPromoPackageIdAndType(long promoPackageId, int type) {
+        return jdbcTemplate
+                .query(
+                        PromoPackageTierTable.SELECT_TIER_BY_PACKAGE_AND_TYPE,
+                        TIER_ROW_MAPPER,
+                        promoPackageId,
+                        type)
+                .stream()
+                .findFirst();
+    }
+
     public PromoPackageTier insert(long promoPackageId, int type, int capacity, BigDecimal price) {
         return jdbcTemplate
                 .query(

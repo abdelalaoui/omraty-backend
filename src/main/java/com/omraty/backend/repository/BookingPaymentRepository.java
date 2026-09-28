@@ -23,6 +23,8 @@ public class BookingPaymentRepository {
                             (Long) rs.getObject("room_id", Long.class),
                             (Long) rs.getObject("bed_id", Long.class),
                             (Long) rs.getObject("vip_request_id", Long.class),
+                            (Long) rs.getObject("promo_room_id", Long.class),
+                            (Long) rs.getObject("promo_bed_id", Long.class),
                             PaymentPlan.valueOf(rs.getString("plan")),
                             PaymentStatus.valueOf(rs.getString("status")),
                             rs.getBigDecimal("total_amount"),
@@ -124,12 +126,15 @@ public class BookingPaymentRepository {
     }
 
     /**
-     * roomId, bedId et vipRequestId : exactement l'un des trois renseigné (voir migration V30/V36).
+     * roomId, bedId, vipRequestId, promoRoomId et promoBedId : exactement l'un des cinq renseigné
+     * (voir migration V30/V36/V43).
      */
     public BookingPayment insert(
             Long roomId,
             Long bedId,
             Long vipRequestId,
+            Long promoRoomId,
+            Long promoBedId,
             PaymentPlan plan,
             PaymentStatus status,
             BigDecimal totalAmount) {
@@ -140,6 +145,8 @@ public class BookingPaymentRepository {
                         roomId,
                         bedId,
                         vipRequestId,
+                        promoRoomId,
+                        promoBedId,
                         plan.name(),
                         status.name(),
                         totalAmount)
