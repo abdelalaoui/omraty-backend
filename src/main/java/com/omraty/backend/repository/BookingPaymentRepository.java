@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
@@ -303,13 +304,20 @@ public class BookingPaymentRepository {
      * Paiements groupés couvrant certaines de ces chambres, indexés par roomId — complète {@link
      * #findByRoomIds} pour GET /users/me/purchases (voir RoomService.getPurchasesForUser), où
      * booking_payment.room_id est NULL pour un achat groupé (voir migration V43).
+     *
+     * <p>Le {@code (ResultSetExtractor<...>)} explicite ci-dessous n'est pas cosmétique : sans lui,
+     * un lambda {@code rs -> { ... }} qui ne renvoie rien est résolu par Java vers la surcharge
+     * {@code query(sql, pss, RowCallbackHandler)} au lieu de {@code ResultSetExtractor} — Spring
+     * appelle alors ce lambda une fois par ligne avec le curseur déjà positionné dessus, et notre
+     * propre {@code while (rs.next())} à l'intérieur avance encore une fois le curseur : la moitié
+     * des lignes sont silencieusement sautées (bug constaté en test manuel : sur 2 chambres d'un
+     * même achat groupé, une seule ressortait avec son paiement).
      */
     public Map<Long, BookingPayment> findGroupPaymentsByRoomIds(List<Long> roomIds) {
         if (roomIds.isEmpty()) {
             return Map.of();
         }
-        Map<Long, BookingPayment> result = new HashMap<>();
-        jdbcTemplate.query(
+        return jdbcTemplate.query(
                 BookingPaymentTable.SELECT_GROUP_BOOKING_PAYMENTS_BY_ROOM_IDS,
                 (PreparedStatement ps) -> {
                     Array array =
@@ -317,12 +325,14 @@ public class BookingPaymentRepository {
                                     .createArrayOf("bigint", roomIds.toArray(new Long[0]));
                     ps.setArray(1, array);
                 },
-                rs -> {
-                    while (rs.next()) {
-                        long groupRoomId = rs.getLong("group_room_id");
-                        result.put(groupRoomId, BOOKING_PAYMENT_ROW_MAPPER.mapRow(rs, 0));
-                    }
-                });
-        return result;
+                (ResultSetExtractor<Map<Long, BookingPayment>>)
+                        rs -> {
+                            Map<Long, BookingPayment> result = new HashMap<>();
+                            while (rs.next()) {
+                                long groupRoomId = rs.getLong("group_room_id");
+                                result.put(groupRoomId, BOOKING_PAYMENT_ROW_MAPPER.mapRow(rs, 0));
+                            }
+                            return result;
+                        });
     }
 }
