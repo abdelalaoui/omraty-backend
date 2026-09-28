@@ -31,6 +31,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -190,10 +191,36 @@ public class InvoiceService {
                     .flatMap(this::describeBed)
                     .orElse(null);
         }
-        return vipRequestRepository.findByIds(List.of(payment.vipRequestId())).stream()
-                .findFirst()
-                .map(this::describeVipRequest)
-                .orElse(null);
+        if (payment.vipRequestId() != null) {
+            return vipRequestRepository.findByIds(List.of(payment.vipRequestId())).stream()
+                    .findFirst()
+                    .map(this::describeVipRequest)
+                    .orElse(null);
+        }
+        // roomId/bedId/vipRequestId tous NULL : paiement groupé (voir migration V43,
+        // BookingPaymentService.createGroupPaymentPlan) — ses chambres vivent dans
+        // booking_payment_room.
+        return describeGroupRooms(payment.id());
+    }
+
+    private PurchaseDescription describeGroupRooms(long paymentId) {
+        List<Long> roomIds = bookingPaymentRepository.findGroupRoomIds(paymentId);
+        List<Room> rooms = roomRepository.findByIds(roomIds);
+        if (rooms.isEmpty()) {
+            return null;
+        }
+        String roomsSummary =
+                rooms.stream()
+                        .map(room -> room.totalCapacity() + " places")
+                        .collect(Collectors.joining(", "));
+        String label =
+                "Achat groupé ("
+                        + rooms.size()
+                        + " chambres : "
+                        + roomsSummary
+                        + ") — "
+                        + resolvePackageLabel(rooms.get(0).packageId());
+        return new PurchaseDescription(rooms.get(0).userId(), label);
     }
 
     private PurchaseDescription describeRoom(Room room) {

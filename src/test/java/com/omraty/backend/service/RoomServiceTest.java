@@ -17,6 +17,7 @@ import com.omraty.backend.exception.RoomException;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
+import com.omraty.backend.service.RoomService.RoomGroupItem;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -221,6 +222,113 @@ class RoomServiceTest {
 
         assertThat(result).isEqualTo(PAYMENT_STUB);
         verify(roomRepository).insert(3, 1L, 3, 3, USER_ID);
+    }
+
+    @Test
+    void purchaseRoomGroup_withInvalidType_throwsExceptionWithoutLockingPackage() {
+        assertThatThrownBy(
+                        () ->
+                                roomService()
+                                        .purchaseRoomGroup(
+                                                List.of(new RoomGroupItem(4, 1)),
+                                                1L,
+                                                USER_ID,
+                                                PaymentPlan.FULL))
+                .isInstanceOf(RoomException.InvalidRoomTypeException.class);
+
+        verify(packageRepository, never()).findByIdForUpdate(anyLong());
+    }
+
+    @Test
+    void purchaseRoomGroup_withZeroQuantity_throwsException() {
+        assertThatThrownBy(
+                        () ->
+                                roomService()
+                                        .purchaseRoomGroup(
+                                                List.of(new RoomGroupItem(2, 0)),
+                                                1L,
+                                                USER_ID,
+                                                PaymentPlan.FULL))
+                .isInstanceOf(RoomException.InvalidRoomTypeException.class);
+    }
+
+    @Test
+    void purchaseRoomGroup_whenWouldExceedGroupSize_throwsExceptionWithoutCreatingAnyRoom() {
+        when(packageRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 4, null, null)));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(0);
+        // 1 chambre de 3 + 1 de 2 = 5 places, dépasse le groupSize de 4.
+        List<RoomGroupItem> items = List.of(new RoomGroupItem(3, 1), new RoomGroupItem(2, 1));
+
+        assertThatThrownBy(
+                        () -> roomService().purchaseRoomGroup(items, 1L, USER_ID, PaymentPlan.FULL))
+                .isInstanceOf(RoomException.GroupSizeExceededException.class);
+
+        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
+    }
+
+    @Test
+    void purchaseRoomGroup_withMixedTypes_createsEachRoomAndSumsThePrice() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(0);
+        when(bookingPaymentService.resolvePrice(3)).thenReturn(new BigDecimal("300"));
+        when(bookingPaymentService.resolvePrice(2)).thenReturn(new BigDecimal("200"));
+        Room threeRoom = new Room(31L, 3, 1L, 3, 3, USER_ID, LocalDateTime.now());
+        Room twoRoom = new Room(32L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now());
+        when(roomRepository.insert(3, 1L, 3, 3, USER_ID)).thenReturn(threeRoom);
+        when(roomRepository.insert(2, 1L, 2, 2, USER_ID)).thenReturn(twoRoom);
+        when(bookingPaymentService.createGroupPaymentPlan(
+                        List.of(31L, 32L), PaymentPlan.FULL, new BigDecimal("500"), pkg, USER_ID))
+                .thenReturn(PAYMENT_STUB);
+        List<RoomGroupItem> items = List.of(new RoomGroupItem(3, 1), new RoomGroupItem(2, 1));
+
+        BookingPayment result =
+                roomService().purchaseRoomGroup(items, 1L, USER_ID, PaymentPlan.FULL);
+
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+        verify(bedRepository, never()).insertBedsForRoom(anyLong(), anyInt());
+    }
+
+    @Test
+    void purchaseRoomGroup_withSharedRoomType_createsRoomAndReservesAllItsBedsForTheBuyer() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(0);
+        when(bookingPaymentService.resolvePrice(5)).thenReturn(new BigDecimal("500"));
+        Room sharedRoom = new Room(40L, 5, 1L, 5, 5, USER_ID, LocalDateTime.now());
+        when(roomRepository.insert(5, 1L, 5, 5, USER_ID)).thenReturn(sharedRoom);
+        Bed bed1 = new Bed(401L, 1, false, 40L, null, null);
+        Bed bed2 = new Bed(402L, 2, false, 40L, null, null);
+        when(bedRepository.findByRoomIds(List.of(40L))).thenReturn(List.of(bed1, bed2));
+        when(bookingPaymentService.createGroupPaymentPlan(
+                        List.of(40L), PaymentPlan.FULL, new BigDecimal("500"), pkg, USER_ID))
+                .thenReturn(PAYMENT_STUB);
+
+        BookingPayment result =
+                roomService()
+                        .purchaseRoomGroup(
+                                List.of(new RoomGroupItem(5, 1)), 1L, USER_ID, PaymentPlan.FULL);
+
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+        verify(bedRepository).insertBedsForRoom(40L, 5);
+        verify(bedRepository).markReserved(401L, USER_ID);
+        verify(bedRepository).markReserved(402L, USER_ID);
+    }
+
+    @Test
+    void releaseGroupReservation_releasesEachRoomAndAnyBedsItHas() {
+        // Chambre type 2/3 (30L) : jamais de lits. Chambre type 5 achetée entière (40L) : ses lits
+        // doivent aussi être libérés (voir RoomService.insertWholeRoom).
+        when(bedRepository.findByRoomIds(List.of(30L))).thenReturn(List.of());
+        Bed bed = new Bed(401L, 1, true, 40L, USER_ID, LocalDateTime.now());
+        when(bedRepository.findByRoomIds(List.of(40L))).thenReturn(List.of(bed));
+
+        roomService().releaseGroupReservation(List.of(30L, 40L));
+
+        verify(roomRepository).release(30L);
+        verify(roomRepository).release(40L);
+        verify(bedRepository).release(401L);
     }
 
     @Test

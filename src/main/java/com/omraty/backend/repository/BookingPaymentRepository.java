@@ -7,7 +7,9 @@ import java.math.BigDecimal;
 import java.sql.Array;
 import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -275,5 +277,51 @@ public class BookingPaymentRepository {
     public long nextInvoiceNumberSequenceValue() {
         return jdbcTemplate.queryForObject(
                 BookingPaymentTable.SELECT_NEXT_INVOICE_NUMBER, Long.class);
+    }
+
+    /**
+     * Lie chaque chambre à ce paiement groupé (voir migration V43,
+     * BookingPaymentService.createGroupPaymentPlan) — appelé juste après l'insertion du paiement
+     * (room_id/bed_id/vip_request_id tous NULL pour ce type de paiement).
+     */
+    public void linkRoomsToGroupPayment(long paymentId, List<Long> roomIds) {
+        for (Long roomId : roomIds) {
+            jdbcTemplate.update(BookingPaymentTable.INSERT_BOOKING_PAYMENT_ROOM, paymentId, roomId);
+        }
+    }
+
+    /**
+     * Chambres d'un paiement groupé (voir migration V43) — pour la libération à l'expiration
+     * (PaymentExpirationService) et la description de facture (InvoiceService).
+     */
+    public List<Long> findGroupRoomIds(long paymentId) {
+        return jdbcTemplate.queryForList(
+                BookingPaymentTable.SELECT_GROUP_ROOM_IDS_BY_PAYMENT_ID, Long.class, paymentId);
+    }
+
+    /**
+     * Paiements groupés couvrant certaines de ces chambres, indexés par roomId — complète {@link
+     * #findByRoomIds} pour GET /users/me/purchases (voir RoomService.getPurchasesForUser), où
+     * booking_payment.room_id est NULL pour un achat groupé (voir migration V43).
+     */
+    public Map<Long, BookingPayment> findGroupPaymentsByRoomIds(List<Long> roomIds) {
+        if (roomIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, BookingPayment> result = new HashMap<>();
+        jdbcTemplate.query(
+                BookingPaymentTable.SELECT_GROUP_BOOKING_PAYMENTS_BY_ROOM_IDS,
+                (PreparedStatement ps) -> {
+                    Array array =
+                            ps.getConnection().createArrayOf("bigint", roomIds.toArray(new Long[0]));
+                    ps.setArray(1, array);
+                },
+                rs -> {
+                    while (rs.next()) {
+                        long groupRoomId = rs.getLong("group_room_id");
+                        result.put(groupRoomId, BOOKING_PAYMENT_ROW_MAPPER.mapRow(rs, 0));
+                    }
+                });
+        return result;
     }
 }

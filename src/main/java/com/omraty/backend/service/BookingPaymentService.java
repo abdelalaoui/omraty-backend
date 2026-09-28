@@ -28,6 +28,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -203,6 +204,29 @@ public class BookingPaymentService {
             long vipRequestId, BigDecimal proposedPrice, UUID userId) {
         return createPaymentPlan(
                 null, null, vipRequestId, PaymentPlan.FULL, proposedPrice, null, userId);
+    }
+
+    /**
+     * Crée un paiement couvrant plusieurs chambres d'un coup (voir migration V43,
+     * RoomService.purchaseRoomGroup — parcours famille/groupe, une seule transaction pour toutes
+     * les chambres au lieu d'un paiement par chambre). room_id/bed_id/vip_request_id restent tous
+     * NULL sur ce paiement (voir CHECK chk_booking_payment_at_most_one_target) — les chambres sont
+     * liées séparément via booking_payment_room une fois le paiement créé, pour rester dans la même
+     * transaction que RoomService.purchaseRoomGroup (appelant, @Transactional). Réutilise
+     * exactement le même mécanisme que {@link #createPaymentPlan} (tranches, passerelle,
+     * réduction) : seule la cible change.
+     */
+    public BookingPayment createGroupPaymentPlan(
+            List<Long> roomIds,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId) {
+        BigDecimal amount =
+                plan == PaymentPlan.FULL ? applyFullPaymentDiscount(totalAmount) : totalAmount;
+        BookingPayment payment = createPaymentPlan(null, null, null, plan, amount, pkg, userId);
+        bookingPaymentRepository.linkRoomsToGroupPayment(payment.id(), roomIds);
+        return payment;
     }
 
     private BookingPayment createPaymentPlan(
@@ -488,6 +512,12 @@ public class BookingPaymentService {
         return fileStorageService.generatePresignedUrl(invoiceKey);
     }
 
+    /**
+     * roomId/bedId/vipRequestId : au plus l'un des trois renseigné depuis la migration V43 — tous
+     * NULL pour un paiement groupé (voir {@link #createGroupPaymentPlan}), dont l'owner est porté
+     * par n'importe laquelle de ses chambres (même utilisateur pour toutes, voir
+     * RoomService.purchaseRoomGroup).
+     */
     private UUID resolveOwnerUserId(BookingPayment payment) {
         if (payment.roomId() != null) {
             return roomRepository.findByIds(List.of(payment.roomId())).stream()
@@ -501,16 +531,30 @@ public class BookingPaymentService {
                     .map(Bed::userId)
                     .orElse(null);
         }
-        return vipRequestRepository.findByIds(List.of(payment.vipRequestId())).stream()
+        if (payment.vipRequestId() != null) {
+            return vipRequestRepository.findByIds(List.of(payment.vipRequestId())).stream()
+                    .findFirst()
+                    .map(VipRequest::userId)
+                    .orElse(null);
+        }
+        List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
+        return roomRepository.findByIds(groupRoomIds).stream()
                 .findFirst()
-                .map(VipRequest::userId)
+                .map(Room::userId)
                 .orElse(null);
     }
 
-    /** Plans de paiement des chambres achetées (types 2/3), indexés par roomId. */
+    /**
+     * Plans de paiement des chambres achetées (types 2/3), indexés par roomId — fusionne les achats
+     * simples (booking_payment.room_id) et les achats groupés (booking_payment_room, voir migration
+     * V43, {@link #createGroupPaymentPlan}), où plusieurs chambres partagent le même paiement.
+     */
     public Map<Long, BookingPayment> findPaymentsByRoomIds(List<Long> roomIds) {
-        return bookingPaymentRepository.findByRoomIds(roomIds).stream()
-                .collect(Collectors.toMap(BookingPayment::roomId, payment -> payment));
+        Map<Long, BookingPayment> payments = new HashMap<>();
+        bookingPaymentRepository.findByRoomIds(roomIds).stream()
+                .forEach(payment -> payments.put(payment.roomId(), payment));
+        payments.putAll(bookingPaymentRepository.findGroupPaymentsByRoomIds(roomIds));
+        return payments;
     }
 
     /** Plans de paiement des lits réservés (type 5), indexés par bedId. */
