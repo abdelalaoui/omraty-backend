@@ -99,6 +99,23 @@ class PaymentExpirationServiceTest {
     }
 
     @Test
+    void expireOverduePayments_forGroupPayment_marksExpiredAndReleasesEachRoom() {
+        // roomId/bedId/vipRequestId tous null : paiement groupé (voir migration V43) — ses chambres
+        // vivent dans booking_payment_room, voir BookingPaymentRepository.findGroupRoomIds.
+        BookingPayment payment = overduePayment(6L, null, null, null);
+        when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
+        when(bookingPaymentRepository.markExpiredIfPending(6L))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.EXPIRED)));
+        when(bookingPaymentRepository.findGroupRoomIds(6L)).thenReturn(List.of(31L, 32L));
+
+        int expiredCount = paymentExpirationService().expireOverduePayments();
+
+        assertThat(expiredCount).isEqualTo(1);
+        verify(roomService).releaseGroupReservation(List.of(31L, 32L));
+        verify(roomService, never()).releaseReservation(any(), any(), any());
+    }
+
+    @Test
     void expireOverduePayments_whenAlreadyConfirmedConcurrently_doesNotReleaseAnything() {
         // markExpiredIfPending renvoie vide : la clause status = 'PENDING' n'a rien mis à jour, le
         // paiement a été confirmé entre-temps (webhook ou job de secours, tâche 07).

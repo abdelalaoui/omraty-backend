@@ -9,6 +9,7 @@ import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
 import com.omraty.backend.repository.RoomRepository;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -71,6 +72,7 @@ public class PaymentReminderService {
         Map<Long, BookingPayment> paymentsById = findPaymentsForInstallments(dueInstallments);
         Map<Long, UUID> userIdByRoomId = findUserIdsByRoomId(paymentsById.values());
         Map<Long, UUID> userIdByBedId = findUserIdsByBedId(paymentsById.values());
+        Map<Long, UUID> userIdByGroupPaymentId = findUserIdsByGroupPayment(paymentsById.values());
 
         int notifiedCount = 0;
         for (BookingInstallment installment : dueInstallments) {
@@ -78,7 +80,8 @@ public class PaymentReminderService {
             UUID userId =
                     payment == null
                             ? null
-                            : resolveOwnerUserId(payment, userIdByRoomId, userIdByBedId);
+                            : resolveOwnerUserId(
+                                    payment, userIdByRoomId, userIdByBedId, userIdByGroupPaymentId);
             if (userId != null) {
                 notificationService.create(
                         userId,
@@ -124,11 +127,37 @@ public class PaymentReminderService {
                 .collect(Collectors.toMap(Bed::id, Bed::userId));
     }
 
+    /**
+     * Owner de chaque paiement groupé (voir migration V43) parmi payments — roomId et bedId tous
+     * NULL pour ce type de paiement, ses chambres vivent dans booking_payment_room à la place (voir
+     * BookingPaymentRepository.findGroupRoomIds). Un seul appel par paiement groupé (la liste de
+     * tranches à rappeler reste petite, pas besoin d'une requête batchée ici).
+     */
+    private Map<Long, UUID> findUserIdsByGroupPayment(Collection<BookingPayment> payments) {
+        Map<Long, UUID> result = new HashMap<>();
+        for (BookingPayment payment : payments) {
+            if (payment.roomId() != null || payment.bedId() != null) {
+                continue;
+            }
+            List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
+            roomRepository.findByIds(groupRoomIds).stream()
+                    .findFirst()
+                    .ifPresent(room -> result.put(payment.id(), room.userId()));
+        }
+        return result;
+    }
+
     private static UUID resolveOwnerUserId(
-            BookingPayment payment, Map<Long, UUID> userIdByRoomId, Map<Long, UUID> userIdByBedId) {
+            BookingPayment payment,
+            Map<Long, UUID> userIdByRoomId,
+            Map<Long, UUID> userIdByBedId,
+            Map<Long, UUID> userIdByGroupPaymentId) {
         if (payment.roomId() != null) {
             return userIdByRoomId.get(payment.roomId());
         }
-        return userIdByBedId.get(payment.bedId());
+        if (payment.bedId() != null) {
+            return userIdByBedId.get(payment.bedId());
+        }
+        return userIdByGroupPaymentId.get(payment.id());
     }
 }

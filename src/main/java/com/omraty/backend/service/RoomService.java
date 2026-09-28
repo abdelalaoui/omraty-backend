@@ -12,6 +12,7 @@ import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -30,13 +31,21 @@ import org.springframework.transaction.annotation.Transactional;
  * chambre ouverte (pas encore pleine) existe pour le package, on y réserve un lit ; sinon le
  * service ouvre lui-même une nouvelle chambre de type 5 avec ses 5 lits frais avant d'y réserver le
  * lit demandé. Pour les types 2 et 3, la chambre entière est achetée d'un coup, sans suivi lit par
- * lit.
+ * lit. {@link #purchaseRoomGroup} (parcours famille/groupe) accepte en plus le type 5 en achat
+ * "chambre entière" — seul cas où une chambre partagée a un unique propriétaire.
  */
 @Service
 public class RoomService {
 
     private static final int SHARED_ROOM_TYPE = 5;
     private static final Set<Integer> WHOLE_ROOM_TYPES = Set.of(2, 3);
+
+    /**
+     * Types acceptés par {@link #purchaseRoomGroup} — plus large que {@link #WHOLE_ROOM_TYPES} :
+     * une famille/un groupe peut aussi vouloir une chambre de 5 places pour lui seul (contrairement
+     * au parcours normal du type 5, réservé lit par lit par plusieurs utilisateurs différents).
+     */
+    private static final Set<Integer> GROUP_ROOM_TYPES = Set.of(2, 3, 5);
 
     private final RoomRepository roomRepository;
     private final BedRepository bedRepository;
@@ -152,6 +161,92 @@ public class RoomService {
         BigDecimal price = bookingPaymentService.resolvePrice(type);
         Room room = roomRepository.insert(type, packageId, type, type, userId);
         return bookingPaymentService.createPaymentPlan(room.id(), null, plan, price, pkg, userId);
+    }
+
+    /** Une entrée d'achat groupé : type de chambre (2, 3 ou 5) et combien en acheter d'un coup. */
+    public record RoomGroupItem(int type, int quantity) {}
+
+    /**
+     * Achète plusieurs chambres d'un coup avec un seul paiement (voir migration V43,
+     * BookingPaymentService.createGroupPaymentPlan) — parcours famille/groupe (voir
+     * ReservationTypeScreen côté app), où le type et le nombre de chambres nécessaires sont déjà
+     * choisis avant d'arriver ici. Contrairement à {@link #purchaseRoom} (un seul type à la fois),
+     * items peut mélanger plusieurs types (ex. 1 chambre de 3 pour les femmes + 1 chambre de 2 pour
+     * les hommes). La capacité totale est vérifiée en une seule fois (voir PackageCapacityService),
+     * pas chambre par chambre, pour ne jamais accepter partiellement un groupe qui dépasserait le
+     * plafond.
+     *
+     * @throws RoomException.InvalidRoomTypeException si un type demandé n'est pas dans {@link
+     *     #GROUP_ROOM_TYPES}, ou si une quantité n'est pas strictement positive.
+     * @throws RoomException.GroupSizeExceededException si le total dépasserait le groupSize du
+     *     package.
+     * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
+     *     le prix d'un des types demandés n'est pas encore configuré.
+     */
+    @Transactional
+    public BookingPayment purchaseRoomGroup(
+            List<RoomGroupItem> items, long packageId, UUID userId, PaymentPlan plan) {
+        for (RoomGroupItem item : items) {
+            if (!GROUP_ROOM_TYPES.contains(item.type())) {
+                throw new RoomException.InvalidRoomTypeException(
+                        "Type de chambre invalide pour un achat groupé (reçu : "
+                                + item.type()
+                                + ")");
+            }
+            if (item.quantity() <= 0) {
+                throw new RoomException.InvalidRoomTypeException(
+                        "La quantité doit être positive (type=" + item.type() + ")");
+            }
+        }
+        OmraPackage pkg = lockPackageOrThrow(packageId);
+        int totalSeats = items.stream().mapToInt(item -> item.type() * item.quantity()).sum();
+        packageCapacityService.ensureCapacityAvailable(pkg, packageId, totalSeats);
+
+        List<Long> roomIds = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        for (RoomGroupItem item : items) {
+            BigDecimal price = bookingPaymentService.resolvePrice(item.type());
+            for (int i = 0; i < item.quantity(); i++) {
+                roomIds.add(insertWholeRoom(item.type(), packageId, userId));
+                totalAmount = totalAmount.add(price);
+            }
+        }
+        return bookingPaymentService.createGroupPaymentPlan(
+                roomIds, plan, totalAmount, pkg, userId);
+    }
+
+    /**
+     * Crée une chambre entièrement occupée par userId. Types 2/3 : pas de suivi lit par lit, comme
+     * {@link #purchaseRoom}. Type 5 : crée aussi ses 5 lits, tous réservés pour userId —
+     * contrairement au parcours normal du type 5 (voir {@link #reserveBed}), réservé lit par lit
+     * par plusieurs utilisateurs différents.
+     */
+    private long insertWholeRoom(int type, long packageId, UUID userId) {
+        Room room = roomRepository.insert(type, packageId, type, type, userId);
+        if (type == SHARED_ROOM_TYPE) {
+            bedRepository.insertBedsForRoom(room.id(), type);
+            for (Bed bed : bedRepository.findByRoomIds(List.of(room.id()))) {
+                bedRepository.markReserved(bed.id(), userId);
+            }
+        }
+        return room.id();
+    }
+
+    /**
+     * Libère chaque chambre d'un paiement groupé expiré (voir PaymentExpirationService, migration
+     * V43) — chambres types 2/3 : voir {@link #releaseReservation}. Type 5 acheté en entier (voir
+     * {@link #insertWholeRoom}) : ses lits doivent aussi être libérés individuellement, sans quoi
+     * ils resteraient marqués réservés indéfiniment pour un paiement qui n'a jamais abouti (no-op
+     * pour un type 2/3, qui n'a jamais de lits).
+     */
+    @Transactional
+    public void releaseGroupReservation(List<Long> roomIds) {
+        for (Long roomId : roomIds) {
+            roomRepository.release(roomId);
+            for (Bed bed : bedRepository.findByRoomIds(List.of(roomId))) {
+                bedRepository.release(bed.id());
+            }
+        }
     }
 
     /**

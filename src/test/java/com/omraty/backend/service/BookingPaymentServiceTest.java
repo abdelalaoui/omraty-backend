@@ -39,6 +39,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -239,6 +240,59 @@ class BookingPaymentServiceTest {
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("90000.00"));
+    }
+
+    @Test
+    void createGroupPaymentPlan_full_appliesDiscountAndLinksAllRooms() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        // Même réduction que createPaymentPlan (voir applyFullPaymentDiscount), appliquée au total
+        // du groupe : 5% de 90000 -> 85500.00.
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(new BigDecimal("5"));
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        null,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("85500.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        null,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("85500.00")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("85500.00")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+
+        BookingPayment result =
+                bookingPaymentService()
+                        .createGroupPaymentPlan(
+                                List.of(31L, 32L),
+                                PaymentPlan.FULL,
+                                new BigDecimal("90000"),
+                                pkg,
+                                USER_ID);
+
+        assertThat(result).isEqualTo(inserted);
+        verify(bookingPaymentRepository).linkRoomsToGroupPayment(10L, List.of(31L, 32L));
     }
 
     @Test
@@ -621,6 +675,11 @@ class BookingPaymentServiceTest {
         return pendingPayment(null, null, vipRequestId, plan);
     }
 
+    /** roomId/bedId/vipRequestId tous null : paiement groupé (voir migration V43). */
+    private BookingPayment groupPendingPayment(PaymentPlan plan) {
+        return pendingPayment(null, null, null, plan);
+    }
+
     private VipRequest vipRequest(long id) {
         return new VipRequest(
                 id,
@@ -918,6 +977,52 @@ class BookingPaymentServiceTest {
         PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
 
         assertThat(result.status()).isEqualTo(PaymentStatus.PENDING);
+    }
+
+    @Test
+    void getStatusForUser_whenOwnedGroupPayment_returnsStatus() {
+        BookingPayment payment = groupPendingPayment(PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.findGroupRoomIds(10L)).thenReturn(List.of(31L, 32L));
+        when(roomRepository.findByIds(List.of(31L, 32L)))
+                .thenReturn(
+                        List.of(
+                                new Room(31L, 3, 1L, 3, 3, USER_ID, LocalDateTime.now()),
+                                new Room(32L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
+
+        assertThat(result.status()).isEqualTo(PaymentStatus.PENDING);
+    }
+
+    @Test
+    void getStatusForUser_whenGroupPaymentBelongsToAnotherUser_throwsException() {
+        BookingPayment payment = groupPendingPayment(PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.findGroupRoomIds(10L)).thenReturn(List.of(31L));
+        when(roomRepository.findByIds(List.of(31L)))
+                .thenReturn(
+                        List.of(
+                                new Room(
+                                        31L, 3, 1L, 3, 3, UUID.randomUUID(), LocalDateTime.now())));
+
+        assertThatThrownBy(() -> bookingPaymentService().getStatusForUser(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+    }
+
+    @Test
+    void findPaymentsByRoomIds_mergesDirectAndGroupPayments() {
+        BookingPayment directPayment = pendingPayment(30L, null, PaymentPlan.FULL);
+        BookingPayment groupPayment = groupPendingPayment(PaymentPlan.FULL);
+        when(bookingPaymentRepository.findByRoomIds(List.of(30L, 31L)))
+                .thenReturn(List.of(directPayment));
+        when(bookingPaymentRepository.findGroupPaymentsByRoomIds(List.of(30L, 31L)))
+                .thenReturn(Map.of(31L, groupPayment));
+
+        Map<Long, BookingPayment> result =
+                bookingPaymentService().findPaymentsByRoomIds(List.of(30L, 31L));
+
+        assertThat(result).containsEntry(30L, directPayment).containsEntry(31L, groupPayment);
     }
 
     @Test
