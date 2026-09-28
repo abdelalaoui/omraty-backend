@@ -46,7 +46,8 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(authRepository, jwtService, passwordEncoder, appSettingService);
+        authService =
+                new AuthService(authRepository, jwtService, passwordEncoder, appSettingService);
         user =
                 new User(
                         UUID.randomUUID(),
@@ -125,7 +126,8 @@ class AuthServiceTest {
     @Test
     void loginWithOtp_withWrongCode_throwsException() {
         when(appSettingService.getSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY))
-                .thenReturn(new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
+                .thenReturn(
+                        new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
 
         assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "000000"))
                 .isInstanceOf(AuthException.InvalidCredentialsException.class);
@@ -136,7 +138,8 @@ class AuthServiceTest {
     @Test
     void loginWithOtp_withUnknownPhone_throwsException() {
         when(appSettingService.getSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY))
-                .thenReturn(new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
+                .thenReturn(
+                        new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
         when(authRepository.findByPhone(PHONE)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "123456"))
@@ -146,7 +149,8 @@ class AuthServiceTest {
     @Test
     void loginWithOtp_success_returnsTokens() {
         when(appSettingService.getSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY))
-                .thenReturn(new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
+                .thenReturn(
+                        new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
         when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(user));
         stubTokenIssuance("access-token", "refresh-token");
 
