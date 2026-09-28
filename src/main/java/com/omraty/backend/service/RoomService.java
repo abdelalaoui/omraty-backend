@@ -172,9 +172,9 @@ public class RoomService {
      * ReservationTypeScreen côté app), où le type et le nombre de chambres nécessaires sont déjà
      * choisis avant d'arriver ici. Contrairement à {@link #purchaseRoom} (un seul type à la fois),
      * items peut mélanger plusieurs types (ex. 1 chambre de 3 pour les femmes + 1 chambre de 2 pour
-     * les hommes). La capacité totale est vérifiée en une seule fois (voir
-     * PackageCapacityService), pas chambre par chambre, pour ne jamais accepter partiellement un
-     * groupe qui dépasserait le plafond.
+     * les hommes). La capacité totale est vérifiée en une seule fois (voir PackageCapacityService),
+     * pas chambre par chambre, pour ne jamais accepter partiellement un groupe qui dépasserait le
+     * plafond.
      *
      * @throws RoomException.InvalidRoomTypeException si un type demandé n'est pas dans {@link
      *     #GROUP_ROOM_TYPES}, ou si une quantité n'est pas strictement positive.
