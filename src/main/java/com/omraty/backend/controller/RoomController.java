@@ -104,10 +104,9 @@ public class RoomController {
     /**
      * Achat de plusieurs chambres en un seul paiement (voir RoomService.purchaseRoomGroup,
      * migration V43) — parcours famille/groupe, où le type/nombre de chambres nécessaires a déjà
-     * été choisi avant d'arriver ici (voir ReservationTypeScreen côté app). La réponse a
-     * exactement la même forme que POST /rooms/{type}/purchase : le reste du parcours de paiement
-     * (choix du moyen de paiement, suivi du statut) n'a pas besoin de savoir qu'il s'agit d'un
-     * achat groupé.
+     * été choisi avant d'arriver ici (voir ReservationTypeScreen côté app). La réponse a exactement
+     * la même forme que POST /rooms/{type}/purchase : le reste du parcours de paiement (choix du
+     * moyen de paiement, suivi du statut) n'a pas besoin de savoir qu'il s'agit d'un achat groupé.
      */
     @PostMapping("/rooms/group/purchase")
     public ResponseEntity<PaymentResponse> purchaseRoomGroup(

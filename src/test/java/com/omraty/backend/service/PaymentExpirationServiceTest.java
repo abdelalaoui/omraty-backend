@@ -100,8 +100,8 @@ class PaymentExpirationServiceTest {
 
     @Test
     void expireOverduePayments_forGroupPayment_marksExpiredAndReleasesEachRoom() {
-        // roomId/bedId/vipRequestId tous null : paiement groupé (voir migration V43) — ses
-        // chambres vivent dans booking_payment_room, voir BookingPaymentRepository.findGroupRoomIds.
+        // roomId/bedId/vipRequestId tous null : paiement groupé (voir migration V43) — ses chambres
+        // vivent dans booking_payment_room, voir BookingPaymentRepository.findGroupRoomIds.
         BookingPayment payment = overduePayment(6L, null, null, null);
         when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
         when(bookingPaymentRepository.markExpiredIfPending(6L))

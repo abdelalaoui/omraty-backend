@@ -129,9 +129,9 @@ public class PaymentReminderService {
 
     /**
      * Owner de chaque paiement groupé (voir migration V43) parmi payments — roomId et bedId tous
-     * NULL pour ce type de paiement, ses chambres vivent dans booking_payment_room à la place
-     * (voir BookingPaymentRepository.findGroupRoomIds). Un seul appel par paiement groupé (la liste
-     * de tranches à rappeler reste petite, pas besoin d'une requête batchée ici).
+     * NULL pour ce type de paiement, ses chambres vivent dans booking_payment_room à la place (voir
+     * BookingPaymentRepository.findGroupRoomIds). Un seul appel par paiement groupé (la liste de
+     * tranches à rappeler reste petite, pas besoin d'une requête batchée ici).
      */
     private Map<Long, UUID> findUserIdsByGroupPayment(Collection<BookingPayment> payments) {
         Map<Long, UUID> result = new HashMap<>();

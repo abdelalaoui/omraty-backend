@@ -211,7 +211,8 @@ public class RoomService {
                 totalAmount = totalAmount.add(price);
             }
         }
-        return bookingPaymentService.createGroupPaymentPlan(roomIds, plan, totalAmount, pkg, userId);
+        return bookingPaymentService.createGroupPaymentPlan(
+                roomIds, plan, totalAmount, pkg, userId);
     }
 
     /**
@@ -232,11 +233,11 @@ public class RoomService {
     }
 
     /**
-     * Libère chaque chambre d'un paiement groupé expiré (voir PaymentExpirationService,
-     * migration V43) — chambres types 2/3 : voir {@link #releaseReservation}. Type 5 acheté en
-     * entier (voir {@link #insertWholeRoom}) : ses lits doivent aussi être libérés individuellement,
-     * sans quoi ils resteraient marqués réservés indéfiniment pour un paiement qui n'a jamais
-     * abouti (no-op pour un type 2/3, qui n'a jamais de lits).
+     * Libère chaque chambre d'un paiement groupé expiré (voir PaymentExpirationService, migration
+     * V43) — chambres types 2/3 : voir {@link #releaseReservation}. Type 5 acheté en entier (voir
+     * {@link #insertWholeRoom}) : ses lits doivent aussi être libérés individuellement, sans quoi
+     * ils resteraient marqués réservés indéfiniment pour un paiement qui n'a jamais abouti (no-op
+     * pour un type 2/3, qui n'a jamais de lits).
      */
     @Transactional
     public void releaseGroupReservation(List<Long> roomIds) {

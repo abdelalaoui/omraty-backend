@@ -213,8 +213,8 @@ public class BookingPaymentService {
      * NULL sur ce paiement (voir CHECK chk_booking_payment_at_most_one_target) — les chambres sont
      * liées séparément via booking_payment_room une fois le paiement créé, pour rester dans la même
      * transaction que RoomService.purchaseRoomGroup (appelant, @Transactional). Réutilise
-     * exactement le même mécanisme que {@link #createPaymentPlan} (tranches, passerelle,
-     * réduction) : seule la cible change.
+     * exactement le même mécanisme que {@link #createPaymentPlan} (tranches, passerelle, réduction)
+     * : seule la cible change.
      */
     public BookingPayment createGroupPaymentPlan(
             List<Long> roomIds,

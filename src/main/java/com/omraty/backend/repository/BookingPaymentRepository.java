@@ -313,7 +313,8 @@ public class BookingPaymentRepository {
                 BookingPaymentTable.SELECT_GROUP_BOOKING_PAYMENTS_BY_ROOM_IDS,
                 (PreparedStatement ps) -> {
                     Array array =
-                            ps.getConnection().createArrayOf("bigint", roomIds.toArray(new Long[0]));
+                            ps.getConnection()
+                                    .createArrayOf("bigint", roomIds.toArray(new Long[0]));
                     ps.setArray(1, array);
                 },
                 rs -> {
