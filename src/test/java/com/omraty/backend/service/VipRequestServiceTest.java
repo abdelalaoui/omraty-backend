@@ -374,6 +374,8 @@ class VipRequestServiceTest {
                         null,
                         null,
                         1L,
+                        null,
+                        null,
                         PaymentPlan.FULL,
                         PaymentStatus.PENDING,
                         new BigDecimal("5000.00"),

@@ -26,17 +26,31 @@ class PaymentExpirationServiceTest {
 
     @Mock private BookingPaymentRepository bookingPaymentRepository;
     @Mock private RoomService roomService;
+    @Mock private PromoRoomService promoRoomService;
 
     private PaymentExpirationService paymentExpirationService() {
-        return new PaymentExpirationService(bookingPaymentRepository, roomService);
+        return new PaymentExpirationService(
+                bookingPaymentRepository, roomService, promoRoomService);
     }
 
     private BookingPayment overduePayment(long id, Long roomId, Long bedId, Long vipRequestId) {
+        return overduePayment(id, roomId, bedId, vipRequestId, null, null);
+    }
+
+    private BookingPayment overduePayment(
+            long id,
+            Long roomId,
+            Long bedId,
+            Long vipRequestId,
+            Long promoRoomId,
+            Long promoBedId) {
         return new BookingPayment(
                 id,
                 roomId,
                 bedId,
                 vipRequestId,
+                promoRoomId,
+                promoBedId,
                 PaymentPlan.FULL,
                 PaymentStatus.PENDING,
                 new BigDecimal("90000"),
@@ -55,6 +69,7 @@ class PaymentExpirationServiceTest {
 
         assertThat(expiredCount).isZero();
         verifyNoInteractions(roomService);
+        verifyNoInteractions(promoRoomService);
     }
 
     @Test
@@ -68,6 +83,7 @@ class PaymentExpirationServiceTest {
 
         assertThat(expiredCount).isEqualTo(1);
         verify(roomService).releaseReservation(30L, null, null);
+        verify(promoRoomService).releaseReservation(null, null);
     }
 
     @Test
@@ -99,6 +115,33 @@ class PaymentExpirationServiceTest {
     }
 
     @Test
+    void expireOverduePayments_forPromoWholeRoomPayment_marksExpiredAndReleasesThePromoRoom() {
+        BookingPayment payment = overduePayment(6L, null, null, null, 60L, null);
+        when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
+        when(bookingPaymentRepository.markExpiredIfPending(6L))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.EXPIRED)));
+
+        int expiredCount = paymentExpirationService().expireOverduePayments();
+
+        assertThat(expiredCount).isEqualTo(1);
+        verify(promoRoomService).releaseReservation(60L, null);
+        verify(roomService).releaseReservation(null, null, null);
+    }
+
+    @Test
+    void expireOverduePayments_forPromoBedPayment_marksExpiredAndReleasesThePromoBed() {
+        BookingPayment payment = overduePayment(7L, null, null, null, null, 700L);
+        when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
+        when(bookingPaymentRepository.markExpiredIfPending(7L))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.EXPIRED)));
+
+        int expiredCount = paymentExpirationService().expireOverduePayments();
+
+        assertThat(expiredCount).isEqualTo(1);
+        verify(promoRoomService).releaseReservation(isNull(), eq(700L));
+    }
+
+    @Test
     void expireOverduePayments_whenAlreadyConfirmedConcurrently_doesNotReleaseAnything() {
         // markExpiredIfPending renvoie vide : la clause status = 'PENDING' n'a rien mis à jour, le
         // paiement a été confirmé entre-temps (webhook ou job de secours, tâche 07).
@@ -110,6 +153,7 @@ class PaymentExpirationServiceTest {
 
         assertThat(expiredCount).isZero();
         verify(roomService, never()).releaseReservation(any(), any(), any());
+        verify(promoRoomService, never()).releaseReservation(any(), any());
     }
 
     @Test
@@ -135,6 +179,8 @@ class PaymentExpirationServiceTest {
                 payment.roomId(),
                 payment.bedId(),
                 payment.vipRequestId(),
+                payment.promoRoomId(),
+                payment.promoBedId(),
                 payment.plan(),
                 status,
                 payment.totalAmount(),

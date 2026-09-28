@@ -253,6 +253,22 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler({
+        PromoPackageException.InvalidPromoPackageRequestException.class,
+        PromoPackageException.InvalidPromoPackageTierRequestException.class
+    })
+    public ResponseEntity<ErrorResponse> handleInvalidPromoPackageRequest(PromoPackageException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler({
+        PromoPackageException.PromoPackageNotFoundException.class,
+        PromoPackageException.PromoPackageTierNotFoundException.class
+    })
+    public ResponseEntity<ErrorResponse> handlePromoPackageNotFound(PromoPackageException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);

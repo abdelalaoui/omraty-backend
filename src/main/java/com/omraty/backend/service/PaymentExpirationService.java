@@ -24,6 +24,7 @@ public class PaymentExpirationService {
 
     private final BookingPaymentRepository bookingPaymentRepository;
     private final RoomService roomService;
+    private final PromoRoomService promoRoomService;
 
     // Auto-référence (via le proxy Spring, pas "this") pour que expireAndRelease s'exécute dans
     // une vraie transaction : un appel this.expireAndRelease(...) depuis expireOverduePayments()
@@ -33,9 +34,12 @@ public class PaymentExpirationService {
     private PaymentExpirationService self = this;
 
     public PaymentExpirationService(
-            BookingPaymentRepository bookingPaymentRepository, RoomService roomService) {
+            BookingPaymentRepository bookingPaymentRepository,
+            RoomService roomService,
+            PromoRoomService promoRoomService) {
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.roomService = roomService;
+        this.promoRoomService = promoRoomService;
     }
 
     @Autowired
@@ -45,7 +49,8 @@ public class PaymentExpirationService {
 
     /**
      * Marque EXPIRED chaque paiement PENDING dont expires_at est dépassé, et libère la chambre ou
-     * le lit associé (voir RoomService.releaseReservation) — uniquement si le passage à EXPIRED a
+     * le lit associé — normal (voir RoomService.releaseReservation) ou promo (voir
+     * PromoRoomService.releaseReservation, tâche 21) — uniquement si le passage à EXPIRED a
      * réellement eu lieu : si le paiement a été confirmé entre-temps (webhook ou job de secours,
      * tâche 07), il n'est pas touché et sa réservation reste acquise (voir
      * BookingPaymentRepository.markExpiredIfPending).
@@ -86,6 +91,8 @@ public class PaymentExpirationService {
                         expired -> {
                             roomService.releaseReservation(
                                     payment.roomId(), payment.bedId(), payment.vipRequestId());
+                            promoRoomService.releaseReservation(
+                                    payment.promoRoomId(), payment.promoBedId());
                             return true;
                         })
                 .orElse(false);
