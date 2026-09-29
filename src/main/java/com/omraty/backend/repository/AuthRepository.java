@@ -24,7 +24,8 @@ public class AuthRepository {
                             rs.getString("id_photo_url"),
                             rs.getBoolean("identity_verified"),
                             rs.getObject("created_at", LocalDateTime.class),
-                            rs.getString("role"));
+                            rs.getString("role"),
+                            rs.getObject("deleted_at", LocalDateTime.class));
 
     private static final RowMapper<RefreshToken> REFRESH_TOKEN_ROW_MAPPER =
             (rs, rowNum) ->
@@ -108,5 +109,21 @@ public class AuthRepository {
 
     public int deleteExpiredOrRevokedRefreshTokens() {
         return jdbcTemplate.update(RefreshTokensTable.DELETE_EXPIRED_OR_REVOKED);
+    }
+
+    public int revokeAllRefreshTokensForUser(UUID userId) {
+        return jdbcTemplate.update(RefreshTokensTable.REVOKE_ALL_REFRESH_TOKENS_FOR_USER, userId);
+    }
+
+    /**
+     * Anonymise le compte (voir UserService.deleteAccount). Retourne le nombre de lignes affectées
+     * (0 si le compte est déjà supprimé ou introuvable) plutôt qu'un User : la ligne devient
+     * inutilisable, aucun appelant n'a besoin de la relire.
+     */
+    public int anonymize(UUID userId) {
+        String unusablePhone = "deleted-" + userId;
+        String unusablePasswordHash = "deleted-" + UUID.randomUUID();
+        return jdbcTemplate.update(
+                UsersTable.ANONYMIZE_USER, unusablePhone, unusablePasswordHash, userId);
     }
 }

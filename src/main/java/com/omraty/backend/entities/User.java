@@ -12,4 +12,5 @@ public record User(
         String idPhotoUrl,
         boolean identityVerified,
         LocalDateTime createdAt,
-        String role) {}
+        String role,
+        LocalDateTime deletedAt) {}

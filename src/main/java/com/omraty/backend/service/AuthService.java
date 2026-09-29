@@ -79,6 +79,7 @@ public class AuthService {
                                 () ->
                                         new AuthException.InvalidCredentialsException(
                                                 "Identifiants invalides"));
+        requireNotDeleted(user);
         if (!passwordEncoder.matches(password, user.passwordHash())) {
             throw new AuthException.InvalidCredentialsException("Identifiants invalides");
         }
@@ -146,7 +147,19 @@ public class AuthService {
                                 () ->
                                         new AuthException.InvalidCredentialsException(
                                                 "Aucun compte trouvé pour ce numéro"));
+        requireNotDeleted(user);
         return issueTokens(user);
+    }
+
+    /**
+     * Compte anonymisé (voir UserService.deleteAccount) : traité comme inexistant, même message
+     * d'erreur que pour un numéro/mot de passe invalide afin de ne pas révéler qu'un compte a
+     * existé.
+     */
+    private void requireNotDeleted(User user) {
+        if (user.deletedAt() != null) {
+            throw new AuthException.InvalidCredentialsException("Identifiants invalides");
+        }
     }
 
     private void verifyRealOtp(String phone, String code) {

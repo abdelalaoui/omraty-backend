@@ -102,7 +102,8 @@ class InvoiceServiceTest {
                                         null,
                                         false,
                                         LocalDateTime.now(),
-                                        "USER")));
+                                        "USER",
+                                        null)));
     }
 
     private BookingInstallment installment(int sequence, LocalDateTime paidAt) {

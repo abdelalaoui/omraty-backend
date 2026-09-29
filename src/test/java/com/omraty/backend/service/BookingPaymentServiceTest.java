@@ -85,7 +85,7 @@ class BookingPaymentServiceTest {
 
     private User user(String phone) {
         return new User(
-                USER_ID, phone, "hash", "M", null, null, false, LocalDateTime.now(), "USER");
+                USER_ID, phone, "hash", "M", null, null, false, LocalDateTime.now(), "USER", null);
     }
 
     private ServiceTier roomTier(int capacity, BigDecimal price) {
