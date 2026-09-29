@@ -2,6 +2,7 @@ package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.request.LoginRequest;
 import com.omraty.backend.dto.request.OtpLoginRequest;
+import com.omraty.backend.dto.request.OtpRequestRequest;
 import com.omraty.backend.dto.request.RefreshTokenRequest;
 import com.omraty.backend.dto.request.RegisterRequest;
 import com.omraty.backend.dto.response.AuthResponse;
@@ -45,6 +46,12 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         AuthResult result = authService.login(request.phone(), request.password());
         return ResponseEntity.ok(UserMapper.toAuthResponse(result));
+    }
+
+    @PostMapping("/otp-request")
+    public ResponseEntity<Void> otpRequest(@Valid @RequestBody OtpRequestRequest request) {
+        authService.requestOtp(request.phone());
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/otp-login")
