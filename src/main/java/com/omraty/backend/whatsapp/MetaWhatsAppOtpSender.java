@@ -20,11 +20,10 @@ import org.springframework.stereotype.Service;
  * pré-approuvé (voir Meta Business Manager > WhatsApp Manager > Modèles de messages). Active quand
  * whatsapp.otp.provider=meta (voir application.yml) — sinon {@link MockWhatsAppOtpSender}.
  *
- * <p>Le template attendu ici n'a qu'un seul paramètre corps (le code), sans bouton "Copier le code"
- * : {@code components: [{type: "body", parameters: [{type: "text", text: code}]}]}. Si le template
- * approuvé inclut un bouton "Copier le code", ajouter un composant {@code {type: "button",
- * sub_type: "url", index: "0", parameters: [{type: "text", text: code}]}} au tableau components
- * ci-dessous.
+ * <p>Le template attendu ici a le paramètre corps (le code) et un bouton "Copier le code" (option
+ * la plus simple de Meta, ne nécessite pas de configuration d'app Android/iOS contrairement aux
+ * boutons de saisie automatique) : le composant body envoie {type: "text", text: code}, le
+ * composant button (sub_type "copy_code") envoie {type: "coupon_code", coupon_code: code}.
  */
 @Service
 @ConditionalOnProperty(prefix = "whatsapp.otp", name = "provider", havingValue = "meta")
@@ -69,11 +68,18 @@ public class MetaWhatsAppOtpSender implements WhatsAppOtpSender {
         Map<String, Object> codeParameter = Map.of("type", "text", "text", code);
         Map<String, Object> bodyComponent =
                 Map.of("type", "body", "parameters", List.of(codeParameter));
+        Map<String, Object> couponParameter = Map.of("type", "coupon_code", "coupon_code", code);
+        Map<String, Object> buttonComponent =
+                Map.of(
+                        "type", "button",
+                        "sub_type", "copy_code",
+                        "index", "0",
+                        "parameters", List.of(couponParameter));
         Map<String, Object> template =
                 Map.of(
                         "name", templateName,
                         "language", Map.of("code", templateLanguage),
-                        "components", List.of(bodyComponent));
+                        "components", List.of(bodyComponent, buttonComponent));
         Map<String, Object> body =
                 Map.of(
                         "messaging_product",
