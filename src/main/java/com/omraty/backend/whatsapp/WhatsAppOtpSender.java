@@ -3,9 +3,9 @@ package com.omraty.backend.whatsapp;
 /**
  * Envoi du code OTP par WhatsApp. {@link MockWhatsAppOtpSender} est l'implémentation active par
  * défaut (dev/test, voir whatsapp.otp.provider) ; {@link MetaWhatsAppOtpSender} (Meta WhatsApp
- * Cloud API, {@code @ConditionalOnProperty(prefix = "whatsapp.otp", name = "provider",
- * havingValue = "meta")}) est la vraie implémentation, une fois les identifiants Meta configurés
- * — même principe que {@code PaymentGatewayClient}/payment.gateway.provider.
+ * Cloud API, {@code @ConditionalOnProperty(prefix = "whatsapp.otp", name = "provider", havingValue
+ * = "meta")}) est la vraie implémentation, une fois les identifiants Meta configurés — même
+ * principe que {@code PaymentGatewayClient}/payment.gateway.provider.
  */
 public interface WhatsAppOtpSender {
 

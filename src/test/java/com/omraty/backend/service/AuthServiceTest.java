@@ -76,8 +76,8 @@ class AuthServiceTest {
                         false,
                         LocalDateTime.now(),
                         ROLE);
-        // Non-stubbé pour la plupart des tests (mot de passe, refresh...) : lenient pour éviter
-        // les faux positifs Mockito "unnecessary stubbing" sur les tests qui ne l'utilisent pas.
+        // Non-stubbé pour la plupart des tests (mot de passe, refresh...) : lenient pour éviter les
+        // faux positifs Mockito "unnecessary stubbing" sur les tests qui ne l'utilisent pas.
         lenient()
                 .when(appSettingService.getSetting(AuthService.OTP_TEST_PHONE_NUMBERS_SETTING_KEY))
                 .thenReturn(

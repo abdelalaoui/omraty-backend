@@ -26,8 +26,8 @@ public class AuthService {
 
     /**
      * Numéros (séparés par des virgules, voir migration V44) qui continuent d'utiliser
-     * OTP_STATIC_CODE_SETTING_KEY au lieu d'un vrai code envoyé par WhatsApp — comptes de
-     * test/démo (ex. review Apple, qui ne peut pas recevoir de vrai message WhatsApp).
+     * OTP_STATIC_CODE_SETTING_KEY au lieu d'un vrai code envoyé par WhatsApp — comptes de test/démo
+     * (ex. review Apple, qui ne peut pas recevoir de vrai message WhatsApp).
      */
     static final String OTP_TEST_PHONE_NUMBERS_SETTING_KEY = "otp_test_phone_numbers";
 
@@ -86,10 +86,10 @@ public class AuthService {
     }
 
     /**
-     * Génère et envoie par WhatsApp un nouveau code OTP (voir MetaWhatsAppOtpSender) pour un
-     * numéro déjà inscrit. Pour les numéros listés dans OTP_TEST_PHONE_NUMBERS_SETTING_KEY (voir
-     * migration V44), ne fait rien : le code est déjà connu (OTP_STATIC_CODE_SETTING_KEY), aucun
-     * envoi réel n'est nécessaire.
+     * Génère et envoie par WhatsApp un nouveau code OTP (voir MetaWhatsAppOtpSender) pour un numéro
+     * déjà inscrit. Pour les numéros listés dans OTP_TEST_PHONE_NUMBERS_SETTING_KEY (voir migration
+     * V44), ne fait rien : le code est déjà connu (OTP_STATIC_CODE_SETTING_KEY), aucun envoi réel
+     * n'est nécessaire.
      */
     public void requestOtp(String phone) {
         authRepository
@@ -125,10 +125,10 @@ public class AuthService {
     /**
      * Connexion par code OTP — pas de mot de passe. Pour les numéros de test (voir
      * OTP_TEST_PHONE_NUMBERS_SETTING_KEY), le code est comparé au réglage statique
-     * OTP_STATIC_CODE_SETTING_KEY ; sinon au dernier code réellement généré/envoyé par
-     * {@link #requestOtp}. Seuls les numéros déjà inscrits (via /auth/register) peuvent se
-     * connecter ainsi ; un numéro inconnu doit d'abord passer par l'inscription classique (le
-     * profil — genre, etc. — n'est pas collecté par ce flux minimal).
+     * OTP_STATIC_CODE_SETTING_KEY ; sinon au dernier code réellement généré/envoyé par {@link
+     * #requestOtp}. Seuls les numéros déjà inscrits (via /auth/register) peuvent se connecter ainsi
+     * ; un numéro inconnu doit d'abord passer par l'inscription classique (le profil — genre, etc.
+     * — n'est pas collecté par ce flux minimal).
      */
     public AuthResult loginWithOtp(String phone, String code) {
         if (isTestPhoneNumber(phone)) {

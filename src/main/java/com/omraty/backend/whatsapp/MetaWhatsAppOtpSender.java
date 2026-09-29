@@ -17,14 +17,14 @@ import org.springframework.stereotype.Service;
 
 /**
  * Envoi du code OTP via l'API Meta WhatsApp Cloud (Graph API), avec un template "Authentication"
- * pré-approuvé (voir Meta Business Manager > WhatsApp Manager > Modèles de messages). Active
- * quand whatsapp.otp.provider=meta (voir application.yml) — sinon {@link MockWhatsAppOtpSender}.
+ * pré-approuvé (voir Meta Business Manager > WhatsApp Manager > Modèles de messages). Active quand
+ * whatsapp.otp.provider=meta (voir application.yml) — sinon {@link MockWhatsAppOtpSender}.
  *
- * <p>Le template attendu ici n'a qu'un seul paramètre corps (le code), sans bouton "Copier le
- * code" : {@code components: [{type: "body", parameters: [{type: "text", text: code}]}]}. Si le
- * template approuvé inclut un bouton "Copier le code", ajouter un composant {@code
- * {type: "button", sub_type: "url", index: "0", parameters: [{type: "text", text: code}]}} au
- * tableau components ci-dessous.
+ * <p>Le template attendu ici n'a qu'un seul paramètre corps (le code), sans bouton "Copier le code"
+ * : {@code components: [{type: "body", parameters: [{type: "text", text: code}]}]}. Si le template
+ * approuvé inclut un bouton "Copier le code", ajouter un composant {@code {type: "button",
+ * sub_type: "url", index: "0", parameters: [{type: "text", text: code}]}} au tableau components
+ * ci-dessous.
  */
 @Service
 @ConditionalOnProperty(prefix = "whatsapp.otp", name = "provider", havingValue = "meta")

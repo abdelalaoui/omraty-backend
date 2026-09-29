@@ -30,8 +30,7 @@ public class OtpCodeRepository {
     /**
      * Dernier code demandé pour ce numéro, quel que soit son état (consommé/expiré) — sert à la
      * fois à vérifier le code saisi et à limiter la fréquence des demandes (voir
-     * AuthService.requestOtp), une nouvelle demande rendant implicitement obsolète la
-     * précédente.
+     * AuthService.requestOtp), une nouvelle demande rendant implicitement obsolète la précédente.
      */
     public Optional<OtpCode> findLatest(String phone) {
         return jdbcTemplate
