@@ -94,7 +94,12 @@ class AuthServiceTest {
 
     private OtpCode activeOtpCode(String code, int attempts) {
         return new OtpCode(
-                1L, PHONE, code, LocalDateTime.now().plusMinutes(5), attempts, null,
+                1L,
+                PHONE,
+                code,
+                LocalDateTime.now().plusMinutes(5),
+                attempts,
+                null,
                 LocalDateTime.now());
     }
 
@@ -186,8 +191,15 @@ class AuthServiceTest {
                         new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
         User testUser =
                 new User(
-                        UUID.randomUUID(), TEST_PHONE, null, GENDER, null, null, false,
-                        LocalDateTime.now(), ROLE);
+                        UUID.randomUUID(),
+                        TEST_PHONE,
+                        null,
+                        GENDER,
+                        null,
+                        null,
+                        false,
+                        LocalDateTime.now(),
+                        ROLE);
         when(authRepository.findByPhone(TEST_PHONE)).thenReturn(Optional.of(testUser));
         when(jwtService.generateAccessToken(testUser.id(), testUser.phone(), testUser.role()))
                 .thenReturn("access-token");
@@ -216,8 +228,13 @@ class AuthServiceTest {
     void loginWithOtp_realPhoneAlreadyConsumed_throwsException() {
         OtpCode consumed =
                 new OtpCode(
-                        1L, PHONE, "123456", LocalDateTime.now().plusMinutes(5), 0,
-                        LocalDateTime.now(), LocalDateTime.now());
+                        1L,
+                        PHONE,
+                        "123456",
+                        LocalDateTime.now().plusMinutes(5),
+                        0,
+                        LocalDateTime.now(),
+                        LocalDateTime.now());
         when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(consumed));
 
         assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "123456"))
@@ -228,7 +245,12 @@ class AuthServiceTest {
     void loginWithOtp_realPhoneExpiredCode_throwsException() {
         OtpCode expired =
                 new OtpCode(
-                        1L, PHONE, "123456", LocalDateTime.now().minusMinutes(1), 0, null,
+                        1L,
+                        PHONE,
+                        "123456",
+                        LocalDateTime.now().minusMinutes(1),
+                        0,
+                        null,
                         LocalDateTime.now().minusMinutes(6));
         when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(expired));
 
@@ -317,7 +339,12 @@ class AuthServiceTest {
                 LocalDateTime.now().minusSeconds(AuthService.OTP_REQUEST_COOLDOWN_SECONDS + 5);
         OtpCode oldRequest =
                 new OtpCode(
-                        1L, PHONE, "111111", LocalDateTime.now().minusMinutes(10), 0, null,
+                        1L,
+                        PHONE,
+                        "111111",
+                        LocalDateTime.now().minusMinutes(10),
+                        0,
+                        null,
                         pastCooldown);
         when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(oldRequest));
 

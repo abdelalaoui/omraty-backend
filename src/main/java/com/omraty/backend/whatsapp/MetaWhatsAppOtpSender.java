@@ -76,12 +76,15 @@ public class MetaWhatsAppOtpSender implements WhatsAppOtpSender {
                         "components", List.of(bodyComponent));
         Map<String, Object> body =
                 Map.of(
-                        "messaging_product", "whatsapp",
-                        "to", toPhone,
-                        "type", "template",
-                        "template", template);
-        String url =
-                "https://graph.facebook.com/" + apiVersion + "/" + phoneNumberId + "/messages";
+                        "messaging_product",
+                        "whatsapp",
+                        "to",
+                        toPhone,
+                        "type",
+                        "template",
+                        "template",
+                        template);
+        String url = "https://graph.facebook.com/" + apiVersion + "/" + phoneNumberId + "/messages";
         try {
             String json = objectMapper.writeValueAsString(body);
             HttpRequest request =
