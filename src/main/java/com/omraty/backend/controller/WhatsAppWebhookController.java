@@ -34,8 +34,8 @@ public class WhatsAppWebhookController {
 
     /**
      * Handshake de vérification exigé par Meta à la configuration du webhook : renvoie
-     * hub.challenge tel quel si hub.verify_token correspond à whatsapp.webhook.verify-token,
-     * sinon 403 (y compris si ce réglage est vide — pas de vérification désactivée par défaut).
+     * hub.challenge tel quel si hub.verify_token correspond à whatsapp.webhook.verify-token, sinon
+     * 403 (y compris si ce réglage est vide — pas de vérification désactivée par défaut).
      */
     @GetMapping
     public ResponseEntity<String> verify(
@@ -51,8 +51,8 @@ public class WhatsAppWebhookController {
 
     /**
      * Événements WhatsApp (statuts de message, messages entrants). Aucun n'est exploité pour
-     * l'instant — juste un accusé de réception pour éviter que Meta ne renvoie indéfiniment le
-     * même événement.
+     * l'instant — juste un accusé de réception pour éviter que Meta ne renvoie indéfiniment le même
+     * événement.
      */
     @PostMapping
     public ResponseEntity<Void> receive(@RequestBody String rawBody) {
