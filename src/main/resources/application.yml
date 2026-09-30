@@ -55,6 +55,11 @@ whatsapp:
       template-name: ${WHATSAPP_TEMPLATE_NAME:otp_code}
       template-language: ${WHATSAPP_TEMPLATE_LANGUAGE:ar}
       api-version: ${WHATSAPP_API_VERSION:v21.0}
+  webhook:
+    # Requis par Meta pour finaliser la configuration production d'un numéro WhatsApp (voir
+    # WhatsAppWebhookController) — comparé tel quel au hub.verify_token envoyé par Meta au moment
+    # de la configuration du webhook dans WhatsApp Manager.
+    verify-token: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:}
 
 app:
   vip:
