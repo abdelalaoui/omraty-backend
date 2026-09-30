@@ -75,7 +75,8 @@ class AuthServiceTest {
                         null,
                         false,
                         LocalDateTime.now(),
-                        ROLE);
+                        ROLE,
+                        null);
         // Non-stubbé pour la plupart des tests (mot de passe, refresh...) : lenient pour éviter les
         // faux positifs Mockito "unnecessary stubbing" sur les tests qui ne l'utilisent pas.
         lenient()
@@ -146,6 +147,28 @@ class AuthServiceTest {
     }
 
     @Test
+    void login_whenAccountDeleted_throwsExceptionWithoutCheckingPassword() {
+        User deletedUser =
+                new User(
+                        user.id(),
+                        PHONE,
+                        PASSWORD_HASH,
+                        GENDER,
+                        null,
+                        null,
+                        false,
+                        LocalDateTime.now(),
+                        ROLE,
+                        LocalDateTime.now());
+        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(deletedUser));
+
+        assertThatThrownBy(() -> authService.login(PHONE, RAW_PASSWORD))
+                .isInstanceOf(AuthException.InvalidCredentialsException.class);
+
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+    }
+
+    @Test
     void login_success_returnsTokens() {
         when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(user));
         when(passwordEncoder.matches(RAW_PASSWORD, PASSWORD_HASH)).thenReturn(true);
@@ -199,7 +222,8 @@ class AuthServiceTest {
                         null,
                         false,
                         LocalDateTime.now(),
-                        ROLE);
+                        ROLE,
+                        null);
         when(authRepository.findByPhone(TEST_PHONE)).thenReturn(Optional.of(testUser));
         when(jwtService.generateAccessToken(testUser.id(), testUser.phone(), testUser.role()))
                 .thenReturn("access-token");
@@ -279,6 +303,28 @@ class AuthServiceTest {
 
         verify(otpCodeRepository).incrementAttempts(active.id());
         verify(authRepository, never()).findByPhone(anyString());
+    }
+
+    @Test
+    void loginWithOtp_realPhoneAccountDeleted_throwsException() {
+        OtpCode active = activeOtpCode("123456", 0);
+        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(active));
+        User deletedUser =
+                new User(
+                        user.id(),
+                        PHONE,
+                        PASSWORD_HASH,
+                        GENDER,
+                        null,
+                        null,
+                        false,
+                        LocalDateTime.now(),
+                        ROLE,
+                        LocalDateTime.now());
+        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(deletedUser));
+
+        assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "123456"))
+                .isInstanceOf(AuthException.InvalidCredentialsException.class);
     }
 
     @Test

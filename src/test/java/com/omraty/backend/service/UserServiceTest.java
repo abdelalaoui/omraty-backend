@@ -52,7 +52,8 @@ class UserServiceTest {
                         null,
                         false,
                         LocalDateTime.now(),
-                        "USER");
+                        "USER",
+                        null);
     }
 
     private MultipartFile validPhoto() {
@@ -114,7 +115,8 @@ class UserServiceTest {
                         "/uploads/identity/x.jpg",
                         false,
                         user.createdAt(),
-                        user.role());
+                        user.role(),
+                        null);
         when(fileStorageService.store(photo, "identity")).thenReturn("/uploads/identity/x.jpg");
         when(authRepository.updateIdentity(user.id(), NNI, "/uploads/identity/x.jpg", false))
                 .thenReturn(Optional.of(updatedUser));
@@ -141,7 +143,8 @@ class UserServiceTest {
                 "/uploads/identity/x.jpg",
                 false,
                 user.createdAt(),
-                user.role());
+                user.role(),
+                null);
     }
 
     @Test
@@ -185,7 +188,8 @@ class UserServiceTest {
                         pending.idPhotoUrl(),
                         true,
                         pending.createdAt(),
-                        pending.role());
+                        pending.role(),
+                        null);
         when(authRepository.findById(pending.id())).thenReturn(Optional.of(pending));
         when(authRepository.approveIdentity(pending.id())).thenReturn(Optional.of(approved));
 
@@ -193,6 +197,25 @@ class UserServiceTest {
 
         assertThat(result.identityVerified()).isTrue();
         verify(notificationService).create(eq(pending.id()), anyString(), anyString());
+    }
+
+    @Test
+    void deleteAccount_whenUserNotFoundOrAlreadyDeleted_throwsException() {
+        when(authRepository.anonymize(user.id())).thenReturn(0);
+
+        assertThatThrownBy(() -> userService.deleteAccount(user.id()))
+                .isInstanceOf(UserException.UserNotFoundException.class);
+
+        verify(authRepository, never()).revokeAllRefreshTokensForUser(any());
+    }
+
+    @Test
+    void deleteAccount_success_anonymizesAndRevokesAllRefreshTokens() {
+        when(authRepository.anonymize(user.id())).thenReturn(1);
+
+        userService.deleteAccount(user.id());
+
+        verify(authRepository).revokeAllRefreshTokensForUser(user.id());
     }
 
     @Test
@@ -208,7 +231,8 @@ class UserServiceTest {
                         null,
                         false,
                         pending.createdAt(),
-                        pending.role());
+                        pending.role(),
+                        null);
         when(authRepository.findById(pending.id())).thenReturn(Optional.of(pending));
         when(authRepository.rejectIdentity(pending.id())).thenReturn(Optional.of(rejected));
 

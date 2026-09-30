@@ -88,6 +88,19 @@ public class UserService {
         return user;
     }
 
+    /**
+     * Suppression de compte (App Review Guideline 5.1.1(v)) : anonymise le compte plutôt que de le
+     * supprimer physiquement — reservations/paiements référencent users.id en FK et doivent être
+     * conservés pour la comptabilité/le légal — puis révoque toutes les sessions actives.
+     */
+    public void deleteAccount(UUID userId) {
+        int updated = authRepository.anonymize(userId);
+        if (updated == 0) {
+            throw new UserException.UserNotFoundException("Utilisateur introuvable");
+        }
+        authRepository.revokeAllRefreshTokensForUser(userId);
+    }
+
     private void requirePendingIdentity(UUID userId) {
         User user =
                 authRepository

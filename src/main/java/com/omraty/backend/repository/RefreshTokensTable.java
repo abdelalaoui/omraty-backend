@@ -17,6 +17,13 @@ final class RefreshTokensTable {
     static final String REVOKE_REFRESH_TOKEN =
             "UPDATE refresh_tokens SET revoked = TRUE WHERE token = ?";
 
+    /**
+     * Voir UserService.deleteAccount : révoque toutes les sessions d'un coup, pas un token à la
+     * fois.
+     */
+    static final String REVOKE_ALL_REFRESH_TOKENS_FOR_USER =
+            "UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = ?";
+
     static final String DELETE_EXPIRED_OR_REVOKED =
             "DELETE FROM refresh_tokens WHERE expires_at < now() OR revoked = true";
 }
