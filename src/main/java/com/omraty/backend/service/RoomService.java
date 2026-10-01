@@ -143,6 +143,44 @@ public class RoomService {
     }
 
     /**
+     * Réserve un lit (chambre de 5) au prix de l'offre spéciale en cours (voir
+     * BookingPaymentService.resolveOfferPrice, réglages bed_offer_* de la migration V47) plutôt
+     * qu'au prix catalogue — toujours en paiement complet (plan FULL forcé), jamais en tranches,
+     * contrairement à {@link #reserveBed} qui laisse le client choisir. Même mécanique sinon :
+     * chambre ouverte réutilisée ou créée, lit choisi par le serveur.
+     *
+     * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
+     * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
+     *     l'offre n'est pas active.
+     */
+    @Transactional
+    public BookingPayment reserveOfferBed(long packageId, UUID userId) {
+        OmraPackage pkg = lockPackageOrThrow(packageId);
+        packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
+        BigDecimal price = bookingPaymentService.resolveOfferPrice();
+
+        Room room =
+                roomRepository
+                        .findOpenRoomForUpdate(packageId, SHARED_ROOM_TYPE)
+                        .orElseGet(() -> openNewSharedRoom(packageId, SHARED_ROOM_TYPE));
+
+        Bed bed =
+                bedRepository
+                        .findFirstUnreservedBedForUpdate(room.id())
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "Chambre ouverte sans lit libre (roomId="
+                                                        + room.id()
+                                                        + ")"));
+
+        Bed reservedBed = bedRepository.markReserved(bed.id(), userId);
+        roomRepository.incrementReservedCount(room.id());
+        return bookingPaymentService.createPaymentPlan(
+                null, reservedBed.id(), PaymentPlan.FULL, price, pkg, userId);
+    }
+
+    /**
      * Achat direct d'une chambre entière (types 2 et 3 uniquement) : pas de suivi lit par lit, la
      * chambre est créée déjà pleine. La réservation est immédiate ; le paiement, lui, démarre
      * PENDING et n'est confirmé qu'une fois la passerelle de paiement validée (voir

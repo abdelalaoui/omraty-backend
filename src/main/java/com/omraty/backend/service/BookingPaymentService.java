@@ -86,6 +86,10 @@ public class BookingPaymentService {
 
     static final String FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY = "full_payment_discount_percentage";
 
+    // Voir migration V47, getActiveOfferPrice/resolveOfferPrice.
+    static final String BED_OFFER_ENABLED_KEY = "bed_offer_enabled";
+    static final String BED_OFFER_PRICE_KEY = "bed_offer_price";
+
     public BookingPaymentService(
             ServiceTierRepository serviceTierRepository,
             BookingPaymentRepository bookingPaymentRepository,
@@ -145,6 +149,34 @@ public class BookingPaymentService {
      */
     public BigDecimal getFullPaymentDiscountPercentage() {
         return appSettingService.getDecimalValue(FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY);
+    }
+
+    /**
+     * Prix de l'offre spéciale "lit en chambre de 5" en cours (voir migration V47), si elle est
+     * active — vide sinon. Utilisé par BannerController pour n'exposer un ctaPrice sur une bannière
+     * {@code cta_type = BED_OFFER} que lorsque l'offre est réellement utilisable.
+     */
+    public Optional<BigDecimal> getActiveOfferPrice() {
+        boolean enabled =
+                Boolean.parseBoolean(appSettingService.getSetting(BED_OFFER_ENABLED_KEY).value());
+        return enabled
+                ? Optional.of(appSettingService.getDecimalValue(BED_OFFER_PRICE_KEY))
+                : Optional.empty();
+    }
+
+    /**
+     * Prix réellement facturé par {@link RoomService#reserveOfferBed} — contrairement à {@link
+     * #getActiveOfferPrice}, lève si l'offre n'est pas active (ex. désactivée par l'admin entre
+     * l'affichage de la bannière côté app et la réservation).
+     *
+     * @throws BookingPaymentException.PriceNotConfiguredException si l'offre n'est pas active.
+     */
+    public BigDecimal resolveOfferPrice() {
+        return getActiveOfferPrice()
+                .orElseThrow(
+                        () ->
+                                new BookingPaymentException.PriceNotConfiguredException(
+                                        "L'offre spéciale n'est pas active actuellement"));
     }
 
     /**

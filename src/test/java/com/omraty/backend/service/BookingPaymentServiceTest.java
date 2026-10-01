@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.omraty.backend.dto.response.PaymentStatusResponse;
+import com.omraty.backend.entities.AppSetting;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
@@ -126,6 +127,50 @@ class BookingPaymentServiceTest {
                 .thenReturn(Optional.of(roomTier(2, new BigDecimal("90000"))));
 
         assertThat(bookingPaymentService().resolvePrice(2)).isEqualByComparingTo("90000");
+    }
+
+    @Test
+    void getActiveOfferPrice_whenDisabled_returnsEmpty() {
+        when(appSettingService.getSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY))
+                .thenReturn(
+                        new AppSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY, "false", null));
+
+        assertThat(bookingPaymentService().getActiveOfferPrice()).isEmpty();
+    }
+
+    @Test
+    void getActiveOfferPrice_whenEnabled_returnsConfiguredPrice() {
+        when(appSettingService.getSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY))
+                .thenReturn(
+                        new AppSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY, "true", null));
+        when(appSettingService.getDecimalValue(BookingPaymentService.BED_OFFER_PRICE_KEY))
+                .thenReturn(new BigDecimal("45000"));
+
+        Optional<BigDecimal> result = bookingPaymentService().getActiveOfferPrice();
+
+        assertThat(result).isPresent();
+        assertThat(result.get()).isEqualByComparingTo("45000");
+    }
+
+    @Test
+    void resolveOfferPrice_whenDisabled_throwsException() {
+        when(appSettingService.getSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY))
+                .thenReturn(
+                        new AppSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY, "false", null));
+
+        assertThatThrownBy(() -> bookingPaymentService().resolveOfferPrice())
+                .isInstanceOf(BookingPaymentException.PriceNotConfiguredException.class);
+    }
+
+    @Test
+    void resolveOfferPrice_whenEnabled_returnsConfiguredPrice() {
+        when(appSettingService.getSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY))
+                .thenReturn(
+                        new AppSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY, "true", null));
+        when(appSettingService.getDecimalValue(BookingPaymentService.BED_OFFER_PRICE_KEY))
+                .thenReturn(new BigDecimal("45000"));
+
+        assertThat(bookingPaymentService().resolveOfferPrice()).isEqualByComparingTo("45000");
     }
 
     @Test

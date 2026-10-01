@@ -4,6 +4,7 @@ import com.omraty.backend.dto.request.OpenRoomRequest;
 import com.omraty.backend.dto.request.PurchaseRoomGroupRequest;
 import com.omraty.backend.dto.request.PurchaseRoomRequest;
 import com.omraty.backend.dto.request.ReserveBedRequest;
+import com.omraty.backend.dto.request.ReserveOfferBedRequest;
 import com.omraty.backend.dto.request.RoomGroupItemRequest;
 import com.omraty.backend.dto.response.PaymentResponse;
 import com.omraty.backend.dto.response.PurchaseResponse;
@@ -83,6 +84,19 @@ public class RoomController {
             @Valid @RequestBody ReserveBedRequest request) {
         BookingPayment payment =
                 roomService.reserveBed(type, request.packageId(), userId, request.plan());
+        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
+    }
+
+    /**
+     * Réserve un lit (chambre de 5) au prix de l'offre spéciale en cours (voir
+     * RoomService.reserveOfferBed) — toujours en paiement complet, jamais en tranches. Distinct de
+     * POST /rooms/5/beds/reserve (prix catalogue, plan au choix du client).
+     */
+    @PostMapping("/rooms/offer/beds/reserve")
+    public ResponseEntity<PaymentResponse> reserveOfferBed(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody ReserveOfferBedRequest request) {
+        BookingPayment payment = roomService.reserveOfferBed(request.packageId(), userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
     }
 

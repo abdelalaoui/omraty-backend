@@ -12,6 +12,7 @@ import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
+import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.RoomException;
 import com.omraty.backend.repository.BedRepository;
@@ -128,6 +129,90 @@ class RoomServiceTest {
                 .thenReturn(PAYMENT_STUB);
 
         BookingPayment result = roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL);
+
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+        verify(bedRepository).insertBedsForRoom(20L, 5);
+        verify(bedRepository).markReserved(200L, USER_ID);
+        verify(roomRepository).incrementReservedCount(20L);
+    }
+
+    @Test
+    void reserveOfferBed_whenPackageNotFound_throwsException() {
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> roomService().reserveOfferBed(1L, USER_ID))
+                .isInstanceOf(PackageException.PackageNotFoundException.class);
+    }
+
+    @Test
+    void reserveOfferBed_whenGroupSizeAlreadyReached_throwsExceptionWithoutResolvingPrice() {
+        when(packageRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 5, null, null)));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(5);
+
+        assertThatThrownBy(() -> roomService().reserveOfferBed(1L, USER_ID))
+                .isInstanceOf(RoomException.GroupSizeExceededException.class);
+
+        verify(bookingPaymentService, never()).resolveOfferPrice();
+    }
+
+    @Test
+    void reserveOfferBed_whenOfferNotActive_propagatesExceptionWithoutReservingABed() {
+        when(packageRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 40, null, null)));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(3);
+        when(bookingPaymentService.resolveOfferPrice())
+                .thenThrow(
+                        new BookingPaymentException.PriceNotConfiguredException(
+                                "L'offre spéciale n'est pas active actuellement"));
+
+        assertThatThrownBy(() -> roomService().reserveOfferBed(1L, USER_ID))
+                .isInstanceOf(BookingPaymentException.PriceNotConfiguredException.class);
+
+        verify(bedRepository, never()).markReserved(anyLong(), any());
+    }
+
+    @Test
+    void reserveOfferBed_withOpenRoomAvailable_reservesAtOfferPriceInFullPlan() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(3);
+        when(bookingPaymentService.resolveOfferPrice()).thenReturn(new BigDecimal("45000"));
+        Room openRoom = new Room(10L, 5, 1L, 5, 3, null, LocalDateTime.now());
+        when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
+        Bed freeBed = new Bed(100L, 4, false, 10L, null, null);
+        when(bedRepository.findFirstUnreservedBedForUpdate(10L)).thenReturn(Optional.of(freeBed));
+        when(bedRepository.markReserved(100L, USER_ID))
+                .thenReturn(new Bed(100L, 4, true, 10L, USER_ID, LocalDateTime.now()));
+        when(bookingPaymentService.createPaymentPlan(
+                        null, 100L, PaymentPlan.FULL, new BigDecimal("45000"), pkg, USER_ID))
+                .thenReturn(PAYMENT_STUB);
+
+        BookingPayment result = roomService().reserveOfferBed(1L, USER_ID);
+
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+        verify(bedRepository).markReserved(100L, USER_ID);
+        verify(roomRepository).incrementReservedCount(10L);
+    }
+
+    @Test
+    void reserveOfferBed_whenNoOpenRoom_opensNewRoomWithFreshBedsThenReservesInIt() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(5);
+        when(bookingPaymentService.resolveOfferPrice()).thenReturn(new BigDecimal("45000"));
+        when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.empty());
+        Room newRoom = new Room(20L, 5, 1L, 5, 0, null, LocalDateTime.now());
+        when(roomRepository.insert(5, 1L, 5, 0, null)).thenReturn(newRoom);
+        Bed freeBed = new Bed(200L, 1, false, 20L, null, null);
+        when(bedRepository.findFirstUnreservedBedForUpdate(20L)).thenReturn(Optional.of(freeBed));
+        when(bedRepository.markReserved(200L, USER_ID))
+                .thenReturn(new Bed(200L, 1, true, 20L, USER_ID, LocalDateTime.now()));
+        when(bookingPaymentService.createPaymentPlan(
+                        null, 200L, PaymentPlan.FULL, new BigDecimal("45000"), pkg, USER_ID))
+                .thenReturn(PAYMENT_STUB);
+
+        BookingPayment result = roomService().reserveOfferBed(1L, USER_ID);
 
         assertThat(result).isEqualTo(PAYMENT_STUB);
         verify(bedRepository).insertBedsForRoom(20L, 5);
