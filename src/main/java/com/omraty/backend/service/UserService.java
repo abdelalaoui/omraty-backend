@@ -34,12 +34,12 @@ public class UserService {
     }
 
     /**
-     * {@code gender} est collecté ici (en plus du NNI/photo) et non plus seulement à
-     * l'inscription : un compte créé à la volée par AuthService.requestOtp (numéro inconnu, voir
-     * migration V46) n'a pas encore de genre, et BeneficiaryInfoScreen côté app est le seul écran
-     * qui bloque l'accès à HomeScreen tant que le profil est incomplet (voir AuthGate) — pour un
-     * compte qui avait déjà un genre (inscription classique par mot de passe), l'app renvoie sa
-     * valeur actuelle, ce qui revient à une réécriture sans effet.
+     * {@code gender} est collecté ici (en plus du NNI/photo) et non plus seulement à l'inscription
+     * : un compte créé à la volée par AuthService.requestOtp (numéro inconnu, voir migration V46)
+     * n'a pas encore de genre, et BeneficiaryInfoScreen côté app est le seul écran qui bloque
+     * l'accès à HomeScreen tant que le profil est incomplet (voir AuthGate) — pour un compte qui
+     * avait déjà un genre (inscription classique par mot de passe), l'app renvoie sa valeur
+     * actuelle, ce qui revient à une réécriture sans effet.
      */
     public User updateIdentity(UUID userId, String nni, MultipartFile photo, Gender gender) {
         if (nni == null || nni.isBlank()) {

@@ -78,9 +78,7 @@ class UserServiceTest {
         MultipartFile emptyPhoto = new MockMultipartFile("photo", new byte[0]);
 
         assertThatThrownBy(
-                        () ->
-                                userService.updateIdentity(
-                                        user.id(), NNI, emptyPhoto, Gender.MALE))
+                        () -> userService.updateIdentity(user.id(), NNI, emptyPhoto, Gender.MALE))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
 
         verify_neverStoresOrUpdates();
@@ -92,8 +90,7 @@ class UserServiceTest {
                 new MockMultipartFile(
                         "photo", "id.pdf", "application/pdf", "fake-pdf-bytes".getBytes());
 
-        assertThatThrownBy(
-                        () -> userService.updateIdentity(user.id(), NNI, pdfFile, Gender.MALE))
+        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, pdfFile, Gender.MALE))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
 
         verify_neverStoresOrUpdates();
@@ -101,8 +98,7 @@ class UserServiceTest {
 
     @Test
     void updateIdentity_withNullGender_throwsException() {
-        assertThatThrownBy(
-                        () -> userService.updateIdentity(user.id(), NNI, validPhoto(), null))
+        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, validPhoto(), null))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
 
         verify_neverStoresOrUpdates();
@@ -116,8 +112,7 @@ class UserServiceTest {
                         user.id(), NNI, "/uploads/identity/x.jpg", false, "MALE"))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(
-                        () -> userService.updateIdentity(user.id(), NNI, photo, Gender.MALE))
+        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, photo, Gender.MALE))
                 .isInstanceOf(AuthException.InvalidTokenException.class);
     }
 
