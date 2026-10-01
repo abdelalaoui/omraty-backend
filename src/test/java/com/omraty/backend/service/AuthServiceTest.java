@@ -276,13 +276,14 @@ class AuthServiceTest {
     // --- requestOtp ---
 
     @Test
-    void requestOtp_withUnknownPhone_throwsExceptionWithoutCallingProvider() {
+    void requestOtp_withUnknownPhone_createsAccountThenDelegatesToProvider() {
         when(authRepository.findByPhone(PHONE)).thenReturn(Optional.empty());
+        when(authRepository.createUserPhoneOnly(PHONE)).thenReturn(user);
 
-        assertThatThrownBy(() -> authService.requestOtp(PHONE))
-                .isInstanceOf(AuthException.InvalidCredentialsException.class);
+        authService.requestOtp(PHONE);
 
-        verifyNoInteractions(otpVerificationProvider);
+        verify(authRepository).createUserPhoneOnly(PHONE);
+        verify(otpVerificationProvider).requestCode(PHONE);
     }
 
     @Test

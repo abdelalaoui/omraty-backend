@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.omraty.backend.entities.User;
+import com.omraty.backend.entities.enums.Gender;
 import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.exception.UserException;
 import com.omraty.backend.repository.AuthRepository;
@@ -63,7 +64,10 @@ class UserServiceTest {
 
     @Test
     void updateIdentity_withBlankNni_throwsException() {
-        assertThatThrownBy(() -> userService.updateIdentity(user.id(), "  ", validPhoto()))
+        assertThatThrownBy(
+                        () ->
+                                userService.updateIdentity(
+                                        user.id(), "  ", validPhoto(), Gender.MALE))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
 
         verify_neverStoresOrUpdates();
@@ -73,7 +77,8 @@ class UserServiceTest {
     void updateIdentity_withEmptyPhoto_throwsException() {
         MultipartFile emptyPhoto = new MockMultipartFile("photo", new byte[0]);
 
-        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, emptyPhoto))
+        assertThatThrownBy(
+                        () -> userService.updateIdentity(user.id(), NNI, emptyPhoto, Gender.MALE))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
 
         verify_neverStoresOrUpdates();
@@ -85,7 +90,15 @@ class UserServiceTest {
                 new MockMultipartFile(
                         "photo", "id.pdf", "application/pdf", "fake-pdf-bytes".getBytes());
 
-        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, pdfFile))
+        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, pdfFile, Gender.MALE))
+                .isInstanceOf(UserException.InvalidIdentityRequestException.class);
+
+        verify_neverStoresOrUpdates();
+    }
+
+    @Test
+    void updateIdentity_withNullGender_throwsException() {
+        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, validPhoto(), null))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
 
         verify_neverStoresOrUpdates();
@@ -95,10 +108,11 @@ class UserServiceTest {
     void updateIdentity_whenUserNotFound_throwsException() {
         MultipartFile photo = validPhoto();
         when(fileStorageService.store(photo, "identity")).thenReturn("/uploads/identity/x.jpg");
-        when(authRepository.updateIdentity(user.id(), NNI, "/uploads/identity/x.jpg", false))
+        when(authRepository.updateIdentity(
+                        user.id(), NNI, "/uploads/identity/x.jpg", false, "MALE"))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, photo))
+        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, photo, Gender.MALE))
                 .isInstanceOf(AuthException.InvalidTokenException.class);
     }
 
@@ -118,10 +132,11 @@ class UserServiceTest {
                         user.role(),
                         null);
         when(fileStorageService.store(photo, "identity")).thenReturn("/uploads/identity/x.jpg");
-        when(authRepository.updateIdentity(user.id(), NNI, "/uploads/identity/x.jpg", false))
+        when(authRepository.updateIdentity(
+                        user.id(), NNI, "/uploads/identity/x.jpg", false, "MALE"))
                 .thenReturn(Optional.of(updatedUser));
 
-        User result = userService.updateIdentity(user.id(), NNI, photo);
+        User result = userService.updateIdentity(user.id(), NNI, photo, Gender.MALE);
 
         assertThat(result).isEqualTo(updatedUser);
         assertThat(result.identityVerified()).isFalse();
@@ -130,7 +145,7 @@ class UserServiceTest {
     private void verify_neverStoresOrUpdates() {
         verify(fileStorageService, never()).store(any(), anyString());
         verify(authRepository, never())
-                .updateIdentity(any(), anyString(), anyString(), anyBoolean());
+                .updateIdentity(any(), anyString(), anyString(), anyBoolean(), anyString());
     }
 
     private User pendingUser() {
