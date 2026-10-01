@@ -146,9 +146,10 @@ class BookingPaymentServiceTest {
         when(appSettingService.getDecimalValue(BookingPaymentService.BED_OFFER_PRICE_KEY))
                 .thenReturn(new BigDecimal("45000"));
 
-        assertThat(bookingPaymentService().getActiveOfferPrice())
-                .get()
-                .isEqualByComparingTo("45000");
+        Optional<BigDecimal> result = bookingPaymentService().getActiveOfferPrice();
+
+        assertThat(result).isPresent();
+        assertThat(result.get()).isEqualByComparingTo("45000");
     }
 
     @Test
