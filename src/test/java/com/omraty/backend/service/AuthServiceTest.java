@@ -3,7 +3,6 @@ package com.omraty.backend.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -11,18 +10,16 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.omraty.backend.config.security.JwtService;
 import com.omraty.backend.entities.AppSetting;
-import com.omraty.backend.entities.OtpCode;
 import com.omraty.backend.entities.RefreshToken;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.repository.AuthRepository;
-import com.omraty.backend.repository.OtpCodeRepository;
-import com.omraty.backend.whatsapp.WhatsAppOtpSender;
-import com.omraty.backend.whatsapp.WhatsAppSendException;
+import com.omraty.backend.whatsapp.OtpVerificationProvider;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -30,11 +27,15 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+/**
+ * La génération/l'envoi/la vérification réelle du code (numéro non-test) est déléguée à {@link
+ * OtpVerificationProvider} — voir LocalOtpVerificationProviderTest pour ces détails (expiration,
+ * tentatives max, cooldown...). Ici on vérifie seulement qu'AuthService délègue correctement.
+ */
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
@@ -46,8 +47,7 @@ class AuthServiceTest {
     private static final String ROLE = "USER";
 
     @Mock private AuthRepository authRepository;
-    @Mock private OtpCodeRepository otpCodeRepository;
-    @Mock private WhatsAppOtpSender whatsAppOtpSender;
+    @Mock private OtpVerificationProvider otpVerificationProvider;
     @Mock private JwtService jwtService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private AppSettingService appSettingService;
@@ -60,8 +60,7 @@ class AuthServiceTest {
         authService =
                 new AuthService(
                         authRepository,
-                        otpCodeRepository,
-                        whatsAppOtpSender,
+                        otpVerificationProvider,
                         jwtService,
                         passwordEncoder,
                         appSettingService);
@@ -91,17 +90,6 @@ class AuthServiceTest {
                 .thenReturn(accessToken);
         when(jwtService.generateRefreshToken(user.id(), user.phone())).thenReturn(refreshToken);
         when(jwtService.getExpiration(refreshToken)).thenReturn(Instant.now().plusSeconds(3600));
-    }
-
-    private OtpCode activeOtpCode(String code, int attempts) {
-        return new OtpCode(
-                1L,
-                PHONE,
-                code,
-                LocalDateTime.now().plusMinutes(5),
-                attempts,
-                null,
-                LocalDateTime.now());
     }
 
     @Test
@@ -193,7 +181,7 @@ class AuthServiceTest {
                 .isInstanceOf(AuthException.InvalidCredentialsException.class);
 
         verify(authRepository, never()).findByPhone(anyString());
-        verify(otpCodeRepository, never()).findLatest(anyString());
+        verifyNoInteractions(otpVerificationProvider);
     }
 
     @Test
@@ -208,7 +196,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void loginWithOtp_testPhoneSuccess_returnsTokensWithoutTouchingOtpCodeTable() {
+    void loginWithOtp_testPhoneSuccess_returnsTokensWithoutCallingProvider() {
         when(appSettingService.getSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY))
                 .thenReturn(
                         new AppSetting(AuthService.OTP_STATIC_CODE_SETTING_KEY, "123456", null));
@@ -235,80 +223,25 @@ class AuthServiceTest {
 
         assertThat(result.accessToken()).isEqualTo("access-token");
         verify(passwordEncoder, never()).matches(anyString(), anyString());
-        verify(otpCodeRepository, never()).findLatest(anyString());
+        verifyNoInteractions(otpVerificationProvider);
     }
 
-    // --- loginWithOtp : numéro réel (code généré/envoyé par WhatsApp) ---
+    // --- loginWithOtp : numéro réel (délégué à OtpVerificationProvider) ---
 
     @Test
-    void loginWithOtp_realPhoneWithNoCodeRequested_throwsException() {
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "123456"))
-                .isInstanceOf(AuthException.InvalidCredentialsException.class);
-    }
-
-    @Test
-    void loginWithOtp_realPhoneAlreadyConsumed_throwsException() {
-        OtpCode consumed =
-                new OtpCode(
-                        1L,
-                        PHONE,
-                        "123456",
-                        LocalDateTime.now().plusMinutes(5),
-                        0,
-                        LocalDateTime.now(),
-                        LocalDateTime.now());
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(consumed));
-
-        assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "123456"))
-                .isInstanceOf(AuthException.InvalidCredentialsException.class);
-    }
-
-    @Test
-    void loginWithOtp_realPhoneExpiredCode_throwsException() {
-        OtpCode expired =
-                new OtpCode(
-                        1L,
-                        PHONE,
-                        "123456",
-                        LocalDateTime.now().minusMinutes(1),
-                        0,
-                        null,
-                        LocalDateTime.now().minusMinutes(6));
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(expired));
-
-        assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "123456"))
-                .isInstanceOf(AuthException.InvalidCredentialsException.class);
-    }
-
-    @Test
-    void loginWithOtp_realPhoneMaxAttemptsExceeded_throwsExceptionWithoutCheckingCode() {
-        OtpCode maxedOut = activeOtpCode("123456", AuthService.OTP_CODE_MAX_ATTEMPTS);
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(maxedOut));
-
-        assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "123456"))
-                .isInstanceOf(AuthException.InvalidCredentialsException.class);
-
-        verify(otpCodeRepository, never()).markConsumed(anyLong());
-    }
-
-    @Test
-    void loginWithOtp_realPhoneWrongCode_incrementsAttemptsAndThrows() {
-        OtpCode active = activeOtpCode("123456", 0);
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(active));
+    void loginWithOtp_realPhoneProviderRejectsCode_throwsExceptionWithoutLookingUpAccount() {
+        doThrow(new AuthException.InvalidCredentialsException("Code invalide"))
+                .when(otpVerificationProvider)
+                .verifyCode(PHONE, "000000");
 
         assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "000000"))
                 .isInstanceOf(AuthException.InvalidCredentialsException.class);
 
-        verify(otpCodeRepository).incrementAttempts(active.id());
         verify(authRepository, never()).findByPhone(anyString());
     }
 
     @Test
     void loginWithOtp_realPhoneAccountDeleted_throwsException() {
-        OtpCode active = activeOtpCode("123456", 0);
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(active));
         User deletedUser =
                 new User(
                         user.id(),
@@ -325,102 +258,57 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.loginWithOtp(PHONE, "123456"))
                 .isInstanceOf(AuthException.InvalidCredentialsException.class);
+
+        verify(otpVerificationProvider).verifyCode(PHONE, "123456");
     }
 
     @Test
-    void loginWithOtp_realPhoneSuccess_marksConsumedAndReturnsTokens() {
-        OtpCode active = activeOtpCode("123456", 2);
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(active));
+    void loginWithOtp_realPhoneProviderAccepts_returnsTokens() {
         when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(user));
         stubTokenIssuance("access-token", "refresh-token");
 
         AuthResult result = authService.loginWithOtp(PHONE, "123456");
 
         assertThat(result.accessToken()).isEqualTo("access-token");
-        verify(otpCodeRepository).markConsumed(active.id());
-        verify(otpCodeRepository, never()).incrementAttempts(anyLong());
+        verify(otpVerificationProvider).verifyCode(PHONE, "123456");
     }
 
     // --- requestOtp ---
 
     @Test
-    void requestOtp_withUnknownPhone_throwsExceptionWithoutInsertingCode() {
+    void requestOtp_withUnknownPhone_throwsExceptionWithoutCallingProvider() {
         when(authRepository.findByPhone(PHONE)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.requestOtp(PHONE))
                 .isInstanceOf(AuthException.InvalidCredentialsException.class);
 
-        verify(otpCodeRepository, never()).insert(anyString(), anyString(), any());
-        verify(whatsAppOtpSender, never()).sendOtp(anyString(), anyString());
+        verifyNoInteractions(otpVerificationProvider);
     }
 
     @Test
-    void requestOtp_testPhone_doesNotGenerateOrSendCode() {
+    void requestOtp_testPhone_doesNotCallProvider() {
         when(authRepository.findByPhone(TEST_PHONE)).thenReturn(Optional.of(user));
 
         authService.requestOtp(TEST_PHONE);
 
-        verify(otpCodeRepository, never()).findLatest(anyString());
-        verify(otpCodeRepository, never()).insert(anyString(), anyString(), any());
-        verify(whatsAppOtpSender, never()).sendOtp(anyString(), anyString());
+        verifyNoInteractions(otpVerificationProvider);
     }
 
     @Test
-    void requestOtp_tooSoonAfterPreviousRequest_throwsException() {
+    void requestOtp_realPhone_delegatesToProvider() {
         when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(user));
-        OtpCode recentlyRequested = activeOtpCode("123456", 0);
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(recentlyRequested));
-
-        assertThatThrownBy(() -> authService.requestOtp(PHONE))
-                .isInstanceOf(AuthException.OtpRequestTooSoonException.class);
-
-        verify(otpCodeRepository, never()).insert(anyString(), anyString(), any());
-        verify(whatsAppOtpSender, never()).sendOtp(anyString(), anyString());
-    }
-
-    @Test
-    void requestOtp_afterCooldownElapsed_generatesAndSendsNewCode() {
-        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(user));
-        LocalDateTime pastCooldown =
-                LocalDateTime.now().minusSeconds(AuthService.OTP_REQUEST_COOLDOWN_SECONDS + 5);
-        OtpCode oldRequest =
-                new OtpCode(
-                        1L,
-                        PHONE,
-                        "111111",
-                        LocalDateTime.now().minusMinutes(10),
-                        0,
-                        null,
-                        pastCooldown);
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(oldRequest));
 
         authService.requestOtp(PHONE);
 
-        ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
-        verify(otpCodeRepository).insert(eq(PHONE), codeCaptor.capture(), any());
-        String generatedCode = codeCaptor.getValue();
-        assertThat(generatedCode).matches("\\d{6}");
-        verify(whatsAppOtpSender).sendOtp(PHONE, generatedCode);
+        verify(otpVerificationProvider).requestCode(PHONE);
     }
 
     @Test
-    void requestOtp_whenNoPriorRequest_generatesAndSendsCode() {
+    void requestOtp_whenProviderThrows_propagatesException() {
         when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(user));
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.empty());
-
-        authService.requestOtp(PHONE);
-
-        verify(otpCodeRepository).insert(eq(PHONE), anyString(), any());
-        verify(whatsAppOtpSender).sendOtp(eq(PHONE), anyString());
-    }
-
-    @Test
-    void requestOtp_whenWhatsAppSendFails_throwsOtpSendFailedException() {
-        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(user));
-        when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.empty());
-        doThrow(new WhatsAppSendException("panne réseau"))
-                .when(whatsAppOtpSender)
-                .sendOtp(anyString(), anyString());
+        doThrow(new AuthException.OtpSendFailedException("panne réseau", null))
+                .when(otpVerificationProvider)
+                .requestCode(PHONE);
 
         assertThatThrownBy(() -> authService.requestOtp(PHONE))
                 .isInstanceOf(AuthException.OtpSendFailedException.class);
