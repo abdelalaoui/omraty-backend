@@ -45,9 +45,11 @@ public class AdminBannerController {
             @RequestParam(value = "title", required = false) String title,
             @RequestParam(value = "description", required = false) String description,
             @RequestParam(value = "displayOrder", required = false) Integer displayOrder,
-            @RequestParam(value = "visible", required = false) Boolean visible) {
+            @RequestParam(value = "visible", required = false) Boolean visible,
+            @RequestParam(value = "ctaType", required = false) String ctaType) {
         Banner banner =
-                bannerService.createBanner(image, title, description, displayOrder, visible);
+                bannerService.createBanner(
+                        image, title, description, displayOrder, visible, ctaType);
         return ResponseEntity.status(HttpStatus.CREATED).body(BannerMapper.toAdminResponse(banner));
     }
 
@@ -60,7 +62,8 @@ public class AdminBannerController {
                         request.title(),
                         request.description(),
                         request.displayOrder(),
-                        request.visible());
+                        request.visible(),
+                        request.ctaType());
         return ResponseEntity.ok(BannerMapper.toAdminResponse(banner));
     }
 
