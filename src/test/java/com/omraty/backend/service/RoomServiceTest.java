@@ -184,8 +184,8 @@ class RoomServiceTest {
         when(bedRepository.findFirstUnreservedBedForUpdate(10L)).thenReturn(Optional.of(freeBed));
         when(bedRepository.markReserved(100L, USER_ID))
                 .thenReturn(new Bed(100L, 4, true, 10L, USER_ID, LocalDateTime.now()));
-        when(bookingPaymentService.createPaymentPlan(
-                        null, 100L, PaymentPlan.FULL, new BigDecimal("45000"), pkg, USER_ID))
+        when(bookingPaymentService.createOfferPaymentPlan(
+                        100L, new BigDecimal("45000"), pkg, USER_ID))
                 .thenReturn(PAYMENT_STUB);
 
         BookingPayment result = roomService().reserveOfferBed(1L, USER_ID);
@@ -208,8 +208,8 @@ class RoomServiceTest {
         when(bedRepository.findFirstUnreservedBedForUpdate(20L)).thenReturn(Optional.of(freeBed));
         when(bedRepository.markReserved(200L, USER_ID))
                 .thenReturn(new Bed(200L, 1, true, 20L, USER_ID, LocalDateTime.now()));
-        when(bookingPaymentService.createPaymentPlan(
-                        null, 200L, PaymentPlan.FULL, new BigDecimal("45000"), pkg, USER_ID))
+        when(bookingPaymentService.createOfferPaymentPlan(
+                        200L, new BigDecimal("45000"), pkg, USER_ID))
                 .thenReturn(PAYMENT_STUB);
 
         BookingPayment result = roomService().reserveOfferBed(1L, USER_ID);

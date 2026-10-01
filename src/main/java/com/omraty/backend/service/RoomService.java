@@ -146,8 +146,10 @@ public class RoomService {
      * Réserve un lit (chambre de 5) au prix de l'offre spéciale en cours (voir
      * BookingPaymentService.resolveOfferPrice, réglages bed_offer_* de la migration V47) plutôt
      * qu'au prix catalogue — toujours en paiement complet (plan FULL forcé), jamais en tranches,
-     * contrairement à {@link #reserveBed} qui laisse le client choisir. Même mécanique sinon :
-     * chambre ouverte réutilisée ou créée, lit choisi par le serveur.
+     * contrairement à {@link #reserveBed} qui laisse le client choisir, et sans jamais appliquer la
+     * réduction paiement-complet (voir BookingPaymentService.createOfferPaymentPlan) : le prix de
+     * l'offre est déjà le prix final. Même mécanique sinon : chambre ouverte réutilisée ou créée,
+     * lit choisi par le serveur.
      *
      * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
      * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
@@ -176,8 +178,7 @@ public class RoomService {
 
         Bed reservedBed = bedRepository.markReserved(bed.id(), userId);
         roomRepository.incrementReservedCount(room.id());
-        return bookingPaymentService.createPaymentPlan(
-                null, reservedBed.id(), PaymentPlan.FULL, price, pkg, userId);
+        return bookingPaymentService.createOfferPaymentPlan(reservedBed.id(), price, pkg, userId);
     }
 
     /**
