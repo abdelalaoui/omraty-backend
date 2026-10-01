@@ -178,8 +178,7 @@ public class RoomService {
 
         Bed reservedBed = bedRepository.markReserved(bed.id(), userId);
         roomRepository.incrementReservedCount(room.id());
-        return bookingPaymentService.createOfferPaymentPlan(
-                reservedBed.id(), price, pkg, userId);
+        return bookingPaymentService.createOfferPaymentPlan(reservedBed.id(), price, pkg, userId);
     }
 
     /**

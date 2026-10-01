@@ -419,8 +419,7 @@ class BookingPaymentServiceTest {
                         anyLongV(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(inserted);
 
-        bookingPaymentService()
-                .createOfferPaymentPlan(100L, new BigDecimal("45000"), pkg, USER_ID);
+        bookingPaymentService().createOfferPaymentPlan(100L, new BigDecimal("45000"), pkg, USER_ID);
 
         verifyNoInteractions(appSettingService);
     }
