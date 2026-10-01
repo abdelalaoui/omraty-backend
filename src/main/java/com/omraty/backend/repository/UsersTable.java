@@ -13,6 +13,11 @@ final class UsersTable {
 
     static final String SELECT_USER_BY_ID = "SELECT " + USER_COLUMNS + " FROM users WHERE id = ?";
 
+    // Voir AuthRepository.findAllActiveUserIds (AdminNotificationController, diffusion) : exclut
+    // les comptes anonymisés (voir migration V45), à qui une notification n'aurait aucun sens.
+    static final String SELECT_ALL_ACTIVE_USER_IDS =
+            "SELECT id FROM users WHERE deleted_at IS NULL";
+
     static final String INSERT_USER =
             "INSERT INTO users (phone, password_hash, gender) VALUES (?, ?, ?) RETURNING "
                     + USER_COLUMNS;

@@ -5,6 +5,7 @@ import com.omraty.backend.entities.Notification;
 import com.omraty.backend.entities.enums.Platform;
 import com.omraty.backend.exception.NotificationException;
 import com.omraty.backend.push.PushSender;
+import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.DeviceTokenRepository;
 import com.omraty.backend.repository.NotificationRepository;
 import java.util.List;
@@ -14,7 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Notifications in-app + push FCM. Déclenchée depuis VipRequestService (approve/reject) et
- * UserService (approveIdentity/rejectIdentity) : voir {@link #create}.
+ * UserService (approveIdentity/rejectIdentity) : voir {@link #create}. {@link
+ * #broadcastToAllUsers} est la seule à être déclenchée directement par un admin (voir
+ * AdminNotificationController), toutes les autres suivent un événement métier précis.
  */
 @Service
 public class NotificationService {
@@ -22,14 +25,17 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final DeviceTokenRepository deviceTokenRepository;
     private final PushSender pushSender;
+    private final AuthRepository authRepository;
 
     public NotificationService(
             NotificationRepository notificationRepository,
             DeviceTokenRepository deviceTokenRepository,
-            PushSender pushSender) {
+            PushSender pushSender,
+            AuthRepository authRepository) {
         this.notificationRepository = notificationRepository;
         this.deviceTokenRepository = deviceTokenRepository;
         this.pushSender = pushSender;
+        this.authRepository = authRepository;
     }
 
     /**
@@ -44,6 +50,20 @@ public class NotificationService {
                 .findByUserId(userId)
                 .ifPresent(token -> pushSender.send(token.fcmToken(), title, message));
         return notification;
+    }
+
+    /**
+     * Envoie la même notification à tous les comptes actifs (non anonymisés, voir
+     * AuthRepository.findAllActiveUserIds) — voir AdminNotificationController. Même mécanique que
+     * {@link #create}, juste répétée pour chaque destinataire (insertion + tentative de push
+     * individuelle, silencieuse si pas de jeton enregistré ou FCM non configuré). Retourne le
+     * nombre de destinataires, pour confirmation côté admin.
+     */
+    @Transactional
+    public int broadcastToAllUsers(String title, String message) {
+        List<UUID> userIds = authRepository.findAllActiveUserIds();
+        userIds.forEach(userId -> create(userId, title, message));
+        return userIds.size();
     }
 
     /** Enregistre le jeton FCM de l'utilisateur connecté, en remplaçant l'éventuel précédent. */

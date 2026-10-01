@@ -12,9 +12,11 @@ import com.omraty.backend.entities.Notification;
 import com.omraty.backend.entities.enums.Platform;
 import com.omraty.backend.exception.NotificationException;
 import com.omraty.backend.push.PushSender;
+import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.DeviceTokenRepository;
 import com.omraty.backend.repository.NotificationRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -30,9 +32,11 @@ class NotificationServiceTest {
     @Mock private NotificationRepository notificationRepository;
     @Mock private DeviceTokenRepository deviceTokenRepository;
     @Mock private PushSender pushSender;
+    @Mock private AuthRepository authRepository;
 
     private NotificationService notificationService() {
-        return new NotificationService(notificationRepository, deviceTokenRepository, pushSender);
+        return new NotificationService(
+                notificationRepository, deviceTokenRepository, pushSender, authRepository);
     }
 
     private Notification notification(long id, boolean read) {
@@ -68,6 +72,34 @@ class NotificationServiceTest {
 
         assertThat(result).isEqualTo(created);
         verify(pushSender, never()).send(any(), any(), any());
+    }
+
+    @Test
+    void broadcastToAllUsers_createsOneNotificationPerActiveUserAndReturnsCount() {
+        UUID secondUserId = UUID.randomUUID();
+        when(authRepository.findAllActiveUserIds()).thenReturn(List.of(USER_ID, secondUserId));
+        when(notificationRepository.insert(USER_ID, "Titre", "Message"))
+                .thenReturn(notification(1L, false));
+        when(notificationRepository.insert(secondUserId, "Titre", "Message"))
+                .thenReturn(notification(2L, false));
+        when(deviceTokenRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
+        when(deviceTokenRepository.findByUserId(secondUserId)).thenReturn(Optional.empty());
+
+        int recipientCount = notificationService().broadcastToAllUsers("Titre", "Message");
+
+        assertThat(recipientCount).isEqualTo(2);
+        verify(notificationRepository).insert(USER_ID, "Titre", "Message");
+        verify(notificationRepository).insert(secondUserId, "Titre", "Message");
+    }
+
+    @Test
+    void broadcastToAllUsers_withNoActiveUsers_insertsNothing() {
+        when(authRepository.findAllActiveUserIds()).thenReturn(List.of());
+
+        int recipientCount = notificationService().broadcastToAllUsers("Titre", "Message");
+
+        assertThat(recipientCount).isZero();
+        verify(notificationRepository, never()).insert(any(), any(), any());
     }
 
     @Test

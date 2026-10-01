@@ -53,6 +53,13 @@ public class AuthRepository {
                 .findFirst();
     }
 
+    /** Voir NotificationService.broadcastToAllUsers (AdminNotificationController, diffusion). */
+    public List<UUID> findAllActiveUserIds() {
+        return jdbcTemplate.query(
+                UsersTable.SELECT_ALL_ACTIVE_USER_IDS,
+                (rs, rowNum) -> rs.getObject("id", UUID.class));
+    }
+
     public User createUser(String phone, String passwordHash, String gender) {
         return jdbcTemplate.queryForObject(
                 UsersTable.INSERT_USER, USER_ROW_MAPPER, phone, passwordHash, gender);
