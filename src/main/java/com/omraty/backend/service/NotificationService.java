@@ -15,9 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Notifications in-app + push FCM. Déclenchée depuis VipRequestService (approve/reject) et
- * UserService (approveIdentity/rejectIdentity) : voir {@link #create}. {@link
- * #broadcastToAllUsers} est la seule à être déclenchée directement par un admin (voir
- * AdminNotificationController), toutes les autres suivent un événement métier précis.
+ * UserService (approveIdentity/rejectIdentity) : voir {@link #create}. {@link #broadcastToAllUsers}
+ * est la seule à être déclenchée directement par un admin (voir AdminNotificationController),
+ * toutes les autres suivent un événement métier précis.
  */
 @Service
 public class NotificationService {
