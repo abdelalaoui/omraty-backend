@@ -58,8 +58,17 @@ public class AuthRepository {
                 UsersTable.INSERT_USER, USER_ROW_MAPPER, phone, passwordHash, gender);
     }
 
+    /**
+     * Voir UsersTable.INSERT_USER_PHONE_ONLY — compte créé à la volée pour un numéro inconnu lors
+     * d'une demande d'OTP (voir AuthService.requestOtp).
+     */
+    public User createUserPhoneOnly(String phone) {
+        return jdbcTemplate.queryForObject(
+                UsersTable.INSERT_USER_PHONE_ONLY, USER_ROW_MAPPER, phone);
+    }
+
     public Optional<User> updateIdentity(
-            UUID userId, String nni, String idPhotoUrl, boolean identityVerified) {
+            UUID userId, String nni, String idPhotoUrl, boolean identityVerified, String gender) {
         return jdbcTemplate
                 .query(
                         UsersTable.UPDATE_IDENTITY,
@@ -67,6 +76,7 @@ public class AuthRepository {
                         nni,
                         idPhotoUrl,
                         identityVerified,
+                        gender,
                         userId)
                 .stream()
                 .findFirst();

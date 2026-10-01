@@ -72,17 +72,17 @@ public class AuthService {
 
     /**
      * Génère et envoie par WhatsApp un nouveau code OTP (voir OtpVerificationProvider) pour un
-     * numéro déjà inscrit. Pour les numéros listés dans OTP_TEST_PHONE_NUMBERS_SETTING_KEY (voir
-     * migration V44), ne fait rien : le code est déjà connu (OTP_STATIC_CODE_SETTING_KEY), aucun
-     * envoi réel n'est nécessaire.
+     * numéro donné — inscription ET connexion confondues : si le numéro est inconnu, un compte est
+     * créé à la volée (sans mot de passe ni genre, voir migration V46) plutôt que de rejeter la
+     * demande ; AuthGate/BeneficiaryInfoScreen côté app collectent le genre (et le NNI) juste après
+     * la 1ère connexion réussie. Pour les numéros listés dans OTP_TEST_PHONE_NUMBERS_SETTING_KEY
+     * (voir migration V44), ne fait rien : le code est déjà connu (OTP_STATIC_CODE_SETTING_KEY),
+     * aucun envoi réel n'est nécessaire.
      */
     public void requestOtp(String phone) {
         authRepository
                 .findByPhone(phone)
-                .orElseThrow(
-                        () ->
-                                new AuthException.InvalidCredentialsException(
-                                        "Aucun compte trouvé pour ce numéro"));
+                .orElseGet(() -> authRepository.createUserPhoneOnly(phone));
         if (isTestPhoneNumber(phone)) {
             return;
         }

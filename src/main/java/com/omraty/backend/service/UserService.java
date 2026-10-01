@@ -1,6 +1,7 @@
 package com.omraty.backend.service;
 
 import com.omraty.backend.entities.User;
+import com.omraty.backend.entities.enums.Gender;
 import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.exception.UserException;
 import com.omraty.backend.repository.AuthRepository;
@@ -32,9 +33,21 @@ public class UserService {
         this.notificationService = notificationService;
     }
 
-    public User updateIdentity(UUID userId, String nni, MultipartFile photo) {
+    /**
+     * {@code gender} est collecté ici (en plus du NNI/photo) et non plus seulement à
+     * l'inscription : un compte créé à la volée par AuthService.requestOtp (numéro inconnu, voir
+     * migration V46) n'a pas encore de genre, et BeneficiaryInfoScreen côté app est le seul écran
+     * qui bloque l'accès à HomeScreen tant que le profil est incomplet (voir AuthGate) — pour un
+     * compte qui avait déjà un genre (inscription classique par mot de passe), l'app renvoie sa
+     * valeur actuelle, ce qui revient à une réécriture sans effet.
+     */
+    public User updateIdentity(UUID userId, String nni, MultipartFile photo, Gender gender) {
         if (nni == null || nni.isBlank()) {
             throw new UserException.InvalidIdentityRequestException("Le NNI est requis");
+        }
+        if (gender == null) {
+            throw new UserException.InvalidIdentityRequestException(
+                    "Le genre est requis (MALE ou FEMALE)");
         }
         validatePhoto(photo);
 
@@ -43,7 +56,7 @@ public class UserService {
         // identity_verified stays false: an admin must review the NNI/photo before marking the
         // account verified (see future admin verification endpoint).
         return authRepository
-                .updateIdentity(userId, nni, photoUrl, false)
+                .updateIdentity(userId, nni, photoUrl, false, gender.name())
                 .orElseThrow(
                         () ->
                                 new AuthException.InvalidTokenException(

@@ -2,6 +2,7 @@ package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.response.UserResponse;
 import com.omraty.backend.entities.User;
+import com.omraty.backend.entities.enums.Gender;
 import com.omraty.backend.mapper.UserMapper;
 import com.omraty.backend.service.UserService;
 import java.util.UUID;
@@ -29,8 +30,9 @@ public class UserController {
     public ResponseEntity<UserResponse> updateIdentity(
             @AuthenticationPrincipal UUID userId,
             @RequestParam("nni") String nni,
-            @RequestParam("photo") MultipartFile photo) {
-        User user = userService.updateIdentity(userId, nni, photo);
+            @RequestParam("photo") MultipartFile photo,
+            @RequestParam("gender") Gender gender) {
+        User user = userService.updateIdentity(userId, nni, photo, gender);
         return ResponseEntity.ok(UserMapper.toResponse(user));
     }
 
