@@ -18,9 +18,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriUtils;
 
 /**
- * Envoi + vérification du code OTP via Twilio Verify (https://verify.twilio.com) : contrairement
- * au couple {@link WhatsAppOtpSender}/OtpCodeRepository (voir {@link LocalOtpVerificationProvider}
- * ), c'est Twilio qui génère, stocke et vérifie lui-même le code — voir
+ * Envoi + vérification du code OTP via Twilio Verify (https://verify.twilio.com) : contrairement au
+ * couple {@link WhatsAppOtpSender}/OtpCodeRepository (voir {@link LocalOtpVerificationProvider} ),
+ * c'est Twilio qui génère, stocke et vérifie lui-même le code — voir
  * https://www.twilio.com/docs/verify/api/verification. Actif quand whatsapp.otp.provider=twilio
  * (voir application.yml) — sinon {@link LocalOtpVerificationProvider}.
  */
@@ -107,12 +107,11 @@ public class TwilioVerifyOtpProvider implements OtpVerificationProvider {
     }
 
     /**
-     * Traduit les codes d'erreur Twilio (voir https://www.twilio.com/docs/api/errors) en
-     * exceptions métier : 60203 (trop d'envois rapprochés) et 60202 (trop de tentatives de
-     * vérification) rejoignent les mêmes messages que l'ancien flux local (voir
-     * LocalOtpVerificationProvider) pour que l'app n'ait rien à changer côté affichage ;
-     * 60404/20404 (aucune vérification en cours, ex. code expiré côté Twilio) devient "aucun code
-     * demandé".
+     * Traduit les codes d'erreur Twilio (voir https://www.twilio.com/docs/api/errors) en exceptions
+     * métier : 60203 (trop d'envois rapprochés) et 60202 (trop de tentatives de vérification)
+     * rejoignent les mêmes messages que l'ancien flux local (voir LocalOtpVerificationProvider)
+     * pour que l'app n'ait rien à changer côté affichage ; 60404/20404 (aucune vérification en
+     * cours, ex. code expiré côté Twilio) devient "aucun code demandé".
      */
     private AuthException translateError(String path, int statusCode, JsonNode body) {
         int twilioCode = body.path("code").asInt(-1);

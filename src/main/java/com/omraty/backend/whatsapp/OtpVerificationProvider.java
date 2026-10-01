@@ -4,8 +4,8 @@ package com.omraty.backend.whatsapp;
  * Abstraction de la génération/l'envoi/la vérification du code OTP de connexion (voir
  * AuthService.requestOtp/loginWithOtp) — ne couvre pas le contournement par numéro de test
  * (OTP_TEST_PHONE_NUMBERS_SETTING_KEY), géré directement par AuthService. Deux implémentations
- * selon whatsapp.otp.provider (voir application.yml) : {@link LocalOtpVerificationProvider} (mock
- * | meta — on génère/stocke/vérifie nous-mêmes le code, on délègue juste son envoi à {@link
+ * selon whatsapp.otp.provider (voir application.yml) : {@link LocalOtpVerificationProvider} (mock |
+ * meta — on génère/stocke/vérifie nous-mêmes le code, on délègue juste son envoi à {@link
  * WhatsAppOtpSender}) et {@link TwilioVerifyOtpProvider} (twilio — Twilio Verify génère, stocke et
  * vérifie lui-même le code).
  */
