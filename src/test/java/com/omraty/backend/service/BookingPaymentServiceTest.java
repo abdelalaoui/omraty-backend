@@ -382,6 +382,50 @@ class BookingPaymentServiceTest {
     }
 
     @Test
+    void createOfferPaymentPlan_doesNotApplyFullPaymentDiscount() {
+        // offerPrice est déjà le prix final de l'offre spéciale (voir RoomService.
+        // reserveOfferBed), pas un tarif catalogue — la réduction ne doit jamais s'y appliquer
+        // (voir applyFullPaymentDiscount), même raisonnement que createVipPaymentPlan.
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        null,
+                        100L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("45000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        null,
+                        100L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("45000")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("45000")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+
+        bookingPaymentService()
+                .createOfferPaymentPlan(100L, new BigDecimal("45000"), pkg, USER_ID);
+
+        verifyNoInteractions(appSettingService);
+    }
+
+    @Test
     void createPaymentPlan_installments_withoutPackageEndDate_throwsExceptionBeforeInserting() {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
 

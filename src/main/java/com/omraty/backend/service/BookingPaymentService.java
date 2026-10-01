@@ -227,6 +227,18 @@ public class BookingPaymentService {
     }
 
     /**
+     * Crée le paiement d'un lit réservé au prix de l'offre spéciale en cours (bedId renseigné, voir
+     * RoomService.reserveOfferBed, resolveOfferPrice) : toujours en plan FULL, sans jamais
+     * appliquer {@link #applyFullPaymentDiscount} — même raisonnement que {@link
+     * #createVipPaymentPlan} : offerPrice est déjà le prix final de l'offre, pas un tarif catalogue
+     * à réduire davantage.
+     */
+    public BookingPayment createOfferPaymentPlan(
+            long bedId, BigDecimal offerPrice, OmraPackage pkg, UUID userId) {
+        return createPaymentPlan(null, bedId, null, PaymentPlan.FULL, offerPrice, pkg, userId);
+    }
+
+    /**
      * Crée le paiement d'une offre VIP acceptée (vipRequestId renseigné, voir migration V36,
      * VipRequestService.accept) : même mécanisme que {@link #createPaymentPlan}, toujours en plan
      * FULL (une offre VIP n'a qu'un montant global, pas de tranches) avec proposedPrice comme
