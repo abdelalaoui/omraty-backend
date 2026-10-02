@@ -87,6 +87,11 @@ public class BedRepository {
         return jdbcTemplate.query(BedTable.SELECT_BEDS_BY_USER_ID, BED_ROW_MAPPER, userId);
     }
 
+    /** Lits actuellement réservés, tous utilisateurs confondus (GET /admin/bookings). */
+    public List<Bed> findAllReserved() {
+        return jdbcTemplate.query(BedTable.SELECT_RESERVED_BEDS, BED_ROW_MAPPER);
+    }
+
     public Bed markReserved(long bedId, UUID userId) {
         return jdbcTemplate.query(BedTable.MARK_RESERVED, BED_ROW_MAPPER, userId, bedId).stream()
                 .findFirst()

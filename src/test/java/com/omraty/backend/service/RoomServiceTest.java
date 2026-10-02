@@ -10,11 +10,13 @@ import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
+import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.RoomException;
+import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
@@ -53,6 +55,7 @@ class RoomServiceTest {
     @Mock private BedRepository bedRepository;
     @Mock private PackageRepository packageRepository;
     @Mock private BookingPaymentService bookingPaymentService;
+    @Mock private AuthRepository authRepository;
 
     private RoomService roomService() {
         return new RoomService(
@@ -60,7 +63,8 @@ class RoomServiceTest {
                 bedRepository,
                 packageRepository,
                 new PackageCapacityService(roomRepository),
-                bookingPaymentService);
+                bookingPaymentService,
+                authRepository);
     }
 
     @Test
@@ -457,6 +461,60 @@ class RoomServiceTest {
         when(bookingPaymentService.findInstallmentsByPaymentIds(List.of())).thenReturn(Map.of());
 
         assertThat(roomService().getPurchasesForUser(USER_ID)).isEmpty();
+    }
+
+    @Test
+    void getAllPurchases_returnsEveryUsersBookingsWithIdAndOwnerPhone() {
+        UUID otherUserId = UUID.randomUUID();
+        LocalDateTime older = LocalDateTime.of(2026, 1, 1, 10, 0);
+        LocalDateTime newer = LocalDateTime.of(2026, 2, 1, 10, 0);
+        Room purchasedRoom = new Room(30L, 3, 1L, 3, 3, USER_ID, older);
+        when(roomRepository.findAllPurchased()).thenReturn(List.of(purchasedRoom));
+        Bed reservedBed = new Bed(100L, 4, true, 10L, otherUserId, newer);
+        when(bedRepository.findAllReserved()).thenReturn(List.of(reservedBed));
+        Room sharedRoom = new Room(10L, 5, 1L, 5, 3, null, older);
+        when(roomRepository.findByIds(List.of(10L))).thenReturn(List.of(sharedRoom));
+        when(packageRepository.findByIds(List.of(1L)))
+                .thenReturn(List.of(new OmraPackage(1L, "Omra Ramadan", 10, null, null)));
+        when(bookingPaymentService.findPaymentsByRoomIds(List.of(30L))).thenReturn(Map.of());
+        when(bookingPaymentService.findPaymentsByBedIds(List.of(100L))).thenReturn(Map.of());
+        when(bookingPaymentService.findInstallmentsByPaymentIds(List.of())).thenReturn(Map.of());
+        when(authRepository.findByIds(List.of(otherUserId, USER_ID)))
+                .thenReturn(
+                        List.of(
+                                new User(
+                                        USER_ID,
+                                        "+22211111111",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        older,
+                                        "USER",
+                                        null),
+                                new User(
+                                        otherUserId,
+                                        "+22222222222",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        older,
+                                        "USER",
+                                        null)));
+
+        List<AdminPurchase> purchases = roomService().getAllPurchases();
+
+        assertThat(purchases).hasSize(2);
+        assertThat(purchases.get(0).id()).isEqualTo("bed-100");
+        assertThat(purchases.get(0).userId()).isEqualTo(otherUserId);
+        assertThat(purchases.get(0).userPhone()).isEqualTo("+22222222222");
+        assertThat(purchases.get(0).purchase().bedNumber()).isEqualTo(4);
+        assertThat(purchases.get(1).id()).isEqualTo("room-30");
+        assertThat(purchases.get(1).userPhone()).isEqualTo("+22211111111");
+        assertThat(purchases.get(1).purchase().packageLabel()).isEqualTo("Omra Ramadan");
     }
 
     @Test

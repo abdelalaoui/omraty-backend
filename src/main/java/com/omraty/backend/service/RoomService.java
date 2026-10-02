@@ -5,9 +5,11 @@ import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
+import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.RoomException;
+import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
@@ -52,18 +54,21 @@ public class RoomService {
     private final PackageRepository packageRepository;
     private final PackageCapacityService packageCapacityService;
     private final BookingPaymentService bookingPaymentService;
+    private final AuthRepository authRepository;
 
     public RoomService(
             RoomRepository roomRepository,
             BedRepository bedRepository,
             PackageRepository packageRepository,
             PackageCapacityService packageCapacityService,
-            BookingPaymentService bookingPaymentService) {
+            BookingPaymentService bookingPaymentService,
+            AuthRepository authRepository) {
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
         this.packageRepository = packageRepository;
         this.packageCapacityService = packageCapacityService;
         this.bookingPaymentService = bookingPaymentService;
+        this.authRepository = authRepository;
     }
 
     /** État actuel des lits (disponibles/réservés), groupés par chambre, pour un package. */
@@ -320,9 +325,46 @@ public class RoomService {
      * récentes d'abord, avec le label du package rattaché (jointure).
      */
     public List<UserPurchase> getPurchasesForUser(UUID userId) {
-        List<Room> purchasedRooms = roomRepository.findByUserId(userId);
-        List<Bed> reservedBeds = bedRepository.findByUserId(userId);
+        return buildPurchases(
+                        roomRepository.findByUserId(userId), bedRepository.findByUserId(userId))
+                .stream()
+                .map(OwnedPurchase::purchase)
+                .toList();
+    }
 
+    /**
+     * Toutes les réservations en cours, tous utilisateurs confondus (GET /admin/bookings) : même
+     * construction que {@link #getPurchasesForUser}, avec en plus l'identifiant de la réservation
+     * et le téléphone de son propriétaire. Les réservations libérées (expiration du paiement, voir
+     * {@link #releaseReservation}) n'ont plus de user_id et n'apparaissent donc pas ici.
+     */
+    public List<AdminPurchase> getAllPurchases() {
+        List<OwnedPurchase> purchases =
+                buildPurchases(roomRepository.findAllPurchased(), bedRepository.findAllReserved());
+        Map<UUID, String> phonesByUserId =
+                authRepository
+                        .findByIds(
+                                purchases.stream().map(OwnedPurchase::userId).distinct().toList())
+                        .stream()
+                        .collect(Collectors.toMap(User::id, User::phone));
+        return purchases.stream()
+                .map(
+                        owned ->
+                                new AdminPurchase(
+                                        owned.id(),
+                                        owned.userId(),
+                                        phonesByUserId.get(owned.userId()),
+                                        owned.purchase()))
+                .toList();
+    }
+
+    /**
+     * id préfixé ("room-12", "bed-34") : chambres et lits ont chacun leur propre séquence d'ids, le
+     * préfixe garantit un identifiant unique sur l'ensemble des réservations.
+     */
+    private record OwnedPurchase(String id, UUID userId, UserPurchase purchase) {}
+
+    private List<OwnedPurchase> buildPurchases(List<Room> purchasedRooms, List<Bed> reservedBeds) {
         List<Long> bedRoomIds = reservedBeds.stream().map(Bed::roomId).distinct().toList();
         Map<Long, Room> roomsByIdForBeds =
                 roomRepository.findByIds(bedRoomIds).stream()
@@ -351,38 +393,46 @@ public class RoomService {
         Map<Long, List<BookingInstallment>> installmentsByPaymentId =
                 bookingPaymentService.findInstallmentsByPaymentIds(paymentIds);
 
-        Stream<UserPurchase> fromPurchasedRooms =
+        Stream<OwnedPurchase> fromPurchasedRooms =
                 purchasedRooms.stream()
                         .map(
                                 room ->
-                                        new UserPurchase(
-                                                room.type(),
-                                                room.totalCapacity(),
-                                                room.packageId(),
-                                                packageLabelsById.get(room.packageId()),
-                                                room.createdAt(),
-                                                null,
-                                                resolvePayment(
-                                                        paymentsByRoomId.get(room.id()),
-                                                        installmentsByPaymentId)));
-        Stream<UserPurchase> fromReservedBeds =
+                                        new OwnedPurchase(
+                                                "room-" + room.id(),
+                                                room.userId(),
+                                                new UserPurchase(
+                                                        room.type(),
+                                                        room.totalCapacity(),
+                                                        room.packageId(),
+                                                        packageLabelsById.get(room.packageId()),
+                                                        room.createdAt(),
+                                                        null,
+                                                        resolvePayment(
+                                                                paymentsByRoomId.get(room.id()),
+                                                                installmentsByPaymentId))));
+        Stream<OwnedPurchase> fromReservedBeds =
                 reservedBeds.stream()
                         .map(
                                 bed -> {
                                     Room room = roomsByIdForBeds.get(bed.roomId());
-                                    return new UserPurchase(
-                                            room.type(),
-                                            room.totalCapacity(),
-                                            room.packageId(),
-                                            packageLabelsById.get(room.packageId()),
-                                            bed.createdAt(),
-                                            bed.number(),
-                                            resolvePayment(
-                                                    paymentsByBedId.get(bed.id()),
-                                                    installmentsByPaymentId));
+                                    return new OwnedPurchase(
+                                            "bed-" + bed.id(),
+                                            bed.userId(),
+                                            new UserPurchase(
+                                                    room.type(),
+                                                    room.totalCapacity(),
+                                                    room.packageId(),
+                                                    packageLabelsById.get(room.packageId()),
+                                                    bed.createdAt(),
+                                                    bed.number(),
+                                                    resolvePayment(
+                                                            paymentsByBedId.get(bed.id()),
+                                                            installmentsByPaymentId)));
                                 });
         return Stream.concat(fromPurchasedRooms, fromReservedBeds)
-                .sorted(Comparator.comparing(UserPurchase::createdAt).reversed())
+                .sorted(
+                        Comparator.comparing((OwnedPurchase owned) -> owned.purchase().createdAt())
+                                .reversed())
                 .toList();
     }
 
