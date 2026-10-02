@@ -41,6 +41,26 @@ public class SecurityConfig {
                                                 "/swagger-ui/**",
                                                 "/swagger-ui.html")
                                         .permitAll()
+                                        // Consultation du catalogue (bannières, avantages,
+                                        // services, formules, packages, hôtels, groupes de
+                                        // réservation, disponibilité des lits) : accessible sans
+                                        // compte (voir Apple App Review Guideline 5.1.1(v) — la
+                                        // connexion ne doit être exigée que pour les actions liées
+                                        // au compte : réserver/payer, consulter son profil/ses
+                                        // achats). Réserver/acheter reste authentifié : seules les
+                                        // routes GET ci-dessous changent.
+                                        .requestMatchers(
+                                                HttpMethod.GET,
+                                                "/home/banners",
+                                                "/home/benefits",
+                                                "/home/service-cards",
+                                                "/service-tiers",
+                                                "/packages",
+                                                "/packages/*",
+                                                "/hotels",
+                                                "/reservation-groups",
+                                                "/rooms/*/beds")
+                                        .permitAll()
                                         .requestMatchers("/admin/**")
                                         .hasRole("ADMIN")
                                         .requestMatchers(HttpMethod.POST, "/home/service-cards/**")
