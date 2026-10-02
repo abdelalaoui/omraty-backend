@@ -2,6 +2,8 @@ package com.omraty.backend.repository;
 
 import com.omraty.backend.entities.RefreshToken;
 import com.omraty.backend.entities.User;
+import java.sql.Array;
+import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -51,6 +53,21 @@ public class AuthRepository {
     public Optional<User> findById(UUID id) {
         return jdbcTemplate.query(UsersTable.SELECT_USER_BY_ID, USER_ROW_MAPPER, id).stream()
                 .findFirst();
+    }
+
+    /** Voir RoomService.getAllPurchases (GET /admin/bookings). */
+    public List<User> findByIds(List<UUID> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbcTemplate.query(
+                UsersTable.SELECT_USERS_BY_IDS,
+                (PreparedStatement ps) -> {
+                    Array array =
+                            ps.getConnection().createArrayOf("uuid", ids.toArray(new UUID[0]));
+                    ps.setArray(1, array);
+                },
+                USER_ROW_MAPPER);
     }
 
     /** Voir NotificationService.broadcastToAllUsers (AdminNotificationController, diffusion). */
