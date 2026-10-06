@@ -39,7 +39,13 @@ public class SecurityConfig {
                                                 "/app/version-check",
                                                 "/v3/api-docs/**",
                                                 "/swagger-ui/**",
-                                                "/swagger-ui.html")
+                                                "/swagger-ui.html",
+                                                // Fichiers statiques servis par WebConfig
+                                                // (bannières, images...) : destinés à être
+                                                // affichés publiquement (admin panel, app
+                                                // mobile), une balise <img> ne pouvant pas
+                                                // envoyer de JWT.
+                                                "/uploads/**")
                                         .permitAll()
                                         // Consultation du catalogue (bannières, avantages,
                                         // services, formules, packages, hôtels, groupes de
