@@ -239,8 +239,8 @@ class ServiceCardServiceTest {
     @Test
     void updateServiceCard_whenNotFound_throwsException() {
         when(serviceCardRepository.update(
-                        1L, null, null, null, null, null, null, null, null, null, null, null, null,
-                        true, null))
+                        1L, null, null, null, false, null, false, null, null, false, null, false,
+                        null, null, false, null, false, null, null, true, null))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(
@@ -248,22 +248,23 @@ class ServiceCardServiceTest {
                                 serviceCardService()
                                         .updateServiceCard(
                                                 1L, null, null, null, null, null, null, null, null,
-                                                null, null, null, null, true, null))
+                                                null, null, null, null, null, null, null, null,
+                                                null, null, true, null))
                 .isInstanceOf(ServiceCardException.ServiceCardNotFoundException.class);
     }
 
     @Test
     void updateServiceCard_togglingComingSoon_delegatesToRepository() {
         when(serviceCardRepository.update(
-                        1L, null, null, null, null, null, null, null, null, null, null, null, null,
-                        true, null))
+                        1L, null, null, null, false, null, false, null, null, false, null, false,
+                        null, null, false, null, false, null, null, true, null))
                 .thenReturn(Optional.of(serviceCard(1L, true, true)));
 
         ServiceCard updated =
                 serviceCardService()
                         .updateServiceCard(
                                 1L, null, null, null, null, null, null, null, null, null, null,
-                                null, null, true, null);
+                                null, null, null, null, null, null, null, null, true, null);
 
         assertThat(updated.comingSoon()).isTrue();
     }
@@ -277,8 +278,34 @@ class ServiceCardServiceTest {
                                 serviceCardService()
                                         .updateServiceCard(
                                                 1L, null, null, null, null, null, null, null, null,
-                                                null, null, null, tooLong, null, null))
+                                                null, null, null, null, null, null, null, null,
+                                                tooLong, null, null, null))
                 .isInstanceOf(ServiceCardException.InvalidServiceCardRequestException.class);
+    }
+
+    @Test
+    void updateServiceCard_withClearTitleEnAndTitleEnValue_throwsException() {
+        assertThatThrownBy(
+                        () ->
+                                serviceCardService()
+                                        .updateServiceCard(
+                                                1L, null, null, "Omra", true, null, null, null,
+                                                null, null, null, null, null, null, null, null,
+                                                null, null, null, null, null))
+                .isInstanceOf(ServiceCardException.InvalidServiceCardRequestException.class);
+    }
+
+    @Test
+    void updateServiceCard_withClearTitleEn_clearsTranslationInRepository() {
+        when(serviceCardRepository.update(
+                        1L, null, null, null, true, null, false, null, null, false, null, false,
+                        null, null, false, null, false, null, null, null, null))
+                .thenReturn(Optional.of(serviceCard(1L, false, true)));
+
+        serviceCardService()
+                .updateServiceCard(
+                        1L, null, null, null, true, null, null, null, null, null, null, null, null,
+                        null, null, null, null, null, null, null, null);
     }
 
     @Test
