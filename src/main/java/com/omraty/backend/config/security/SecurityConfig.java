@@ -39,7 +39,15 @@ public class SecurityConfig {
                                                 "/app/version-check",
                                                 "/v3/api-docs/**",
                                                 "/swagger-ui/**",
-                                                "/swagger-ui.html")
+                                                "/swagger-ui.html",
+                                                // Images publiques servies par WebConfig
+                                                // (bannières, cartes de services) : affichées
+                                                // via <img> (admin panel, app mobile), qui ne
+                                                // peut pas envoyer de JWT. Volontairement pas
+                                                // /uploads/** : identity/ et invoices/ (photos
+                                                // d'identité, factures) doivent rester privés.
+                                                "/uploads/banner/**",
+                                                "/uploads/service-card/**")
                                         .permitAll()
                                         // Consultation du catalogue (bannières, avantages,
                                         // services, formules, packages, hôtels, groupes de
