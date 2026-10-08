@@ -67,6 +67,7 @@ public final class PurchaseMapper {
 
     private static InstallmentResponse toInstallmentResponse(UserInstallment installment) {
         return new InstallmentResponse(
+                installment.id(),
                 installment.sequence(),
                 installment.amount(),
                 installment.dueDate(),

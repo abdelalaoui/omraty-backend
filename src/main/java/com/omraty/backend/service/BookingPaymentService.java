@@ -647,6 +647,7 @@ public class BookingPaymentService {
                         .map(
                                 installment ->
                                         new UserInstallment(
+                                                installment.id(),
                                                 installment.sequence(),
                                                 installment.amount(),
                                                 installment.dueDate(),
