@@ -40,12 +40,14 @@ public class SecurityConfig {
                                                 "/v3/api-docs/**",
                                                 "/swagger-ui/**",
                                                 "/swagger-ui.html",
-                                                // Fichiers statiques servis par WebConfig
-                                                // (bannières, images...) : destinés à être
-                                                // affichés publiquement (admin panel, app
-                                                // mobile), une balise <img> ne pouvant pas
-                                                // envoyer de JWT.
-                                                "/uploads/**")
+                                                // Images publiques servies par WebConfig
+                                                // (bannières, cartes de services) : affichées
+                                                // via <img> (admin panel, app mobile), qui ne
+                                                // peut pas envoyer de JWT. Volontairement pas
+                                                // /uploads/** : identity/ et invoices/ (photos
+                                                // d'identité, factures) doivent rester privés.
+                                                "/uploads/banner/**",
+                                                "/uploads/service-card/**")
                                         .permitAll()
                                         // Consultation du catalogue (bannières, avantages,
                                         // services, formules, packages, hôtels, groupes de
