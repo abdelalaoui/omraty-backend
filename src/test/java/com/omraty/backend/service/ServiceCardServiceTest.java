@@ -279,7 +279,7 @@ class ServiceCardServiceTest {
                                         .updateServiceCard(
                                                 1L, null, null, null, null, null, null, null, null,
                                                 null, null, null, null, null, null, null, null,
-                                                tooLong, null, null, null))
+                                                null, tooLong, null, null))
                 .isInstanceOf(ServiceCardException.InvalidServiceCardRequestException.class);
     }
 
