@@ -28,11 +28,12 @@ import org.springframework.web.multipart.MultipartFile;
  * Cartes de services (Omra/Hajj/...) de la home : liste dynamique pilotée depuis le backend, pas
  * figée à 2 cartes — en ajouter une nouvelle (ex : un 3ème type de service) ou en modifier une (y
  * compris basculer comingSoon) ne nécessite pas de redéploiement de l'app. GET accessible à tout
- * utilisateur authentifié, title/description/buttonText renvoyés dans la langue du header
- * Accept-Language de la requête (fr|en|ar, ar par défaut si absent ou non reconnu — voir
- * ServiceCardMapper) ; POST/PATCH réservés à ROLE_ADMIN (voir SecurityConfig) et renvoient les 3
- * variantes de chaque champ (voir {@link AdminServiceCardResponse}) pour permettre l'édition
- * complète.
+ * utilisateur authentifié, ne renvoie que les cartes visibles, title/description/buttonText dans la
+ * langue du header Accept-Language de la requête (fr|en|ar, ar par défaut si absent ou non reconnu
+ * — voir ServiceCardMapper) ; POST/PATCH réservés à ROLE_ADMIN (voir SecurityConfig) et renvoient
+ * les 3 variantes de chaque champ (voir {@link AdminServiceCardResponse}) pour permettre l'édition
+ * complète. Pour la liste admin (cartes masquées comprises) et la suppression, voir {@link
+ * AdminServiceCardController}.
  */
 @RestController
 @RequestMapping("/home/service-cards")
@@ -85,13 +86,19 @@ public class ServiceCardController {
                         request.type(),
                         request.titleFr(),
                         request.titleEn(),
+                        request.clearTitleEn(),
                         request.titleAr(),
+                        request.clearTitleAr(),
                         request.descriptionFr(),
                         request.descriptionEn(),
+                        request.clearDescriptionEn(),
                         request.descriptionAr(),
+                        request.clearDescriptionAr(),
                         request.buttonTextFr(),
                         request.buttonTextEn(),
+                        request.clearButtonTextEn(),
                         request.buttonTextAr(),
+                        request.clearButtonTextAr(),
                         request.icon(),
                         request.imageUrl(),
                         request.comingSoon(),
