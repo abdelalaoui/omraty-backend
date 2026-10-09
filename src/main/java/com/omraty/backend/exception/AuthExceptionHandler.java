@@ -178,6 +178,12 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(PackageException.PackageInUseException.class)
+    public ResponseEntity<ErrorResponse> handlePackageInUse(
+            PackageException.PackageInUseException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(RoomException.InvalidRoomTypeException.class)
     public ResponseEntity<ErrorResponse> handleInvalidRoomType(
             RoomException.InvalidRoomTypeException e) {

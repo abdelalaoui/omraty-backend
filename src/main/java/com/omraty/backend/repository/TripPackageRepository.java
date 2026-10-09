@@ -41,6 +41,12 @@ public class TripPackageRepository {
                 .findFirst();
     }
 
+    /** Tous les packages du catalogue (visibles ou masqués), pour l'admin. */
+    public List<TripPackage> findAll() {
+        return jdbcTemplate.query(
+                TripPackageTable.SELECT_ALL_TRIP_PACKAGES, TRIP_PACKAGE_ROW_MAPPER);
+    }
+
     /** Packages visibles du catalogue, filtrés (tous les filtres sont optionnels). */
     public List<TripPackage> findVisibleFiltered(
             String destination,
@@ -120,5 +126,9 @@ public class TripPackageRepository {
                         id)
                 .stream()
                 .findFirst();
+    }
+
+    public boolean deleteById(long id) {
+        return jdbcTemplate.update(TripPackageTable.DELETE_TRIP_PACKAGE, id) > 0;
     }
 }

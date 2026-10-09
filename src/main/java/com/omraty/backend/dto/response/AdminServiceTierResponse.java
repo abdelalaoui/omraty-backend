@@ -17,5 +17,6 @@ public record AdminServiceTierResponse(
         String labelFr,
         String labelEn,
         String labelAr,
+        int displayOrder,
         boolean visible,
         boolean closed) {}

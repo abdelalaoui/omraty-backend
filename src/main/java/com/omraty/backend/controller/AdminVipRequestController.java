@@ -1,7 +1,8 @@
 package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.request.ApproveVipRequestRequest;
-import com.omraty.backend.dto.response.VipRequestResponse;
+import com.omraty.backend.dto.response.AdminVipRequestResponse;
+import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.mapper.VipRequestMapper;
 import com.omraty.backend.service.VipRequestService;
 import jakarta.validation.Valid;
@@ -28,21 +29,27 @@ public class AdminVipRequestController {
     }
 
     @GetMapping
-    public ResponseEntity<List<VipRequestResponse>> listPendingRequests() {
+    public ResponseEntity<List<AdminVipRequestResponse>> listPendingRequests() {
+        List<VipRequest> vipRequests = vipRequestService.getPendingRequests();
         return ResponseEntity.ok(
-                VipRequestMapper.toResponseList(vipRequestService.getPendingRequests()));
+                VipRequestMapper.toAdminResponseList(
+                        vipRequests, vipRequestService.resolvePhones(vipRequests)));
     }
 
     @PostMapping("/{id}/approve")
-    public ResponseEntity<VipRequestResponse> approve(
+    public ResponseEntity<AdminVipRequestResponse> approve(
             @PathVariable long id, @Valid @RequestBody ApproveVipRequestRequest request) {
+        VipRequest approved = vipRequestService.approve(id, request.proposedPrice());
         return ResponseEntity.ok(
-                VipRequestMapper.toResponse(
-                        vipRequestService.approve(id, request.proposedPrice())));
+                VipRequestMapper.toAdminResponse(
+                        approved, vipRequestService.resolvePhone(approved.userId())));
     }
 
     @PostMapping("/{id}/reject")
-    public ResponseEntity<VipRequestResponse> reject(@PathVariable long id) {
-        return ResponseEntity.ok(VipRequestMapper.toResponse(vipRequestService.reject(id)));
+    public ResponseEntity<AdminVipRequestResponse> reject(@PathVariable long id) {
+        VipRequest rejected = vipRequestService.reject(id);
+        return ResponseEntity.ok(
+                VipRequestMapper.toAdminResponse(
+                        rejected, vipRequestService.resolvePhone(rejected.userId())));
     }
 }

@@ -89,4 +89,8 @@ public class BenefitRepository {
                         .toList();
         jdbcTemplate.batchUpdate(BenefitTable.UPDATE_DISPLAY_ORDER, batchArgs);
     }
+
+    public boolean deleteById(long id) {
+        return jdbcTemplate.update(BenefitTable.DELETE_BENEFIT, id) > 0;
+    }
 }

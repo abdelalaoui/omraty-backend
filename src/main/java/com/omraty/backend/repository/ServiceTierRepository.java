@@ -40,6 +40,12 @@ public class ServiceTierRepository {
                 ServiceTierTable.SELECT_ACTIVE_SERVICE_TIERS, SERVICE_TIER_ROW_MAPPER);
     }
 
+    /** Toutes les formules (visibles ou masquées), triées par ordre d'affichage, pour l'admin. */
+    public List<ServiceTier> findAll() {
+        return jdbcTemplate.query(
+                ServiceTierTable.SELECT_ALL_SERVICE_TIERS, SERVICE_TIER_ROW_MAPPER);
+    }
+
     public Optional<ServiceTier> findById(long id) {
         return jdbcTemplate
                 .query(ServiceTierTable.SELECT_SERVICE_TIER_BY_ID, SERVICE_TIER_ROW_MAPPER, id)
@@ -113,5 +119,9 @@ public class ServiceTierRepository {
                         id)
                 .stream()
                 .findFirst();
+    }
+
+    public boolean deleteById(long id) {
+        return jdbcTemplate.update(ServiceTierTable.DELETE_SERVICE_TIER, id) > 0;
     }
 }
