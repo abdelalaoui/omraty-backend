@@ -39,6 +39,15 @@ final class UsersTable {
                     + " = ? RETURNING "
                     + USER_COLUMNS;
 
+    // Correction admin du NNI et/ou de la photo (voir AdminIdentityController) : contrairement à
+    // UPDATE_IDENTITY (soumission client, qui remplace tout), seuls nni/id_photo_url sont
+    // modifiables ici, chacun optionnel (COALESCE) — gender et identity_verified ne sont jamais
+    // touchés par cette correction.
+    static final String UPDATE_IDENTITY_FIELDS =
+            "UPDATE users SET nni = COALESCE(?, nni), id_photo_url = COALESCE(?, id_photo_url)"
+                    + " WHERE id = ? RETURNING "
+                    + USER_COLUMNS;
+
     static final String SELECT_PENDING_IDENTITY_VERIFICATIONS =
             "SELECT "
                     + USER_COLUMNS
