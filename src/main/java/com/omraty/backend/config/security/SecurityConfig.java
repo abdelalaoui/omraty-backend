@@ -16,9 +16,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AppAccessFilter appAccessFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter, AppAccessFilter appAccessFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.appAccessFilter = appAccessFilter;
     }
 
     @Bean
@@ -37,6 +40,7 @@ public class SecurityConfig {
                                                 // reçue.
                                                 "/webhooks/**",
                                                 "/app/version-check",
+                                                "/app/access",
                                                 "/v3/api-docs/**",
                                                 "/swagger-ui/**",
                                                 "/swagger-ui.html",
@@ -78,7 +82,8 @@ public class SecurityConfig {
                                         .anyRequest()
                                         .authenticated())
                 .addFilterBefore(
-                        jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                        jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(appAccessFilter, JwtAuthenticationFilter.class);
         return http.build();
     }
 
