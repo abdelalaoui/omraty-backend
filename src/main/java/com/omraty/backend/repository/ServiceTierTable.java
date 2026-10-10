@@ -13,6 +13,9 @@ final class ServiceTierTable {
                     + SERVICE_TIER_COLUMNS
                     + " FROM service_tier WHERE visible = TRUE ORDER BY display_order ASC";
 
+    static final String SELECT_ALL_SERVICE_TIERS =
+            "SELECT " + SERVICE_TIER_COLUMNS + " FROM service_tier ORDER BY display_order ASC";
+
     static final String SELECT_SERVICE_TIER_BY_ID =
             "SELECT " + SERVICE_TIER_COLUMNS + " FROM service_tier WHERE id = ?";
 
@@ -40,4 +43,6 @@ final class ServiceTierTable {
                     + " COALESCE(?, display_order), visible = COALESCE(?, visible), closed ="
                     + " COALESCE(?, closed), updated_at = now() WHERE id = ? RETURNING "
                     + SERVICE_TIER_COLUMNS;
+
+    static final String DELETE_SERVICE_TIER = "DELETE FROM service_tier WHERE id = ?";
 }

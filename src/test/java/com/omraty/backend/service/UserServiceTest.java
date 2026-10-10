@@ -234,6 +234,69 @@ class UserServiceTest {
     }
 
     @Test
+    void updateIdentityAsAdmin_withNeitherNniNorPhoto_throwsException() {
+        assertThatThrownBy(() -> userService.updateIdentityAsAdmin(user.id(), null, null))
+                .isInstanceOf(UserException.InvalidIdentityRequestException.class);
+
+        verify(fileStorageService, never()).store(any(), anyString());
+        verify(authRepository, never()).updateIdentityFields(any(), any(), any());
+    }
+
+    @Test
+    void updateIdentityAsAdmin_withBlankNni_throwsException() {
+        assertThatThrownBy(() -> userService.updateIdentityAsAdmin(user.id(), "  ", null))
+                .isInstanceOf(UserException.InvalidIdentityRequestException.class);
+
+        verify(authRepository, never()).updateIdentityFields(any(), any(), any());
+    }
+
+    @Test
+    void updateIdentityAsAdmin_withUnsupportedPhotoContentType_throwsException() {
+        MultipartFile pdfFile =
+                new MockMultipartFile(
+                        "photo", "id.pdf", "application/pdf", "fake-pdf-bytes".getBytes());
+
+        assertThatThrownBy(() -> userService.updateIdentityAsAdmin(user.id(), null, pdfFile))
+                .isInstanceOf(UserException.InvalidIdentityRequestException.class);
+
+        verify(authRepository, never()).updateIdentityFields(any(), any(), any());
+    }
+
+    @Test
+    void updateIdentityAsAdmin_whenUserNotFound_throwsException() {
+        when(authRepository.updateIdentityFields(user.id(), NNI, null))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.updateIdentityAsAdmin(user.id(), NNI, null))
+                .isInstanceOf(UserException.UserNotFoundException.class);
+    }
+
+    @Test
+    void updateIdentityAsAdmin_withNniOnly_leavesPhotoUntouched() {
+        User corrected = pendingUser();
+        when(authRepository.updateIdentityFields(user.id(), NNI, null))
+                .thenReturn(Optional.of(corrected));
+
+        User result = userService.updateIdentityAsAdmin(user.id(), NNI, null);
+
+        assertThat(result).isEqualTo(corrected);
+        verify(fileStorageService, never()).store(any(), anyString());
+    }
+
+    @Test
+    void updateIdentityAsAdmin_withPhotoOnly_storesPhotoAndLeavesNniUntouched() {
+        MultipartFile photo = validPhoto();
+        User corrected = pendingUser();
+        when(fileStorageService.store(photo, "identity")).thenReturn("/uploads/identity/x.jpg");
+        when(authRepository.updateIdentityFields(user.id(), null, "/uploads/identity/x.jpg"))
+                .thenReturn(Optional.of(corrected));
+
+        User result = userService.updateIdentityAsAdmin(user.id(), null, photo);
+
+        assertThat(result).isEqualTo(corrected);
+    }
+
+    @Test
     void rejectIdentity_success_clearsSubmittedNniAndPhoto() {
         User pending = pendingUser();
         User rejected =

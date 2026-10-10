@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class PackageServiceTest {
@@ -168,5 +169,31 @@ class PackageServiceTest {
         List<ReservationGroup> groups = packageService().getReservationGroups();
 
         assertThat(groups).containsExactly(new ReservationGroup(pkgWithVipRequests, 13));
+    }
+
+    @Test
+    void deletePackage_whenNotFound_throwsException() {
+        when(packageRepository.deleteById(1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> packageService().deletePackage(1L))
+                .isInstanceOf(PackageException.PackageNotFoundException.class);
+    }
+
+    @Test
+    void deletePackage_whenReferencedByRoomsOrVipRequests_throwsPackageInUseException() {
+        // Violation de contrainte FK (room.package_id / vip_request.package_id) : traduite en
+        // exception métier plutôt que de laisser fuiter l'exception SQL brute.
+        when(packageRepository.deleteById(1L))
+                .thenThrow(new DataIntegrityViolationException("FK violation"));
+
+        assertThatThrownBy(() -> packageService().deletePackage(1L))
+                .isInstanceOf(PackageException.PackageInUseException.class);
+    }
+
+    @Test
+    void deletePackage_whenFound_delegatesToRepository() {
+        when(packageRepository.deleteById(1L)).thenReturn(true);
+
+        packageService().deletePackage(1L);
     }
 }

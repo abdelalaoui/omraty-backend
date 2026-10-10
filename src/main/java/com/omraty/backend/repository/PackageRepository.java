@@ -95,4 +95,8 @@ public class PackageRepository {
                 .stream()
                 .findFirst();
     }
+
+    public boolean deleteById(long id) {
+        return jdbcTemplate.update(PackageTable.DELETE_PACKAGE, id) > 0;
+    }
 }

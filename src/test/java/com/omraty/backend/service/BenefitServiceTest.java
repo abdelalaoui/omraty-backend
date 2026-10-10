@@ -92,4 +92,19 @@ class BenefitServiceTest {
 
         verify(benefitRepository).updateDisplayOrders(List.of(2L, 1L));
     }
+
+    @Test
+    void deleteBenefit_whenNotFound_throwsException() {
+        when(benefitRepository.deleteById(1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> benefitService().deleteBenefit(1L))
+                .isInstanceOf(BenefitException.BenefitNotFoundException.class);
+    }
+
+    @Test
+    void deleteBenefit_whenFound_delegatesToRepository() {
+        when(benefitRepository.deleteById(1L)).thenReturn(true);
+
+        benefitService().deleteBenefit(1L);
+    }
 }

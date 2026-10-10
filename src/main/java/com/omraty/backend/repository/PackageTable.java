@@ -32,4 +32,8 @@ final class PackageTable {
                     + " start_date = COALESCE(?, start_date), end_date = COALESCE(?, end_date)"
                     + " WHERE id = ? RETURNING "
                     + PACKAGE_COLUMNS;
+
+    // Échoue (violation de contrainte FK) si des chambres/lits ou demandes VIP référencent encore
+    // ce package (voir RoomTable, VipRequestTable) : voir PackageService.deletePackage.
+    static final String DELETE_PACKAGE = "DELETE FROM package WHERE id = ?";
 }

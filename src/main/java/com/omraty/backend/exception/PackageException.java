@@ -17,4 +17,10 @@ public class PackageException extends RuntimeException {
             super(message);
         }
     }
+
+    public static class PackageInUseException extends PackageException {
+        public PackageInUseException(String message) {
+            super(message);
+        }
+    }
 }

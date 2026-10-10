@@ -5,6 +5,7 @@ import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.repository.PackageRepository;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -95,6 +96,27 @@ public class PackageService {
                                 new ReservationGroup(
                                         pkg, packageCapacityService.committedSeats(pkg.id())))
                 .toList();
+    }
+
+    /**
+     * @throws PackageException.PackageInUseException si des chambres/lits ou demandes VIP
+     *     référencent encore ce package (violation de contrainte FK).
+     */
+    public void deletePackage(long id) {
+        boolean deleted;
+        try {
+            deleted = packageRepository.deleteById(id);
+        } catch (DataIntegrityViolationException e) {
+            throw new PackageException.PackageInUseException(
+                    "Le package (id="
+                            + id
+                            + ") est référencé par des réservations ou demandes VIP existantes et"
+                            + " ne peut pas être supprimé");
+        }
+        if (!deleted) {
+            throw new PackageException.PackageNotFoundException(
+                    "Package introuvable (id=" + id + ")");
+        }
     }
 
     private void validateLabel(String label) {

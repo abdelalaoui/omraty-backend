@@ -106,6 +106,14 @@ public class AuthRepository {
                 .findFirst();
     }
 
+    /** nni/idPhotoUrl : chacun optionnel, voir UserService.updateIdentityAsAdmin. */
+    public Optional<User> updateIdentityFields(UUID userId, String nni, String idPhotoUrl) {
+        return jdbcTemplate
+                .query(UsersTable.UPDATE_IDENTITY_FIELDS, USER_ROW_MAPPER, nni, idPhotoUrl, userId)
+                .stream()
+                .findFirst();
+    }
+
     public List<User> findPendingIdentityVerifications() {
         return jdbcTemplate.query(
                 UsersTable.SELECT_PENDING_IDENTITY_VERIFICATIONS, USER_ROW_MAPPER);

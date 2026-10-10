@@ -84,6 +84,14 @@ public class BenefitService {
         benefitRepository.updateDisplayOrders(orderedIds);
     }
 
+    public void deleteBenefit(long id) {
+        boolean deleted = benefitRepository.deleteById(id);
+        if (!deleted) {
+            throw new BenefitException.BenefitNotFoundException(
+                    "Avantage introuvable (id=" + id + ")");
+        }
+    }
+
     private void validateIcon(String icon) {
         if (icon.isBlank()) {
             throw new BenefitException.InvalidBenefitRequestException(

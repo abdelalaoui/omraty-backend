@@ -68,6 +68,33 @@ public class UserService {
         return authRepository.findPendingIdentityVerifications();
     }
 
+    /**
+     * Correction par un admin du NNI et/ou de la photo d'identité d'un compte (ex. faute de frappe
+     * dans le NNI, photo illisible) : contrairement à {@link #updateIdentity}, nni et photo sont
+     * chacun optionnels (au moins un des deux requis) et identityVerified/gender ne sont pas
+     * modifiés — l'admin est l'autorité ici, pas une resoumission qui repasserait le compte en
+     * attente.
+     */
+    public User updateIdentityAsAdmin(UUID userId, String nni, MultipartFile photo) {
+        boolean hasPhoto = photo != null && !photo.isEmpty();
+        if ((nni == null || nni.isBlank()) && !hasPhoto) {
+            throw new UserException.InvalidIdentityRequestException(
+                    "Le NNI ou la photo doit être fourni");
+        }
+        if (nni != null && nni.isBlank()) {
+            throw new UserException.InvalidIdentityRequestException("Le NNI ne peut pas être vide");
+        }
+        String photoUrl = null;
+        if (hasPhoto) {
+            validatePhoto(photo);
+            photoUrl = fileStorageService.store(photo, IDENTITY_PHOTO_SUBDIR);
+        }
+        return authRepository
+                .updateIdentityFields(userId, nni, photoUrl)
+                .orElseThrow(
+                        () -> new UserException.UserNotFoundException("Utilisateur introuvable"));
+    }
+
     /** Marque l'identité comme vérifiée après validation du NNI/photo par un admin. */
     public User approveIdentity(UUID userId) {
         requirePendingIdentity(userId);

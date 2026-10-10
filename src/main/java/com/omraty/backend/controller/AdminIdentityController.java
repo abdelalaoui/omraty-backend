@@ -7,12 +7,16 @@ import com.omraty.backend.service.UserService;
 import com.omraty.backend.storage.FileStorageService;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /** Réservé aux comptes ROLE_ADMIN (voir SecurityConfig) : revue des demandes NNI/photo. */
 @RestController
@@ -52,6 +56,20 @@ public class AdminIdentityController {
                 response.nni(),
                 fileStorageService.generatePresignedUrl(response.idPhotoUrl()),
                 response.identityVerified());
+    }
+
+    /**
+     * Correction du NNI et/ou de la photo d'un compte (nni/photo chacun optionnels, au moins un
+     * requis) : pour une faute de frappe dans le NNI ou une photo illisible, sans repasser le
+     * compte en attente ni redemander à l'utilisateur de tout resoumettre.
+     */
+    @PatchMapping(value = "/{userId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<UserResponse> updateIdentity(
+            @PathVariable UUID userId,
+            @RequestParam(value = "nni", required = false) String nni,
+            @RequestParam(value = "photo", required = false) MultipartFile photo) {
+        User user = userService.updateIdentityAsAdmin(userId, nni, photo);
+        return ResponseEntity.ok(withPresignedIdPhotoUrl(UserMapper.toResponse(user)));
     }
 
     @PostMapping("/{userId}/approve")

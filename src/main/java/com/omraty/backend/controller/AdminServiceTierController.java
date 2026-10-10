@@ -7,8 +7,11 @@ import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.mapper.ServiceTierMapper;
 import com.omraty.backend.service.ServiceTierService;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,6 +35,12 @@ public class AdminServiceTierController {
 
     public AdminServiceTierController(ServiceTierService serviceTierService) {
         this.serviceTierService = serviceTierService;
+    }
+
+    @GetMapping
+    public ResponseEntity<List<AdminServiceTierResponse>> listServiceTiers() {
+        return ResponseEntity.ok(
+                ServiceTierMapper.toAdminResponseList(serviceTierService.getAllServiceTiers()));
     }
 
     @PostMapping
@@ -68,5 +77,11 @@ public class AdminServiceTierController {
                         request.visible(),
                         request.closed());
         return ResponseEntity.ok(ServiceTierMapper.toAdminResponse(serviceTier));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteServiceTier(@PathVariable long id) {
+        serviceTierService.deleteServiceTier(id);
+        return ResponseEntity.noContent().build();
     }
 }
