@@ -22,8 +22,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * utilisateur sans accès anticipé — l'écran de fermeture de l'app ne suffit pas (ancienne version
  * de l'app, appel direct à l'API). 423 et non 401/403, que l'app interprète comme une session
  * expirée (voir ApiClient côté app). Restent toujours accessibles : authentification, état de
- * l'app, admin, webhooks, et le compte lui-même (consultation, suppression — Apple 5.1.1(v)).
- * Les requêtes anonymes ne sont pas concernées : SecurityConfig ne leur ouvre que le catalogue.
+ * l'app, admin, webhooks, et le compte lui-même (consultation, suppression — Apple 5.1.1(v)). Les
+ * requêtes anonymes ne sont pas concernées : SecurityConfig ne leur ouvre que le catalogue.
  */
 @Component
 public class AppAccessFilter extends OncePerRequestFilter {
@@ -55,8 +55,7 @@ public class AppAccessFilter extends OncePerRequestFilter {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         objectMapper.writeValue(
-                response.getWriter(),
-                new ErrorResponse("L'application n'est pas encore ouverte"));
+                response.getWriter(), new ErrorResponse("L'application n'est pas encore ouverte"));
     }
 
     private static boolean isAlwaysAllowed(HttpServletRequest request) {

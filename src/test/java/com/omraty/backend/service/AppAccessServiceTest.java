@@ -104,8 +104,7 @@ class AppAccessServiceTest {
     @Test
     void hasEarlyAccess_whenAccountDeleted_deniesAccess() {
         setting(AppAccessService.ALLOWED_PHONES_KEY, PHONE);
-        when(authRepository.findById(userId))
-                .thenReturn(Optional.of(user(LocalDateTime.now())));
+        when(authRepository.findById(userId)).thenReturn(Optional.of(user(LocalDateTime.now())));
 
         assertThat(appAccessService.hasEarlyAccess(userId)).isFalse();
     }

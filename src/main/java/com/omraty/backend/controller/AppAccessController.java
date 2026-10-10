@@ -23,8 +23,7 @@ public class AppAccessController {
     }
 
     @GetMapping("/app/access")
-    public ResponseEntity<AppAccessResponse> getAccessStatus(
-            @AuthenticationPrincipal UUID userId) {
+    public ResponseEntity<AppAccessResponse> getAccessStatus(@AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(appAccessService.getAccessStatus(userId));
     }
 }
