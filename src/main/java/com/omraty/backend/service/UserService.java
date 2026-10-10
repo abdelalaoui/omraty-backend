@@ -35,8 +35,8 @@ public class UserService {
 
     /**
      * Compte de l'utilisateur connecté (GET /users/me) : l'app le recharge au démarrage, la session
-     * (tokens) survivant au redémarrage mais pas les infos du compte. Un compte supprimé (anonymisé,
-     * voir deleteAccount) est traité comme introuvable.
+     * (tokens) survivant au redémarrage mais pas les infos du compte. Un compte supprimé
+     * (anonymisé, voir deleteAccount) est traité comme introuvable.
      */
     public User getCurrentUser(UUID userId) {
         return authRepository
