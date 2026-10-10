@@ -63,6 +63,41 @@ class UserServiceTest {
     }
 
     @Test
+    void getCurrentUser_returnsUser() {
+        when(authRepository.findById(user.id())).thenReturn(Optional.of(user));
+
+        assertThat(userService.getCurrentUser(user.id())).isEqualTo(user);
+    }
+
+    @Test
+    void getCurrentUser_whenAccountDeleted_throwsNotFound() {
+        User deleted =
+                new User(
+                        user.id(),
+                        "deleted-" + user.id(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        user.createdAt(),
+                        "USER",
+                        LocalDateTime.now());
+        when(authRepository.findById(user.id())).thenReturn(Optional.of(deleted));
+
+        assertThatThrownBy(() -> userService.getCurrentUser(user.id()))
+                .isInstanceOf(UserException.UserNotFoundException.class);
+    }
+
+    @Test
+    void getCurrentUser_whenMissing_throwsNotFound() {
+        when(authRepository.findById(user.id())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getCurrentUser(user.id()))
+                .isInstanceOf(UserException.UserNotFoundException.class);
+    }
+
+    @Test
     void updateIdentity_withBlankNni_throwsException() {
         assertThatThrownBy(
                         () ->

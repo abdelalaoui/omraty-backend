@@ -34,6 +34,19 @@ public class UserService {
     }
 
     /**
+     * Compte de l'utilisateur connecté (GET /users/me) : l'app le recharge au démarrage, la session
+     * (tokens) survivant au redémarrage mais pas les infos du compte. Un compte supprimé
+     * (anonymisé, voir deleteAccount) est traité comme introuvable.
+     */
+    public User getCurrentUser(UUID userId) {
+        return authRepository
+                .findById(userId)
+                .filter(user -> user.deletedAt() == null)
+                .orElseThrow(
+                        () -> new UserException.UserNotFoundException("Utilisateur introuvable"));
+    }
+
+    /**
      * {@code gender} est collecté ici (en plus du NNI/photo) et non plus seulement à l'inscription
      * : un compte créé à la volée par AuthService.requestOtp (numéro inconnu, voir migration V46)
      * n'a pas encore de genre, et BeneficiaryInfoScreen côté app est le seul écran qui bloque
