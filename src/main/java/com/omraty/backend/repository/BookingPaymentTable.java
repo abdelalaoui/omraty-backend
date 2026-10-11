@@ -6,7 +6,8 @@ final class BookingPaymentTable {
 
     static final String BOOKING_PAYMENT_COLUMNS =
             "id, room_id, bed_id, vip_request_id, plan, status, total_amount, moov_payment_code,"
-                    + " moov_transaction_id, payer_phone, expires_at, created_at";
+                    + " moov_transaction_id, payer_phone, expires_at, created_at, payment_method,"
+                    + " payment_reference, declared_at";
 
     // status <> 'EXPIRED' : depuis la migration V35, une chambre/un lit expiré(e) peut être
     // réservé(e) de nouveau, donc plusieurs lignes peuvent exister pour un même room_id au fil du
@@ -131,7 +132,32 @@ final class BookingPaymentTable {
             "SELECT bpr.room_id AS group_room_id, bp.id, bp.room_id, bp.bed_id,"
                     + " bp.vip_request_id, bp.plan, bp.status, bp.total_amount,"
                     + " bp.moov_payment_code, bp.moov_transaction_id, bp.payer_phone,"
-                    + " bp.expires_at, bp.created_at FROM booking_payment_room bpr JOIN"
+                    + " bp.expires_at, bp.created_at, bp.payment_method, bp.payment_reference,"
+                    + " bp.declared_at FROM booking_payment_room bpr JOIN"
                     + " booking_payment bp ON bp.id = bpr.booking_payment_id WHERE bpr.room_id ="
                     + " ANY (?) AND bp.status <> 'EXPIRED'";
+
+    // Renseigne la référence du moyen de paiement manuel choisi (voir migrations V50/V51,
+    // BookingPaymentService) : équivalent de ATTACH_GATEWAY_RESULT mais sans appel passerelle.
+    // payment_reference est NULL pour un plan INSTALLMENTS (représente toujours « le paiement dû
+    // maintenant » ; les tranches 2/3 ont leur propre code, voir booking_installment).
+    static final String ATTACH_MANUAL_PAYMENT =
+            "UPDATE booking_payment SET payment_method = ?, payment_reference = ?, expires_at = ?"
+                    + " WHERE id = ? RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
+
+    // « J'ai payé » (voir BookingPaymentService#declare) : passage PENDING -> PENDING_VERIFICATION,
+    // uniquement pour un paiement manuel en attente (payment_reference IS NOT NULL) — idempotent
+    // jusqu'en base, comme UPDATE_STATUS_IF_PENDING.
+    static final String DECLARE_PAYMENT =
+            "UPDATE booking_payment SET status = 'PENDING_VERIFICATION', declared_at = now() WHERE"
+                    + " id = ? AND status = 'PENDING' AND payment_reference IS NOT NULL RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
+
+    // Pour la boucle de régénération en cas de collision (voir
+    // BookingPaymentService#generateUniquePaymentReference) : l'unicité est vérifiée sur les deux
+    // tables (booking_payment et booking_installment), le code de paiement étant un espace de noms
+    // global (voir migration V51).
+    static final String EXISTS_BY_PAYMENT_REFERENCE =
+            "SELECT EXISTS (SELECT 1 FROM booking_payment WHERE payment_reference = ?)";
 }

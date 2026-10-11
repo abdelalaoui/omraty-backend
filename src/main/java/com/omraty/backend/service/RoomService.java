@@ -121,6 +121,17 @@ public class RoomService {
      */
     @Transactional
     public BookingPayment reserveBed(int type, long packageId, UUID userId, PaymentPlan plan) {
+        return reserveBed(type, packageId, userId, plan, null);
+    }
+
+    /**
+     * Comme {@link #reserveBed(int, long, UUID, PaymentPlan)}, avec en plus le choix d'un moyen de
+     * paiement manuel (voir BookingPaymentService.createPaymentPlan) — paymentMethodCode null =
+     * flux passerelle Moov inchangé (compatibilité app 1.0/1.0.1).
+     */
+    @Transactional
+    public BookingPayment reserveBed(
+            int type, long packageId, UUID userId, PaymentPlan plan, String paymentMethodCode) {
         validateSharedRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
@@ -143,8 +154,11 @@ public class RoomService {
 
         Bed reservedBed = bedRepository.markReserved(bed.id(), userId);
         roomRepository.incrementReservedCount(room.id());
-        return bookingPaymentService.createPaymentPlan(
-                null, reservedBed.id(), plan, price, pkg, userId);
+        return paymentMethodCode == null
+                ? bookingPaymentService.createPaymentPlan(
+                        null, reservedBed.id(), plan, price, pkg, userId)
+                : bookingPaymentService.createPaymentPlan(
+                        null, reservedBed.id(), plan, price, pkg, userId, paymentMethodCode);
     }
 
     /**
@@ -162,6 +176,15 @@ public class RoomService {
      */
     @Transactional
     public BookingPayment reserveOfferBed(long packageId, UUID userId) {
+        return reserveOfferBed(packageId, userId, null);
+    }
+
+    /**
+     * Comme {@link #reserveOfferBed(long, UUID)}, avec en plus le choix d'un moyen de paiement
+     * manuel (voir BookingPaymentService.createOfferPaymentPlan).
+     */
+    @Transactional
+    public BookingPayment reserveOfferBed(long packageId, UUID userId, String paymentMethodCode) {
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
         BigDecimal price = bookingPaymentService.resolveOfferPrice();
@@ -183,7 +206,10 @@ public class RoomService {
 
         Bed reservedBed = bedRepository.markReserved(bed.id(), userId);
         roomRepository.incrementReservedCount(room.id());
-        return bookingPaymentService.createOfferPaymentPlan(reservedBed.id(), price, pkg, userId);
+        return paymentMethodCode == null
+                ? bookingPaymentService.createOfferPaymentPlan(reservedBed.id(), price, pkg, userId)
+                : bookingPaymentService.createOfferPaymentPlan(
+                        reservedBed.id(), price, pkg, userId, paymentMethodCode);
     }
 
     /**
@@ -199,12 +225,25 @@ public class RoomService {
      */
     @Transactional
     public BookingPayment purchaseRoom(int type, long packageId, UUID userId, PaymentPlan plan) {
+        return purchaseRoom(type, packageId, userId, plan, null);
+    }
+
+    /**
+     * Comme {@link #purchaseRoom(int, long, UUID, PaymentPlan)}, avec en plus le choix d'un moyen
+     * de paiement manuel (voir BookingPaymentService.createPaymentPlan).
+     */
+    @Transactional
+    public BookingPayment purchaseRoom(
+            int type, long packageId, UUID userId, PaymentPlan plan, String paymentMethodCode) {
         validateWholeRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, type);
         BigDecimal price = bookingPaymentService.resolvePrice(type);
         Room room = roomRepository.insert(type, packageId, type, type, userId);
-        return bookingPaymentService.createPaymentPlan(room.id(), null, plan, price, pkg, userId);
+        return paymentMethodCode == null
+                ? bookingPaymentService.createPaymentPlan(room.id(), null, plan, price, pkg, userId)
+                : bookingPaymentService.createPaymentPlan(
+                        room.id(), null, plan, price, pkg, userId, paymentMethodCode);
     }
 
     /** Une entrée d'achat groupé : type de chambre (2, 3 ou 5) et combien en acheter d'un coup. */
@@ -230,6 +269,20 @@ public class RoomService {
     @Transactional
     public BookingPayment purchaseRoomGroup(
             List<RoomGroupItem> items, long packageId, UUID userId, PaymentPlan plan) {
+        return purchaseRoomGroup(items, packageId, userId, plan, null);
+    }
+
+    /**
+     * Comme {@link #purchaseRoomGroup(List, long, UUID, PaymentPlan)}, avec en plus le choix d'un
+     * moyen de paiement manuel (voir BookingPaymentService.createGroupPaymentPlan).
+     */
+    @Transactional
+    public BookingPayment purchaseRoomGroup(
+            List<RoomGroupItem> items,
+            long packageId,
+            UUID userId,
+            PaymentPlan plan,
+            String paymentMethodCode) {
         for (RoomGroupItem item : items) {
             if (!GROUP_ROOM_TYPES.contains(item.type())) {
                 throw new RoomException.InvalidRoomTypeException(
@@ -255,8 +308,11 @@ public class RoomService {
                 totalAmount = totalAmount.add(price);
             }
         }
-        return bookingPaymentService.createGroupPaymentPlan(
-                roomIds, plan, totalAmount, pkg, userId);
+        return paymentMethodCode == null
+                ? bookingPaymentService.createGroupPaymentPlan(
+                        roomIds, plan, totalAmount, pkg, userId)
+                : bookingPaymentService.createGroupPaymentPlan(
+                        roomIds, plan, totalAmount, pkg, userId, paymentMethodCode);
     }
 
     /**

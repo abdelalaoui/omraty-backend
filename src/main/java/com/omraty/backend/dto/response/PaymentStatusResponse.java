@@ -6,7 +6,16 @@ import java.time.LocalDateTime;
 /**
  * Renvoyé par GET /payments/{id} : l'app interroge cet endpoint en arrière-plan pendant l'attente
  * de la confirmation asynchrone du paiement (webhook Moov, voir MoovWebhookController) jusqu'à ce
- * que status passe à CONFIRMED ou FAILED (voir BookingPaymentService.getStatusForUser).
+ * que status passe à CONFIRMED ou FAILED (voir BookingPaymentService.getStatusForUser). Pour un
+ * paiement manuel (voir PaymentMethod), status peut aussi valoir PENDING_VERIFICATION une fois
+ * déclaré par le client.
+ *
+ * <p>paymentCode reste le champ historique (compatibilité app 1.0/1.0.1) ; paymentReference porte
+ * la même valeur sous le nom attendu par l'app actuelle.
  */
 public record PaymentStatusResponse(
-        long id, PaymentStatus status, String paymentCode, LocalDateTime expiresAt) {}
+        long id,
+        PaymentStatus status,
+        String paymentCode,
+        LocalDateTime expiresAt,
+        String paymentReference) {}

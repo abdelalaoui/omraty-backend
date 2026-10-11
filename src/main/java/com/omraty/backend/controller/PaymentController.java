@@ -1,14 +1,18 @@
 package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.response.FullPaymentDiscountResponse;
+import com.omraty.backend.dto.response.InstallmentResponse;
 import com.omraty.backend.dto.response.InvoiceDownloadResponse;
 import com.omraty.backend.dto.response.PaymentStatusResponse;
+import com.omraty.backend.mapper.BookingInstallmentMapper;
+import com.omraty.backend.mapper.PaymentMapper;
 import com.omraty.backend.service.BookingPaymentService;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -35,6 +39,35 @@ public class PaymentController {
     public ResponseEntity<PaymentStatusResponse> getStatus(
             @AuthenticationPrincipal UUID userId, @PathVariable long id) {
         return ResponseEntity.ok(bookingPaymentService.getStatusForUser(userId, id));
+    }
+
+    /**
+     * « J'ai payé » pour un paiement en plan FULL, ou pour la 1ère tranche d'un plan INSTALLMENTS
+     * (voir BookingPaymentService.declare, BookingPayment.paymentReference) : le client déclare
+     * avoir effectué son paiement manuel dans son wallet. 404 si le paiement n'existe pas,
+     * n'appartient pas à l'utilisateur connecté, ou n'est pas en attente de déclaration (flux
+     * passerelle Moov, déjà déclaré/confirmé/expiré).
+     */
+    @PostMapping("/users/me/payments/{id}/declare")
+    public ResponseEntity<PaymentStatusResponse> declare(
+            @AuthenticationPrincipal UUID userId, @PathVariable long id) {
+        return ResponseEntity.ok(
+                PaymentMapper.toStatusResponse(bookingPaymentService.declare(userId, id)));
+    }
+
+    /**
+     * « J'ai payé » pour une tranche (2e ou 3e) d'un plan INSTALLMENTS, chacune ayant son propre
+     * code de paiement (voir BookingPaymentService.declareInstallment). Même sémantique 404 que
+     * {@link #declare}.
+     */
+    @PostMapping("/users/me/payments/{id}/installments/{installmentId}/declare")
+    public ResponseEntity<InstallmentResponse> declareInstallment(
+            @AuthenticationPrincipal UUID userId,
+            @PathVariable long id,
+            @PathVariable long installmentId) {
+        return ResponseEntity.ok(
+                BookingInstallmentMapper.toResponse(
+                        bookingPaymentService.declareInstallment(userId, id, installmentId)));
     }
 
     /**

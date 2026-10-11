@@ -71,7 +71,12 @@ public class SecurityConfig {
                                                 "/packages/*",
                                                 "/hotels",
                                                 "/reservation-groups",
-                                                "/rooms/*/beds")
+                                                "/rooms/*/beds",
+                                                // Choix du moyen de paiement manuel (Moov,
+                                                // Bankily...), nécessaire avant même la connexion
+                                                // pour afficher l'écran de paiement (voir
+                                                // PaymentMethodController).
+                                                "/payment-methods")
                                         .permitAll()
                                         .requestMatchers("/admin/**")
                                         .hasRole("ADMIN")

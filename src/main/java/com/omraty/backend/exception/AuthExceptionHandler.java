@@ -274,6 +274,12 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(PaymentMethodException.UnknownOrDisabledPaymentMethodException.class)
+    public ResponseEntity<ErrorResponse> handleUnknownOrDisabledPaymentMethod(
+            PaymentMethodException.UnknownOrDisabledPaymentMethodException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);
