@@ -6,7 +6,8 @@ final class BookingInstallmentTable {
 
     static final String BOOKING_INSTALLMENT_COLUMNS =
             "id, booking_payment_id, sequence, amount, due_date, paid_at, reminder_sent_at,"
-                    + " paid_by_admin_id, paid_manually";
+                    + " paid_by_admin_id, paid_manually, payment_method, payment_reference,"
+                    + " declared_at";
 
     static final String SELECT_INSTALLMENTS_BY_PAYMENT_IDS =
             "SELECT "
@@ -39,6 +40,28 @@ final class BookingInstallmentTable {
             "INSERT INTO booking_installment (booking_payment_id, sequence, amount, due_date,"
                     + " paid_at) VALUES (?, ?, ?, ?, ?)";
 
+    // Tranche (2 ou 3) d'un plan INSTALLMENTS payé via un moyen de paiement manuel (voir migration
+    // V51, BookingPaymentService) : son propre code de paiement, contrairement à INSERT_INSTALLMENT
+    // (tranche 1, ou tout paiement via la passerelle Moov). paid_at reste NULL : une tranche
+    // manuelle fraîchement créée n'est jamais payée d'office.
+    static final String INSERT_MANUAL_INSTALLMENT =
+            "INSERT INTO booking_installment (booking_payment_id, sequence, amount, due_date,"
+                    + " payment_method, payment_reference) VALUES (?, ?, ?, ?, ?, ?)";
+
+    // « J'ai payé » pour une tranche (voir BookingPaymentService#declareInstallment) : uniquement
+    // si elle a son propre code de paiement, pas déjà payée ni déjà déclarée — idempotent jusqu'en
+    // base.
+    static final String DECLARE_INSTALLMENT =
+            "UPDATE booking_installment SET declared_at = now() WHERE id = ? AND payment_reference"
+                    + " IS NOT NULL AND paid_at IS NULL AND declared_at IS NULL RETURNING "
+                    + BOOKING_INSTALLMENT_COLUMNS;
+
+    // Pour la boucle de régénération en cas de collision (voir
+    // BookingPaymentService#generateUniquePaymentReference) : espace de noms global, partagé avec
+    // booking_payment.payment_reference (voir migration V51).
+    static final String EXISTS_BY_PAYMENT_REFERENCE =
+            "SELECT EXISTS (SELECT 1 FROM booking_installment WHERE payment_reference = ?)";
+
     static final String MARK_PAID =
             "UPDATE booking_installment SET paid_at = now() WHERE id = ? RETURNING "
                     + BOOKING_INSTALLMENT_COLUMNS;
@@ -53,4 +76,25 @@ final class BookingInstallmentTable {
 
     static final String MARK_REMINDER_SENT =
             "UPDATE booking_installment SET reminder_sent_at = now() WHERE id = ?";
+
+    // File d'attente admin des tranches (2e/3e) à vérifier (voir
+    // BookingPaymentService.listPaymentsForAdmin) : paid_at IS NULL exclut les tranches déjà
+    // confirmées, payment_reference IS NOT NULL exclut la tranche 1 (représentée par
+    // booking_payment, voir migration V51) et tout paiement passerelle Moov. requireDeclared
+    // traduit le filtre status (PENDING_VERIFICATION -> true, PENDING -> false, absent -> null,
+    // voir BookingPaymentService) ; les statuts CONFIRMED/FAILED/EXPIRED n'ont pas d'équivalent
+    // côté tranche et sont court-circuités côté service (cette requête n'est alors pas exécutée).
+    // "due_date" (seule date toujours renseignée ici, booking_installment n'a pas de created_at)
+    // sert de repli pour le filtre période quand la tranche n'est pas encore déclarée.
+    static final String SELECT_INSTALLMENTS_FOR_ADMIN_VERIFICATION =
+            "SELECT "
+                    + BOOKING_INSTALLMENT_COLUMNS
+                    + " FROM booking_installment WHERE payment_reference IS NOT NULL AND paid_at IS"
+                    + " NULL"
+                    + " AND (?::boolean IS NULL OR (declared_at IS NOT NULL) = ?)"
+                    + " AND (?::varchar IS NULL OR payment_method = ?)"
+                    + " AND (?::varchar IS NULL OR UPPER(REPLACE(payment_reference, ' ', '')) = ?)"
+                    + " AND (?::timestamp IS NULL OR COALESCE(declared_at, due_date) >= ?)"
+                    + " AND (?::timestamp IS NULL OR COALESCE(declared_at, due_date) <= ?)"
+                    + " ORDER BY COALESCE(declared_at, due_date) ASC";
 }

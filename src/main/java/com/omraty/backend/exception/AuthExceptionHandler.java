@@ -295,6 +295,54 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(BookingTermException.InvalidBookingTermRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidBookingTermRequest(
+            BookingTermException.InvalidBookingTermRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(BookingTermException.BookingTermNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleBookingTermNotFound(
+            BookingTermException.BookingTermNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(BookingTermException.TermsChangedException.class)
+    public ResponseEntity<ErrorResponse> handleTermsChanged(
+            BookingTermException.TermsChangedException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(PaymentMethodException.UnknownOrDisabledPaymentMethodException.class)
+    public ResponseEntity<ErrorResponse> handleUnknownOrDisabledPaymentMethod(
+            PaymentMethodException.UnknownOrDisabledPaymentMethodException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(PaymentMethodException.InvalidPaymentMethodRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPaymentMethodRequest(
+            PaymentMethodException.InvalidPaymentMethodRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(PaymentMethodException.PaymentMethodNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handlePaymentMethodNotFound(
+            PaymentMethodException.PaymentMethodNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(PaymentMethodException.DuplicatePaymentMethodCodeException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicatePaymentMethodCode(
+            PaymentMethodException.DuplicatePaymentMethodCodeException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(BookingPaymentException.PaymentNotConfirmableException.class)
+    public ResponseEntity<ErrorResponse> handlePaymentNotConfirmable(
+            BookingPaymentException.PaymentNotConfirmableException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);

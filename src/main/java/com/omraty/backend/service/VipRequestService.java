@@ -178,6 +178,16 @@ public class VipRequestService {
      */
     @Transactional
     public BookingPayment accept(UUID userId, long id) {
+        return accept(userId, id, null);
+    }
+
+    /**
+     * Comme {@link #accept(UUID, long)}, avec en plus le choix d'un moyen de paiement manuel (voir
+     * BookingPaymentService.createVipPaymentPlan) — paymentMethodCode null = flux passerelle Moov
+     * inchangé (compatibilité app 1.0/1.0.1).
+     */
+    @Transactional
+    public BookingPayment accept(UUID userId, long id, String paymentMethodCode) {
         VipRequest request = lockOrThrow(id);
         if (!request.userId().equals(userId)) {
             throw new VipRequestException.VipRequestNotFoundException(
@@ -191,8 +201,11 @@ public class VipRequestService {
                     "L'offre a expiré, soumettez une nouvelle demande");
         }
         VipRequest accepted = vipRequestRepository.updateAccept(id);
-        return bookingPaymentService.createVipPaymentPlan(
-                accepted.id(), accepted.proposedPrice(), userId);
+        return paymentMethodCode == null
+                ? bookingPaymentService.createVipPaymentPlan(
+                        accepted.id(), accepted.proposedPrice(), userId)
+                : bookingPaymentService.createVipPaymentPlan(
+                        accepted.id(), accepted.proposedPrice(), userId, paymentMethodCode);
     }
 
     private OmraPackage lockPackageOrThrow(long packageId) {

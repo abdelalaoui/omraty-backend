@@ -16,6 +16,14 @@ import java.util.UUID;
  * déclenchée (les deux restent false/null pour une tranche confirmée par Moov). reminderSentAt
  * n'est renseigné que pour la 3e tranche : marque qu'une notification de rappel a déjà été envoyée
  * au client (voir PaymentReminderService), pour ne la notifier qu'une seule fois.
+ *
+ * <p>paymentMethod/paymentReference/declaredAt (migration V51) : pour un plan INSTALLMENTS payé via
+ * un moyen de paiement manuel (voir PaymentMethod), les tranches 2 et 3 ont chacune leur propre
+ * code de paiement (la 1ère est représentée par booking_payment.paymentReference, voir
+ * BookingPayment) — toujours null pour la tranche 1 et pour tout paiement via la passerelle Moov.
+ *
+ * <p>Le constructeur à 9 arguments est conservé pour tous les appelants/tests antérieurs à la
+ * migration V51 : les 3 nouveaux champs valent alors null.
  */
 public record BookingInstallment(
         long id,
@@ -26,4 +34,33 @@ public record BookingInstallment(
         LocalDateTime paidAt,
         LocalDateTime reminderSentAt,
         UUID paidByAdminId,
-        boolean paidManually) {}
+        boolean paidManually,
+        String paymentMethod,
+        String paymentReference,
+        LocalDateTime declaredAt) {
+
+    public BookingInstallment(
+            long id,
+            long bookingPaymentId,
+            int sequence,
+            BigDecimal amount,
+            LocalDate dueDate,
+            LocalDateTime paidAt,
+            LocalDateTime reminderSentAt,
+            UUID paidByAdminId,
+            boolean paidManually) {
+        this(
+                id,
+                bookingPaymentId,
+                sequence,
+                amount,
+                dueDate,
+                paidAt,
+                reminderSentAt,
+                paidByAdminId,
+                paidManually,
+                null,
+                null,
+                null);
+    }
+}

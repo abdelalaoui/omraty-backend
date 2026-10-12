@@ -27,7 +27,10 @@ public class BookingInstallmentRepository {
                             rs.getObject("paid_at", LocalDateTime.class),
                             rs.getObject("reminder_sent_at", LocalDateTime.class),
                             rs.getObject("paid_by_admin_id", UUID.class),
-                            rs.getBoolean("paid_manually"));
+                            rs.getBoolean("paid_manually"),
+                            rs.getString("payment_method"),
+                            rs.getString("payment_reference"),
+                            rs.getObject("declared_at", LocalDateTime.class));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -98,6 +101,58 @@ public class BookingInstallmentRepository {
                 paidAt);
     }
 
+    /**
+     * Tranche (2 ou 3) d'un plan INSTALLMENTS payé via un moyen de paiement manuel : son propre
+     * code de paiement (voir migration V51, BookingPaymentService) — contrairement à {@link
+     * #insert} (tranche 1, ou tout paiement via la passerelle Moov), toujours non payée à la
+     * création.
+     */
+    public void insertManual(
+            long bookingPaymentId,
+            int sequence,
+            BigDecimal amount,
+            LocalDate dueDate,
+            String paymentMethod,
+            String paymentReference) {
+        jdbcTemplate.update(
+                BookingInstallmentTable.INSERT_MANUAL_INSTALLMENT,
+                bookingPaymentId,
+                sequence,
+                amount,
+                dueDate,
+                paymentMethod,
+                paymentReference);
+    }
+
+    /**
+     * « J'ai payé » pour une tranche (voir BookingPaymentService#declareInstallment).
+     *
+     * @return la tranche mise à jour, ou {@link Optional#empty()} si elle n'a pas de code de
+     *     paiement manuel, est déjà payée, ou déjà déclarée.
+     */
+    public Optional<BookingInstallment> declare(long id) {
+        return jdbcTemplate
+                .query(
+                        BookingInstallmentTable.DECLARE_INSTALLMENT,
+                        BOOKING_INSTALLMENT_ROW_MAPPER,
+                        id)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * Pour la boucle de régénération en cas de collision (voir
+     * BookingPaymentService#generateUniquePaymentReference).
+     */
+    public boolean existsByPaymentReference(String paymentReference) {
+        Boolean result =
+                jdbcTemplate.queryForObject(
+                        BookingInstallmentTable.EXISTS_BY_PAYMENT_REFERENCE,
+                        Boolean.class,
+                        paymentReference);
+        return Boolean.TRUE.equals(result);
+    }
+
     public Optional<BookingInstallment> markPaid(long id) {
         return jdbcTemplate
                 .query(BookingInstallmentTable.MARK_PAID, BOOKING_INSTALLMENT_ROW_MAPPER, id)
@@ -132,5 +187,32 @@ public class BookingInstallmentRepository {
 
     public void markReminderSent(long id) {
         jdbcTemplate.update(BookingInstallmentTable.MARK_REMINDER_SENT, id);
+    }
+
+    /**
+     * File d'attente admin des tranches (2e/3e) à vérifier (voir
+     * BookingPaymentService.listPaymentsForAdmin). requireDeclared : null = pas de contrainte, true
+     * = déclarée (PENDING_VERIFICATION), false = pas encore déclarée (PENDING) — voir
+     * BookingInstallmentTable.SELECT_INSTALLMENTS_FOR_ADMIN_VERIFICATION.
+     */
+    public List<BookingInstallment> findForAdminVerification(
+            Boolean requireDeclared,
+            String paymentMethod,
+            String normalizedReference,
+            LocalDateTime from,
+            LocalDateTime to) {
+        return jdbcTemplate.query(
+                BookingInstallmentTable.SELECT_INSTALLMENTS_FOR_ADMIN_VERIFICATION,
+                BOOKING_INSTALLMENT_ROW_MAPPER,
+                requireDeclared,
+                requireDeclared,
+                paymentMethod,
+                paymentMethod,
+                normalizedReference,
+                normalizedReference,
+                from,
+                from,
+                to,
+                to);
     }
 }

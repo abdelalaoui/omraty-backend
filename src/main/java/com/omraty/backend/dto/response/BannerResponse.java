@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 /**
  * Vue publique d'une bannière, pour l'écran d'accueil de l'app. ctaType/ctaPrice sont tous les deux
  * null sauf si la bannière porte un CTA actif ET, pour BED_OFFER, que l'offre l'est aussi (voir
- * BannerController, BookingPaymentService.getActiveOfferPrice) — l'app ne doit afficher un bouton
+ * BannerController, PromoPackageService.getMinimumBedPrice) — l'app ne doit afficher un bouton
  * d'action que si ctaPrice est renseigné.
  */
 public record BannerResponse(
