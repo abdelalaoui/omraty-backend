@@ -83,7 +83,7 @@ class PaymentExpirationServiceTest {
 
         assertThat(expiredCount).isEqualTo(1);
         verify(roomService).releaseReservation(30L, null, null);
-        verify(promoRoomService).releaseReservation(null, null);
+        verify(promoRoomService, never()).releaseReservation(any(), any());
     }
 
     @Test
