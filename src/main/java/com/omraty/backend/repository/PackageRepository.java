@@ -32,7 +32,7 @@ public class PackageRepository {
         return jdbcTemplate.query(PackageTable.SELECT_ALL_PACKAGES, PACKAGE_ROW_MAPPER);
     }
 
-    /** Packages du parcours Omra normal, sans les packages promo (voir migration V51). */
+    /** Packages du parcours Omra normal, sans les packages promo (voir migration V57). */
     public List<OmraPackage> findAllNonPromo() {
         return jdbcTemplate.query(PackageTable.SELECT_NON_PROMO_PACKAGES, PACKAGE_ROW_MAPPER);
     }

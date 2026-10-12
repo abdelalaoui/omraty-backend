@@ -153,7 +153,7 @@ public class RoomService {
 
     /**
      * Réserve un lit (chambre de 5) d'un package promo à son prix propre (voir
-     * PromoPackageService.resolveBedPrice, migration V51) plutôt qu'au prix catalogue — toujours en
+     * PromoPackageService.resolveBedPrice, migration V57) plutôt qu'au prix catalogue — toujours en
      * paiement complet (plan FULL forcé), jamais en tranches, contrairement à {@link #reserveBed}
      * qui laisse le client choisir, et sans jamais appliquer la réduction paiement-complet (voir
      * BookingPaymentService.createOfferPaymentPlan) : le prix de l'offre est déjà le prix final.

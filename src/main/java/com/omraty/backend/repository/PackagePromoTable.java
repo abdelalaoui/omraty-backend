@@ -4,7 +4,7 @@ final class PackagePromoTable {
 
     private PackagePromoTable() {}
 
-    /** Prix du lit en chambre de 5 : seul type proposé en promo pour l'instant (voir V51). */
+    /** Prix du lit en chambre de 5 : seul type proposé en promo pour l'instant (voir V57). */
     static final int BED_TYPE = 5;
 
     private static final String PROMO_PACKAGE_SELECT =

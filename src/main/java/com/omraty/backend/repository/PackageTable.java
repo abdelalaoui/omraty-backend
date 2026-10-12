@@ -10,7 +10,7 @@ final class PackageTable {
             "SELECT " + PACKAGE_COLUMNS + " FROM package ORDER BY id ASC";
 
     // Parcours Omra normal (GET /reservation-groups) : sans les packages promo, proposés seulement
-    // depuis la bannière (voir migration V51, PromoPackageService).
+    // depuis la bannière (voir migration V57, PromoPackageService).
     static final String SELECT_NON_PROMO_PACKAGES =
             "SELECT "
                     + PACKAGE_COLUMNS

@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * Package promo (voir migration V51, PromoPackageService) : un package Omra ordinaire (champs du
+ * Package promo (voir migration V57, PromoPackageService) : un package Omra ordinaire (champs du
  * package recopiés ici pour l'affichage) plus son prix de lit propre (type 5, null s'il n'est pas
  * encore saisi), sa visibilité et son ordre dans la liste de la bannière.
  */

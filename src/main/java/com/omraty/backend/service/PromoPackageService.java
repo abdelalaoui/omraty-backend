@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Packages promo de la bannière BED_OFFER (voir migration V51) : des packages Omra ordinaires —
+ * Packages promo de la bannière BED_OFFER (voir migration V57) : des packages Omra ordinaires —
  * mêmes dates, chambres, lits, paiements, achats et factures — à deux différences près :
  *
  * <ul>
