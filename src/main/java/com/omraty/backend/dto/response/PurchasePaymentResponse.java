@@ -3,6 +3,7 @@ package com.omraty.backend.dto.response;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -10,6 +11,11 @@ import java.util.List;
  * booking_payment, nécessaire à l'app pour appeler un futur endpoint de téléchargement de facture.
  * installments est vide pour plan = FULL (payé intégralement à la confirmation). nextDueDate =
  * échéance de la 1ère tranche non payée, null si tout est payé.
+ *
+ * <p>acceptedTermsVersion/acceptedTermsAt/acceptedTerms : conditions de réservation acceptées par
+ * le client à la réservation (voir migration V55) — null/vide pour un achat antérieur à cette
+ * fonctionnalité ou une offre VIP. Exposé aussi dans GET /admin/bookings (même type), pour le
+ * détail d'une réservation côté panel admin.
  */
 public record PurchasePaymentResponse(
         long id,
@@ -18,4 +24,7 @@ public record PurchasePaymentResponse(
         BigDecimal paidAmount,
         BigDecimal remainingAmount,
         LocalDate nextDueDate,
-        List<InstallmentResponse> installments) {}
+        List<InstallmentResponse> installments,
+        String acceptedTermsVersion,
+        LocalDateTime acceptedTermsAt,
+        List<BookingTermItemResponse> acceptedTerms) {}

@@ -60,9 +60,10 @@ public final class PurchaseMapper {
                 payment.paidAmount(),
                 payment.remainingAmount(),
                 payment.nextDueDate(),
-                payment.installments().stream()
-                        .map(PurchaseMapper::toInstallmentResponse)
-                        .toList());
+                payment.installments().stream().map(PurchaseMapper::toInstallmentResponse).toList(),
+                payment.acceptedTermsVersion(),
+                payment.acceptedTermsAt(),
+                payment.acceptedTerms());
     }
 
     private static InstallmentResponse toInstallmentResponse(UserInstallment installment) {

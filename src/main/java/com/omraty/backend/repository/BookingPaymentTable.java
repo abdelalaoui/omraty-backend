@@ -6,7 +6,9 @@ final class BookingPaymentTable {
 
     static final String BOOKING_PAYMENT_COLUMNS =
             "id, room_id, bed_id, vip_request_id, plan, status, total_amount, moov_payment_code,"
-                    + " moov_transaction_id, payer_phone, expires_at, created_at";
+                    + " moov_transaction_id, payer_phone, expires_at, created_at,"
+                    + " accepted_terms_version, accepted_terms_at, accepted_terms_snapshot::text"
+                    + " AS accepted_terms_snapshot";
 
     // status <> 'EXPIRED' : depuis la migration V35, une chambre/un lit expiré(e) peut être
     // réservé(e) de nouveau, donc plusieurs lignes peuvent exister pour un même room_id au fil du
@@ -131,7 +133,20 @@ final class BookingPaymentTable {
             "SELECT bpr.room_id AS group_room_id, bp.id, bp.room_id, bp.bed_id,"
                     + " bp.vip_request_id, bp.plan, bp.status, bp.total_amount,"
                     + " bp.moov_payment_code, bp.moov_transaction_id, bp.payer_phone,"
-                    + " bp.expires_at, bp.created_at FROM booking_payment_room bpr JOIN"
+                    + " bp.expires_at, bp.created_at, bp.accepted_terms_version,"
+                    + " bp.accepted_terms_at, bp.accepted_terms_snapshot::text AS"
+                    + " accepted_terms_snapshot FROM booking_payment_room bpr JOIN"
                     + " booking_payment bp ON bp.id = bpr.booking_payment_id WHERE bpr.room_id ="
                     + " ANY (?) AND bp.status <> 'EXPIRED'";
+
+    // Trace de l'acceptation des conditions de réservation (voir migration V55,
+    // BookingPaymentService#attachAcceptedTerms, carte "Conditions de réservation gérées depuis le
+    // serveur") : renseignée juste après la création du paiement, dans la même transaction que la
+    // réservation (room/bed) — un rejet (version périmée) annule donc tout, cohérent avec
+    // ATTACH_GATEWAY_RESULT qui suit le même schéma. ?::jsonb : le pilote JDBC ne convertit pas
+    // automatiquement une String en jsonb sans cast explicite.
+    static final String ATTACH_ACCEPTED_TERMS =
+            "UPDATE booking_payment SET accepted_terms_version = ?, accepted_terms_at = now(),"
+                    + " accepted_terms_snapshot = ?::jsonb WHERE id = ? RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
 }

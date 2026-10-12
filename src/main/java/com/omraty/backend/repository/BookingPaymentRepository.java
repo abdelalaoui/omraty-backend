@@ -33,7 +33,10 @@ public class BookingPaymentRepository {
                             rs.getString("moov_transaction_id"),
                             rs.getString("payer_phone"),
                             rs.getObject("expires_at", LocalDateTime.class),
-                            rs.getObject("created_at", LocalDateTime.class));
+                            rs.getObject("created_at", LocalDateTime.class),
+                            rs.getString("accepted_terms_version"),
+                            rs.getObject("accepted_terms_at", LocalDateTime.class),
+                            rs.getString("accepted_terms_snapshot"));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -152,6 +155,28 @@ public class BookingPaymentRepository {
                         () ->
                                 new IllegalStateException(
                                         "Échec de la création du plan de paiement"));
+    }
+
+    /**
+     * Trace de l'acceptation des conditions de réservation (voir migration V55,
+     * BookingPaymentService#attachAcceptedTerms) : version affichée/acceptée et copie figée des
+     * textes acceptés (JSON déjà sérialisé côté service).
+     */
+    public BookingPayment attachAcceptedTerms(
+            long paymentId, String acceptedTermsVersion, String acceptedTermsSnapshotJson) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.ATTACH_ACCEPTED_TERMS,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        acceptedTermsVersion,
+                        acceptedTermsSnapshotJson,
+                        paymentId)
+                .stream()
+                .findFirst()
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "Paiement introuvable (id=" + paymentId + ")"));
     }
 
     /**

@@ -71,7 +71,11 @@ public class SecurityConfig {
                                                 "/packages/*",
                                                 "/hotels",
                                                 "/reservation-groups",
-                                                "/rooms/*/beds")
+                                                "/rooms/*/beds",
+                                                // Conditions à cocher avant de réserver, affichées
+                                                // avant même la connexion (voir
+                                                // BookingTermController).
+                                                "/booking-terms")
                                         .permitAll()
                                         .requestMatchers("/admin/**")
                                         .hasRole("ADMIN")

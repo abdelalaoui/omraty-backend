@@ -15,4 +15,10 @@ public record PurchaseRoomGroupRequest(
         @NotNull(message = "Le packageId est requis") Long packageId,
         @NotEmpty(message = "Au moins une chambre est requise")
                 List<@Valid RoomGroupItemRequest> items,
-        @NotNull(message = "Le plan de paiement est requis") PaymentPlan plan) {}
+        @NotNull(message = "Le plan de paiement est requis") PaymentPlan plan,
+        // Optionnels : compatibilité avec les app antérieures à la carte "Conditions de
+        // réservation gérées depuis le serveur", qui ne les envoient pas (voir
+        // BookingPaymentService, SecurityConfig). Version renvoyée par GET /booking-terms ;
+        // périmée -> 409.
+        String acceptedTermsVersion,
+        List<Long> acceptedTermIds) {}

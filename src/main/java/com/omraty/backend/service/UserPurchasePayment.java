@@ -1,8 +1,10 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.dto.response.BookingTermItemResponse;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -11,6 +13,10 @@ import java.util.List;
  * installments est vide pour plan = FULL (payé intégralement à la confirmation, aucune tranche).
  * nextDueDate = échéance de la 1ère tranche non payée, null si tout est payé (voir
  * BookingPaymentService.toPurchasePayment).
+ *
+ * <p>acceptedTermsVersion/acceptedTermsAt/acceptedTerms (migration V55, carte "Conditions de
+ * réservation gérées depuis le serveur") : trace de l'acceptation des conditions au moment de la
+ * réservation — null/vide pour un achat antérieur à cette carte ou une offre VIP.
  */
 public record UserPurchasePayment(
         long id,
@@ -19,4 +25,7 @@ public record UserPurchasePayment(
         BigDecimal paidAmount,
         BigDecimal remainingAmount,
         LocalDate nextDueDate,
-        List<UserInstallment> installments) {}
+        List<UserInstallment> installments,
+        String acceptedTermsVersion,
+        LocalDateTime acceptedTermsAt,
+        List<BookingTermItemResponse> acceptedTerms) {}

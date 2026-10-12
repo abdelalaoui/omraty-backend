@@ -19,6 +19,7 @@ import com.omraty.backend.service.RoomWithBeds;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -81,9 +83,18 @@ public class RoomController {
     public ResponseEntity<PaymentResponse> reserveBed(
             @AuthenticationPrincipal UUID userId,
             @PathVariable int type,
-            @Valid @RequestBody ReserveBedRequest request) {
+            @Valid @RequestBody ReserveBedRequest request,
+            @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
+                    String acceptLanguage) {
         BookingPayment payment =
-                roomService.reserveBed(type, request.packageId(), userId, request.plan());
+                roomService.reserveBed(
+                        type,
+                        request.packageId(),
+                        userId,
+                        request.plan(),
+                        request.acceptedTermsVersion(),
+                        request.acceptedTermIds(),
+                        acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
     }
 
@@ -95,8 +106,16 @@ public class RoomController {
     @PostMapping("/rooms/offer/beds/reserve")
     public ResponseEntity<PaymentResponse> reserveOfferBed(
             @AuthenticationPrincipal UUID userId,
-            @Valid @RequestBody ReserveOfferBedRequest request) {
-        BookingPayment payment = roomService.reserveOfferBed(request.packageId(), userId);
+            @Valid @RequestBody ReserveOfferBedRequest request,
+            @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
+                    String acceptLanguage) {
+        BookingPayment payment =
+                roomService.reserveOfferBed(
+                        request.packageId(),
+                        userId,
+                        request.acceptedTermsVersion(),
+                        request.acceptedTermIds(),
+                        acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
     }
 
@@ -109,9 +128,18 @@ public class RoomController {
     public ResponseEntity<PaymentResponse> purchaseRoom(
             @AuthenticationPrincipal UUID userId,
             @PathVariable int type,
-            @Valid @RequestBody PurchaseRoomRequest request) {
+            @Valid @RequestBody PurchaseRoomRequest request,
+            @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
+                    String acceptLanguage) {
         BookingPayment payment =
-                roomService.purchaseRoom(type, request.packageId(), userId, request.plan());
+                roomService.purchaseRoom(
+                        type,
+                        request.packageId(),
+                        userId,
+                        request.plan(),
+                        request.acceptedTermsVersion(),
+                        request.acceptedTermIds(),
+                        acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
     }
 
@@ -125,7 +153,9 @@ public class RoomController {
     @PostMapping("/rooms/group/purchase")
     public ResponseEntity<PaymentResponse> purchaseRoomGroup(
             @AuthenticationPrincipal UUID userId,
-            @Valid @RequestBody PurchaseRoomGroupRequest request) {
+            @Valid @RequestBody PurchaseRoomGroupRequest request,
+            @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
+                    String acceptLanguage) {
         List<RoomGroupItem> items =
                 request.items().stream()
                         .map(
@@ -133,7 +163,14 @@ public class RoomController {
                                         new RoomGroupItem(item.type(), item.quantity()))
                         .toList();
         BookingPayment payment =
-                roomService.purchaseRoomGroup(items, request.packageId(), userId, request.plan());
+                roomService.purchaseRoomGroup(
+                        items,
+                        request.packageId(),
+                        userId,
+                        request.plan(),
+                        request.acceptedTermsVersion(),
+                        request.acceptedTermIds(),
+                        acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
     }
 
