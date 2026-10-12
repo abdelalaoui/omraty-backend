@@ -62,6 +62,12 @@ whatsapp:
       account-sid: ${TWILIO_ACCOUNT_SID:}
       auth-token: ${TWILIO_AUTH_TOKEN:}
       verify-service-sid: ${TWILIO_VERIFY_SERVICE_SID:}
+      # Canal d'envoi du code : sms (par défaut, en attendant la validation WhatsApp par Meta) |
+      # whatsapp | call. Le Verify Service doit avoir ce canal activé, et pour sms les
+      # Geo permissions Twilio doivent autoriser le pays (Mauritanie +222).
+      channel: ${TWILIO_VERIFY_CHANNEL:sms}
+      # Langue du message envoyé par Twilio (vide = anglais, langue par défaut de Twilio).
+      locale: ${TWILIO_VERIFY_LOCALE:ar}
   webhook:
     # Requis par Meta pour finaliser la configuration production d'un numéro WhatsApp (voir
     # WhatsAppWebhookController) — comparé tel quel au hub.verify_token envoyé par Meta au moment

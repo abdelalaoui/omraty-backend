@@ -23,6 +23,10 @@ import org.springframework.web.util.UriUtils;
  * c'est Twilio qui génère, stocke et vérifie lui-même le code — voir
  * https://www.twilio.com/docs/verify/api/verification. Actif quand whatsapp.otp.provider=twilio
  * (voir application.yml) — sinon {@link LocalOtpVerificationProvider}.
+ *
+ * <p>Le canal d'envoi (sms, whatsapp, call) et la langue du message sont des réglages
+ * (whatsapp.otp.twilio.channel/locale) : SMS par défaut en attendant la validation WhatsApp par
+ * Meta, puis TWILIO_VERIFY_CHANNEL=whatsapp sur le serveur, sans changement de code.
  */
 @Service
 @ConditionalOnProperty(prefix = "whatsapp.otp", name = "provider", havingValue = "twilio")
@@ -38,16 +42,22 @@ public class TwilioVerifyOtpProvider implements OtpVerificationProvider {
     private final String accountSid;
     private final String authToken;
     private final String verifyServiceSid;
+    private final String channel;
+    private final String locale;
 
     public TwilioVerifyOtpProvider(
             ObjectMapper objectMapper,
             @Value("${whatsapp.otp.twilio.account-sid:}") String accountSid,
             @Value("${whatsapp.otp.twilio.auth-token:}") String authToken,
-            @Value("${whatsapp.otp.twilio.verify-service-sid:}") String verifyServiceSid) {
+            @Value("${whatsapp.otp.twilio.verify-service-sid:}") String verifyServiceSid,
+            @Value("${whatsapp.otp.twilio.channel:sms}") String channel,
+            @Value("${whatsapp.otp.twilio.locale:}") String locale) {
         this.objectMapper = objectMapper;
         this.accountSid = accountSid;
         this.authToken = authToken;
         this.verifyServiceSid = verifyServiceSid;
+        this.channel = channel.isBlank() ? "sms" : channel.trim();
+        this.locale = locale.trim();
         if (accountSid.isBlank() || authToken.isBlank() || verifyServiceSid.isBlank()) {
             log.warn(
                     "whatsapp.otp.provider=twilio mais TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/"
@@ -59,11 +69,18 @@ public class TwilioVerifyOtpProvider implements OtpVerificationProvider {
     @Override
     public void requestCode(String phone) {
         JsonNode response =
-                call("/Verifications", "To=" + encode(phone) + "&Channel=whatsapp", phone);
+                call("/Verifications", verificationBody(phone, channel, locale), phone);
         log.info(
-                "Code Twilio Verify envoyé (phone={}, status={})",
+                "Code Twilio Verify envoyé (phone={}, channel={}, status={})",
                 phone,
+                channel,
                 response.path("status").asText(""));
+    }
+
+    /** Corps de POST /Verifications ; Locale omis s'il est vide (message en anglais). */
+    static String verificationBody(String phone, String channel, String locale) {
+        String body = "To=" + encode(phone) + "&Channel=" + encode(channel);
+        return locale.isEmpty() ? body : body + "&Locale=" + encode(locale);
     }
 
     @Override
@@ -102,7 +119,7 @@ public class TwilioVerifyOtpProvider implements OtpVerificationProvider {
         } catch (Exception e) {
             log.error("Échec appel Twilio Verify {} (phone={})", path, phone, e);
             throw new AuthException.OtpSendFailedException(
-                    "Échec de l'envoi du code par WhatsApp", e);
+                    "Échec de l'envoi du code de vérification", e);
         }
     }
 
@@ -138,7 +155,7 @@ public class TwilioVerifyOtpProvider implements OtpVerificationProvider {
                 "Échec de l'envoi du code par WhatsApp : " + message, null);
     }
 
-    private String encode(String value) {
+    private static String encode(String value) {
         return UriUtils.encode(value, StandardCharsets.UTF_8);
     }
 }
