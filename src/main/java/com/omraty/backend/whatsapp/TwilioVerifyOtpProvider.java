@@ -68,8 +68,7 @@ public class TwilioVerifyOtpProvider implements OtpVerificationProvider {
 
     @Override
     public void requestCode(String phone) {
-        JsonNode response =
-                call("/Verifications", verificationBody(phone, channel, locale), phone);
+        JsonNode response = call("/Verifications", verificationBody(phone, channel, locale), phone);
         log.info(
                 "Code Twilio Verify envoyé (phone={}, channel={}, status={})",
                 phone,
