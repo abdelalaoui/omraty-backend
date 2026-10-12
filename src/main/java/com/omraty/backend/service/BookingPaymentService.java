@@ -245,7 +245,8 @@ public class BookingPaymentService {
      */
     public BookingPayment createOfferPaymentPlan(
             long bedId, BigDecimal offerPrice, OmraPackage pkg, UUID userId) {
-        return createPaymentPlan(null, bedId, null, PaymentPlan.FULL, offerPrice, pkg, userId);
+        return createPaymentPlan(
+                null, bedId, null, null, null, PaymentPlan.FULL, offerPrice, pkg, userId);
     }
 
     /**
@@ -301,7 +302,8 @@ public class BookingPaymentService {
             UUID userId) {
         BigDecimal amount =
                 plan == PaymentPlan.FULL ? applyFullPaymentDiscount(totalAmount) : totalAmount;
-        BookingPayment payment = createPaymentPlan(null, null, null, plan, amount, pkg, userId);
+        BookingPayment payment =
+                createPaymentPlan(null, null, null, null, null, plan, amount, pkg, userId);
         bookingPaymentRepository.linkRoomsToGroupPayment(payment.id(), roomIds);
         return payment;
     }
