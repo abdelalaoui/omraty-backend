@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.omraty.backend.entities.User;
+import com.omraty.backend.entities.enums.Gender;
 import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.exception.UserException;
 import com.omraty.backend.repository.AuthRepository;
@@ -52,7 +53,8 @@ class UserServiceTest {
                         null,
                         false,
                         LocalDateTime.now(),
-                        "USER");
+                        "USER",
+                        null);
     }
 
     private MultipartFile validPhoto() {
@@ -61,8 +63,46 @@ class UserServiceTest {
     }
 
     @Test
+    void getCurrentUser_returnsUser() {
+        when(authRepository.findById(user.id())).thenReturn(Optional.of(user));
+
+        assertThat(userService.getCurrentUser(user.id())).isEqualTo(user);
+    }
+
+    @Test
+    void getCurrentUser_whenAccountDeleted_throwsNotFound() {
+        User deleted =
+                new User(
+                        user.id(),
+                        "deleted-" + user.id(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        user.createdAt(),
+                        "USER",
+                        LocalDateTime.now());
+        when(authRepository.findById(user.id())).thenReturn(Optional.of(deleted));
+
+        assertThatThrownBy(() -> userService.getCurrentUser(user.id()))
+                .isInstanceOf(UserException.UserNotFoundException.class);
+    }
+
+    @Test
+    void getCurrentUser_whenMissing_throwsNotFound() {
+        when(authRepository.findById(user.id())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getCurrentUser(user.id()))
+                .isInstanceOf(UserException.UserNotFoundException.class);
+    }
+
+    @Test
     void updateIdentity_withBlankNni_throwsException() {
-        assertThatThrownBy(() -> userService.updateIdentity(user.id(), "  ", validPhoto()))
+        assertThatThrownBy(
+                        () ->
+                                userService.updateIdentity(
+                                        user.id(), "  ", validPhoto(), Gender.MALE))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
 
         verify_neverStoresOrUpdates();
@@ -72,7 +112,8 @@ class UserServiceTest {
     void updateIdentity_withEmptyPhoto_throwsException() {
         MultipartFile emptyPhoto = new MockMultipartFile("photo", new byte[0]);
 
-        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, emptyPhoto))
+        assertThatThrownBy(
+                        () -> userService.updateIdentity(user.id(), NNI, emptyPhoto, Gender.MALE))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
 
         verify_neverStoresOrUpdates();
@@ -84,7 +125,15 @@ class UserServiceTest {
                 new MockMultipartFile(
                         "photo", "id.pdf", "application/pdf", "fake-pdf-bytes".getBytes());
 
-        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, pdfFile))
+        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, pdfFile, Gender.MALE))
+                .isInstanceOf(UserException.InvalidIdentityRequestException.class);
+
+        verify_neverStoresOrUpdates();
+    }
+
+    @Test
+    void updateIdentity_withNullGender_throwsException() {
+        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, validPhoto(), null))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
 
         verify_neverStoresOrUpdates();
@@ -94,10 +143,11 @@ class UserServiceTest {
     void updateIdentity_whenUserNotFound_throwsException() {
         MultipartFile photo = validPhoto();
         when(fileStorageService.store(photo, "identity")).thenReturn("/uploads/identity/x.jpg");
-        when(authRepository.updateIdentity(user.id(), NNI, "/uploads/identity/x.jpg", false))
+        when(authRepository.updateIdentity(
+                        user.id(), NNI, "/uploads/identity/x.jpg", false, "MALE"))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, photo))
+        assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, photo, Gender.MALE))
                 .isInstanceOf(AuthException.InvalidTokenException.class);
     }
 
@@ -114,12 +164,14 @@ class UserServiceTest {
                         "/uploads/identity/x.jpg",
                         false,
                         user.createdAt(),
-                        user.role());
+                        user.role(),
+                        null);
         when(fileStorageService.store(photo, "identity")).thenReturn("/uploads/identity/x.jpg");
-        when(authRepository.updateIdentity(user.id(), NNI, "/uploads/identity/x.jpg", false))
+        when(authRepository.updateIdentity(
+                        user.id(), NNI, "/uploads/identity/x.jpg", false, "MALE"))
                 .thenReturn(Optional.of(updatedUser));
 
-        User result = userService.updateIdentity(user.id(), NNI, photo);
+        User result = userService.updateIdentity(user.id(), NNI, photo, Gender.MALE);
 
         assertThat(result).isEqualTo(updatedUser);
         assertThat(result.identityVerified()).isFalse();
@@ -128,7 +180,7 @@ class UserServiceTest {
     private void verify_neverStoresOrUpdates() {
         verify(fileStorageService, never()).store(any(), anyString());
         verify(authRepository, never())
-                .updateIdentity(any(), anyString(), anyString(), anyBoolean());
+                .updateIdentity(any(), anyString(), anyString(), anyBoolean(), anyString());
     }
 
     private User pendingUser() {
@@ -141,7 +193,8 @@ class UserServiceTest {
                 "/uploads/identity/x.jpg",
                 false,
                 user.createdAt(),
-                user.role());
+                user.role(),
+                null);
     }
 
     @Test
@@ -185,7 +238,8 @@ class UserServiceTest {
                         pending.idPhotoUrl(),
                         true,
                         pending.createdAt(),
-                        pending.role());
+                        pending.role(),
+                        null);
         when(authRepository.findById(pending.id())).thenReturn(Optional.of(pending));
         when(authRepository.approveIdentity(pending.id())).thenReturn(Optional.of(approved));
 
@@ -193,6 +247,88 @@ class UserServiceTest {
 
         assertThat(result.identityVerified()).isTrue();
         verify(notificationService).create(eq(pending.id()), anyString(), anyString());
+    }
+
+    @Test
+    void deleteAccount_whenUserNotFoundOrAlreadyDeleted_throwsException() {
+        when(authRepository.anonymize(user.id())).thenReturn(0);
+
+        assertThatThrownBy(() -> userService.deleteAccount(user.id()))
+                .isInstanceOf(UserException.UserNotFoundException.class);
+
+        verify(authRepository, never()).revokeAllRefreshTokensForUser(any());
+    }
+
+    @Test
+    void deleteAccount_success_anonymizesAndRevokesAllRefreshTokens() {
+        when(authRepository.anonymize(user.id())).thenReturn(1);
+
+        userService.deleteAccount(user.id());
+
+        verify(authRepository).revokeAllRefreshTokensForUser(user.id());
+    }
+
+    @Test
+    void updateIdentityAsAdmin_withNeitherNniNorPhoto_throwsException() {
+        assertThatThrownBy(() -> userService.updateIdentityAsAdmin(user.id(), null, null))
+                .isInstanceOf(UserException.InvalidIdentityRequestException.class);
+
+        verify(fileStorageService, never()).store(any(), anyString());
+        verify(authRepository, never()).updateIdentityFields(any(), any(), any());
+    }
+
+    @Test
+    void updateIdentityAsAdmin_withBlankNni_throwsException() {
+        assertThatThrownBy(() -> userService.updateIdentityAsAdmin(user.id(), "  ", null))
+                .isInstanceOf(UserException.InvalidIdentityRequestException.class);
+
+        verify(authRepository, never()).updateIdentityFields(any(), any(), any());
+    }
+
+    @Test
+    void updateIdentityAsAdmin_withUnsupportedPhotoContentType_throwsException() {
+        MultipartFile pdfFile =
+                new MockMultipartFile(
+                        "photo", "id.pdf", "application/pdf", "fake-pdf-bytes".getBytes());
+
+        assertThatThrownBy(() -> userService.updateIdentityAsAdmin(user.id(), null, pdfFile))
+                .isInstanceOf(UserException.InvalidIdentityRequestException.class);
+
+        verify(authRepository, never()).updateIdentityFields(any(), any(), any());
+    }
+
+    @Test
+    void updateIdentityAsAdmin_whenUserNotFound_throwsException() {
+        when(authRepository.updateIdentityFields(user.id(), NNI, null))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.updateIdentityAsAdmin(user.id(), NNI, null))
+                .isInstanceOf(UserException.UserNotFoundException.class);
+    }
+
+    @Test
+    void updateIdentityAsAdmin_withNniOnly_leavesPhotoUntouched() {
+        User corrected = pendingUser();
+        when(authRepository.updateIdentityFields(user.id(), NNI, null))
+                .thenReturn(Optional.of(corrected));
+
+        User result = userService.updateIdentityAsAdmin(user.id(), NNI, null);
+
+        assertThat(result).isEqualTo(corrected);
+        verify(fileStorageService, never()).store(any(), anyString());
+    }
+
+    @Test
+    void updateIdentityAsAdmin_withPhotoOnly_storesPhotoAndLeavesNniUntouched() {
+        MultipartFile photo = validPhoto();
+        User corrected = pendingUser();
+        when(fileStorageService.store(photo, "identity")).thenReturn("/uploads/identity/x.jpg");
+        when(authRepository.updateIdentityFields(user.id(), null, "/uploads/identity/x.jpg"))
+                .thenReturn(Optional.of(corrected));
+
+        User result = userService.updateIdentityAsAdmin(user.id(), null, photo);
+
+        assertThat(result).isEqualTo(corrected);
     }
 
     @Test
@@ -208,7 +344,8 @@ class UserServiceTest {
                         null,
                         false,
                         pending.createdAt(),
-                        pending.role());
+                        pending.role(),
+                        null);
         when(authRepository.findById(pending.id())).thenReturn(Optional.of(pending));
         when(authRepository.rejectIdentity(pending.id())).thenReturn(Optional.of(rejected));
 

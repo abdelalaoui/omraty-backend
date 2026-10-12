@@ -5,7 +5,7 @@ final class BannerTable {
     private BannerTable() {}
 
     static final String BANNER_COLUMNS =
-            "id, image_url, title, description, visible, display_order, updated_at";
+            "id, image_url, title, description, visible, display_order, cta_type, updated_at";
 
     static final String SELECT_ACTIVE_BANNERS =
             "SELECT "
@@ -22,17 +22,20 @@ final class BannerTable {
             "SELECT COALESCE(MAX(display_order), -1) FROM banner";
 
     static final String INSERT_BANNER =
-            "INSERT INTO banner (image_url, title, description, display_order, visible) VALUES (?,"
-                    + " ?, ?, ?, ?) RETURNING "
+            "INSERT INTO banner (image_url, title, description, display_order, visible, cta_type)"
+                    + " VALUES (?, ?, ?, ?, ?, ?) RETURNING "
                     + BANNER_COLUMNS;
 
     // Champs non fournis (null) : COALESCE garde la valeur existante, permet une mise à jour
     // partielle (ex : ne changer que visible pour masquer une bannière). Ne touche pas à l'image,
-    // gérée à part via UPDATE_BANNER_IMAGE.
+    // gérée à part via UPDATE_BANNER_IMAGE. Comme les autres champs, impossible de remettre
+    // cta_type à NULL une fois posé via cet endpoint (limitation déjà acceptée pour title/
+    // description) — pas un besoin identifié pour l'instant.
     static final String UPDATE_BANNER =
             "UPDATE banner SET title = COALESCE(?, title), description = COALESCE(?, description),"
                     + " display_order = COALESCE(?, display_order), visible = COALESCE(?, visible),"
-                    + " updated_at = now() WHERE id = ? RETURNING "
+                    + " cta_type = COALESCE(?, cta_type), updated_at = now() WHERE id = ? RETURNING"
+                    + " "
                     + BANNER_COLUMNS;
 
     static final String UPDATE_BANNER_IMAGE =

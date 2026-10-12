@@ -43,6 +43,12 @@ public class ServiceCardRepository {
                 ServiceCardTable.SELECT_ACTIVE_SERVICE_CARDS, SERVICE_CARD_ROW_MAPPER);
     }
 
+    /** Toutes les cartes (visibles ou masquées), pour l'écran d'administration. */
+    public List<ServiceCard> findAllServiceCards() {
+        return jdbcTemplate.query(
+                ServiceCardTable.SELECT_ALL_SERVICE_CARDS, SERVICE_CARD_ROW_MAPPER);
+    }
+
     public Optional<ServiceCard> findById(long id) {
         return jdbcTemplate
                 .query(ServiceCardTable.SELECT_SERVICE_CARD_BY_ID, SERVICE_CARD_ROW_MAPPER, id)
@@ -96,13 +102,19 @@ public class ServiceCardRepository {
             String type,
             String titleFr,
             String titleEn,
+            boolean clearTitleEn,
             String titleAr,
+            boolean clearTitleAr,
             String descriptionFr,
             String descriptionEn,
+            boolean clearDescriptionEn,
             String descriptionAr,
+            boolean clearDescriptionAr,
             String buttonTextFr,
             String buttonTextEn,
+            boolean clearButtonTextEn,
             String buttonTextAr,
+            boolean clearButtonTextAr,
             String icon,
             String imageUrl,
             Boolean comingSoon,
@@ -113,13 +125,19 @@ public class ServiceCardRepository {
                         SERVICE_CARD_ROW_MAPPER,
                         type,
                         titleFr,
+                        clearTitleEn,
                         titleEn,
+                        clearTitleAr,
                         titleAr,
                         descriptionFr,
+                        clearDescriptionEn,
                         descriptionEn,
+                        clearDescriptionAr,
                         descriptionAr,
                         buttonTextFr,
+                        clearButtonTextEn,
                         buttonTextEn,
+                        clearButtonTextAr,
                         buttonTextAr,
                         icon,
                         imageUrl,
@@ -140,5 +158,12 @@ public class ServiceCardRepository {
                         id)
                 .stream()
                 .findFirst();
+    }
+
+    /**
+     * @return true si une carte a été supprimée, false si aucune carte ne correspond à cet id.
+     */
+    public boolean deleteById(long id) {
+        return jdbcTemplate.update(ServiceCardTable.DELETE_SERVICE_CARD, id) > 0;
     }
 }

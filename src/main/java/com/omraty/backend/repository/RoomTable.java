@@ -29,6 +29,12 @@ final class RoomTable {
     static final String SELECT_ROOMS_BY_USER_ID =
             "SELECT " + ROOM_COLUMNS + " FROM room WHERE user_id = ? ORDER BY created_at DESC";
 
+    // Chambres actuellement achetées, tous utilisateurs confondus, pour GET /admin/bookings (voir
+    // RoomService.getAllPurchases) : une chambre libérée repasse à user_id NULL (voir
+    // RELEASE_ROOM).
+    static final String SELECT_PURCHASED_ROOMS =
+            "SELECT " + ROOM_COLUMNS + " FROM room WHERE user_id IS NOT NULL";
+
     static final String SELECT_TOTAL_RESERVED_FOR_PACKAGE =
             "SELECT COALESCE(SUM(reserved_count), 0) FROM room WHERE package_id = ?";
 

@@ -34,4 +34,6 @@ final class BenefitTable {
 
     static final String UPDATE_DISPLAY_ORDER =
             "UPDATE benefit SET display_order = ?, updated_at = now() WHERE id = ?";
+
+    static final String DELETE_BENEFIT = "DELETE FROM benefit WHERE id = ?";
 }

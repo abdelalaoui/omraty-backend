@@ -60,6 +60,33 @@ class ServiceTierServiceTest {
     }
 
     @Test
+    void getAllServiceTiers_returnsVisibleAndHiddenTiersFromRepository() {
+        List<ServiceTier> tiers =
+                List.of(
+                        serviceTier(
+                                1L, ServiceTierType.ROOM, 2, new BigDecimal("90000"), true, false),
+                        serviceTier(2L, ServiceTierType.VIP, null, null, false, false));
+        when(serviceTierRepository.findAll()).thenReturn(tiers);
+
+        assertThat(serviceTierService().getAllServiceTiers()).isEqualTo(tiers);
+    }
+
+    @Test
+    void deleteServiceTier_whenNotFound_throwsException() {
+        when(serviceTierRepository.deleteById(1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> serviceTierService().deleteServiceTier(1L))
+                .isInstanceOf(ServiceTierException.ServiceTierNotFoundException.class);
+    }
+
+    @Test
+    void deleteServiceTier_whenFound_delegatesToRepository() {
+        when(serviceTierRepository.deleteById(1L)).thenReturn(true);
+
+        serviceTierService().deleteServiceTier(1L);
+    }
+
+    @Test
     void createServiceTier_withoutDisplayOrderVisibleOrClosed_defaultsToZeroVisibleAndNotClosed() {
         when(serviceTierRepository.insert(
                         ServiceTierType.VIP,

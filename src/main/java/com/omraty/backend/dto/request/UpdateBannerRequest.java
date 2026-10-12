@@ -7,4 +7,4 @@ package com.omraty.backend.dto.request;
  * endpoint dédié (multipart), pas ici.
  */
 public record UpdateBannerRequest(
-        String title, String description, Integer displayOrder, Boolean visible) {}
+        String title, String description, Integer displayOrder, Boolean visible, String ctaType) {}

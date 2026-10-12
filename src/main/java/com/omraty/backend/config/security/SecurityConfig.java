@@ -16,9 +16,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AppAccessFilter appAccessFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter, AppAccessFilter appAccessFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.appAccessFilter = appAccessFilter;
     }
 
     @Bean
@@ -37,9 +40,38 @@ public class SecurityConfig {
                                                 // reçue.
                                                 "/webhooks/**",
                                                 "/app/version-check",
+                                                "/app/access",
                                                 "/v3/api-docs/**",
                                                 "/swagger-ui/**",
-                                                "/swagger-ui.html")
+                                                "/swagger-ui.html",
+                                                // Images publiques servies par WebConfig
+                                                // (bannières, cartes de services) : affichées
+                                                // via <img> (admin panel, app mobile), qui ne
+                                                // peut pas envoyer de JWT. Volontairement pas
+                                                // /uploads/** : identity/ et invoices/ (photos
+                                                // d'identité, factures) doivent rester privés.
+                                                "/uploads/banner/**",
+                                                "/uploads/service-card/**")
+                                        .permitAll()
+                                        // Consultation du catalogue (bannières, avantages,
+                                        // services, formules, packages, hôtels, groupes de
+                                        // réservation, disponibilité des lits) : accessible sans
+                                        // compte (voir Apple App Review Guideline 5.1.1(v) — la
+                                        // connexion ne doit être exigée que pour les actions liées
+                                        // au compte : réserver/payer, consulter son profil/ses
+                                        // achats). Réserver/acheter reste authentifié : seules les
+                                        // routes GET ci-dessous changent.
+                                        .requestMatchers(
+                                                HttpMethod.GET,
+                                                "/home/banners",
+                                                "/home/benefits",
+                                                "/home/service-cards",
+                                                "/service-tiers",
+                                                "/packages",
+                                                "/packages/*",
+                                                "/hotels",
+                                                "/reservation-groups",
+                                                "/rooms/*/beds")
                                         .permitAll()
                                         .requestMatchers("/admin/**")
                                         .hasRole("ADMIN")
@@ -50,7 +82,8 @@ public class SecurityConfig {
                                         .anyRequest()
                                         .authenticated())
                 .addFilterBefore(
-                        jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                        jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(appAccessFilter, JwtAuthenticationFilter.class);
         return http.build();
     }
 

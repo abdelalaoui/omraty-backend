@@ -33,6 +33,21 @@ public class AuthExceptionHandler {
                 .body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(AuthException.OtpRequestTooSoonException.class)
+    public ResponseEntity<ErrorResponse> handleOtpRequestTooSoon(
+            AuthException.OtpRequestTooSoonException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(AuthException.OtpSendFailedException.class)
+    public ResponseEntity<ErrorResponse> handleOtpSendFailed(
+            AuthException.OtpSendFailedException e) {
+        log.error("Échec de l'envoi du code OTP", e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
         String message =
@@ -161,6 +176,12 @@ public class AuthExceptionHandler {
     public ResponseEntity<ErrorResponse> handlePackageNotFound(
             PackageException.PackageNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(PackageException.PackageInUseException.class)
+    public ResponseEntity<ErrorResponse> handlePackageInUse(
+            PackageException.PackageInUseException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
     }
 
     @ExceptionHandler(RoomException.InvalidRoomTypeException.class)

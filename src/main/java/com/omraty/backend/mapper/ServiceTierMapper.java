@@ -41,8 +41,14 @@ public final class ServiceTierMapper {
                 serviceTier.labelFr(),
                 serviceTier.labelEn(),
                 serviceTier.labelAr(),
+                serviceTier.displayOrder(),
                 serviceTier.visible(),
                 serviceTier.closed());
+    }
+
+    public static List<AdminServiceTierResponse> toAdminResponseList(
+            List<ServiceTier> serviceTiers) {
+        return serviceTiers.stream().map(ServiceTierMapper::toAdminResponse).toList();
     }
 
     private static String labelFor(ServiceTier serviceTier, String language) {

@@ -112,4 +112,26 @@ final class BookingPaymentTable {
     // atomique par construction, contrairement à un compteur calculé côté Java (voir
     // InvoiceService).
     static final String SELECT_NEXT_INVOICE_NUMBER = "SELECT nextval('invoice_number_seq')";
+
+    // Paiement groupé (voir migration V43) : lie une chambre déjà créée à un booking_payment dont
+    // room_id/bed_id/vip_request_id sont tous NULL.
+    static final String INSERT_BOOKING_PAYMENT_ROOM =
+            "INSERT INTO booking_payment_room (booking_payment_id, room_id) VALUES (?, ?)";
+
+    // Chambres d'un paiement groupé, pour la libération à l'expiration (voir
+    // PaymentExpirationService) et la description de facture (voir InvoiceService).
+    static final String SELECT_GROUP_ROOM_IDS_BY_PAYMENT_ID =
+            "SELECT room_id FROM booking_payment_room WHERE booking_payment_id = ?";
+
+    // Paiements groupés couvrant certaines de ces chambres, pour GET /users/me/purchases (voir
+    // RoomService.getPurchasesForUser) — complète SELECT_BOOKING_PAYMENTS_BY_ROOM_IDS pour les
+    // achats groupés, où booking_payment.room_id est NULL (voir migration V43). group_room_id
+    // (alias) évite la collision avec la colonne room_id de booking_payment (toujours NULL ici).
+    static final String SELECT_GROUP_BOOKING_PAYMENTS_BY_ROOM_IDS =
+            "SELECT bpr.room_id AS group_room_id, bp.id, bp.room_id, bp.bed_id,"
+                    + " bp.vip_request_id, bp.plan, bp.status, bp.total_amount,"
+                    + " bp.moov_payment_code, bp.moov_transaction_id, bp.payer_phone,"
+                    + " bp.expires_at, bp.created_at FROM booking_payment_room bpr JOIN"
+                    + " booking_payment bp ON bp.id = bpr.booking_payment_id WHERE bpr.room_id ="
+                    + " ANY (?) AND bp.status <> 'EXPIRED'";
 }

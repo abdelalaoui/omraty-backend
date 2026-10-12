@@ -77,6 +77,10 @@ public class PaymentExpirationService {
      * Passage EXPIRED + libération de la place pour un seul paiement, de façon atomique.
      * Package-private uniquement pour rester appelable via {@code self} depuis cette classe ; n'est
      * pas destiné à être appelé directement de l'extérieur.
+     *
+     * <p>roomId/bedId/vipRequestId tous NULL (paiement groupé, voir migration V43,
+     * BookingPaymentService.createGroupPaymentPlan) : libère chacune de ses chambres (voir
+     * RoomService.releaseGroupReservation) au lieu d'une seule.
      */
     @Transactional
     boolean expireAndRelease(BookingPayment payment) {
@@ -84,8 +88,15 @@ public class PaymentExpirationService {
                 .markExpiredIfPending(payment.id())
                 .map(
                         expired -> {
-                            roomService.releaseReservation(
-                                    payment.roomId(), payment.bedId(), payment.vipRequestId());
+                            if (payment.roomId() != null
+                                    || payment.bedId() != null
+                                    || payment.vipRequestId() != null) {
+                                roomService.releaseReservation(
+                                        payment.roomId(), payment.bedId(), payment.vipRequestId());
+                            } else {
+                                roomService.releaseGroupReservation(
+                                        bookingPaymentRepository.findGroupRoomIds(payment.id()));
+                            }
                             return true;
                         })
                 .orElse(false);

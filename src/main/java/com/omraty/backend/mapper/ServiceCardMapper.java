@@ -35,6 +35,11 @@ public final class ServiceCardMapper {
                 serviceCard.visible());
     }
 
+    public static List<AdminServiceCardResponse> toAdminResponseList(
+            List<ServiceCard> serviceCards) {
+        return serviceCards.stream().map(ServiceCardMapper::toAdminResponse).toList();
+    }
+
     public static AdminServiceCardResponse toAdminResponse(ServiceCard serviceCard) {
         return new AdminServiceCardResponse(
                 serviceCard.id(),

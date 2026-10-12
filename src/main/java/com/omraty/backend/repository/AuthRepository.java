@@ -2,6 +2,8 @@ package com.omraty.backend.repository;
 
 import com.omraty.backend.entities.RefreshToken;
 import com.omraty.backend.entities.User;
+import java.sql.Array;
+import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -24,7 +26,8 @@ public class AuthRepository {
                             rs.getString("id_photo_url"),
                             rs.getBoolean("identity_verified"),
                             rs.getObject("created_at", LocalDateTime.class),
-                            rs.getString("role"));
+                            rs.getString("role"),
+                            rs.getObject("deleted_at", LocalDateTime.class));
 
     private static final RowMapper<RefreshToken> REFRESH_TOKEN_ROW_MAPPER =
             (rs, rowNum) ->
@@ -52,13 +55,44 @@ public class AuthRepository {
                 .findFirst();
     }
 
+    /** Voir RoomService.getAllPurchases (GET /admin/bookings). */
+    public List<User> findByIds(List<UUID> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbcTemplate.query(
+                UsersTable.SELECT_USERS_BY_IDS,
+                (PreparedStatement ps) -> {
+                    Array array =
+                            ps.getConnection().createArrayOf("uuid", ids.toArray(new UUID[0]));
+                    ps.setArray(1, array);
+                },
+                USER_ROW_MAPPER);
+    }
+
+    /** Voir NotificationService.broadcastToAllUsers (AdminNotificationController, diffusion). */
+    public List<UUID> findAllActiveUserIds() {
+        return jdbcTemplate.query(
+                UsersTable.SELECT_ALL_ACTIVE_USER_IDS,
+                (rs, rowNum) -> rs.getObject("id", UUID.class));
+    }
+
     public User createUser(String phone, String passwordHash, String gender) {
         return jdbcTemplate.queryForObject(
                 UsersTable.INSERT_USER, USER_ROW_MAPPER, phone, passwordHash, gender);
     }
 
+    /**
+     * Voir UsersTable.INSERT_USER_PHONE_ONLY — compte créé à la volée pour un numéro inconnu lors
+     * d'une demande d'OTP (voir AuthService.requestOtp).
+     */
+    public User createUserPhoneOnly(String phone) {
+        return jdbcTemplate.queryForObject(
+                UsersTable.INSERT_USER_PHONE_ONLY, USER_ROW_MAPPER, phone);
+    }
+
     public Optional<User> updateIdentity(
-            UUID userId, String nni, String idPhotoUrl, boolean identityVerified) {
+            UUID userId, String nni, String idPhotoUrl, boolean identityVerified, String gender) {
         return jdbcTemplate
                 .query(
                         UsersTable.UPDATE_IDENTITY,
@@ -66,7 +100,16 @@ public class AuthRepository {
                         nni,
                         idPhotoUrl,
                         identityVerified,
+                        gender,
                         userId)
+                .stream()
+                .findFirst();
+    }
+
+    /** nni/idPhotoUrl : chacun optionnel, voir UserService.updateIdentityAsAdmin. */
+    public Optional<User> updateIdentityFields(UUID userId, String nni, String idPhotoUrl) {
+        return jdbcTemplate
+                .query(UsersTable.UPDATE_IDENTITY_FIELDS, USER_ROW_MAPPER, nni, idPhotoUrl, userId)
                 .stream()
                 .findFirst();
     }
@@ -108,5 +151,21 @@ public class AuthRepository {
 
     public int deleteExpiredOrRevokedRefreshTokens() {
         return jdbcTemplate.update(RefreshTokensTable.DELETE_EXPIRED_OR_REVOKED);
+    }
+
+    public int revokeAllRefreshTokensForUser(UUID userId) {
+        return jdbcTemplate.update(RefreshTokensTable.REVOKE_ALL_REFRESH_TOKENS_FOR_USER, userId);
+    }
+
+    /**
+     * Anonymise le compte (voir UserService.deleteAccount). Retourne le nombre de lignes affectées
+     * (0 si le compte est déjà supprimé ou introuvable) plutôt qu'un User : la ligne devient
+     * inutilisable, aucun appelant n'a besoin de la relire.
+     */
+    public int anonymize(UUID userId) {
+        String unusablePhone = "deleted-" + userId;
+        String unusablePasswordHash = "deleted-" + UUID.randomUUID();
+        return jdbcTemplate.update(
+                UsersTable.ANONYMIZE_USER, unusablePhone, unusablePasswordHash, userId);
     }
 }
