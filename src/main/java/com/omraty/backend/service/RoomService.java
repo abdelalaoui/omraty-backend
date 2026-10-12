@@ -156,6 +156,50 @@ public class RoomService {
                 acceptLanguage);
     }
 
+    /**
+     * Comme {@link #reserveBed(int, long, UUID, PaymentPlan)}, avec en plus le choix d'un moyen de
+     * paiement manuel (voir BookingPaymentService.createPaymentPlan) — paymentMethodCode null =
+     * flux passerelle Moov inchangé (compatibilité app 1.0/1.0.1).
+     */
+    @Transactional
+    public BookingPayment reserveBed(
+            int type, long packageId, UUID userId, PaymentPlan plan, String paymentMethodCode) {
+        ReservedBedContext ctx = reserveBedInternal(type, packageId, userId);
+        return createBedPaymentPlan(ctx, plan, userId, paymentMethodCode);
+    }
+
+    /**
+     * Moyen de paiement manuel et trace de l'acceptation des conditions de réservation à la fois
+     * (voir RoomController) : le paiement est créé puis les conditions y sont attachées dans la
+     * même transaction — une version de conditions périmée annule donc toute la réservation.
+     */
+    @Transactional
+    public BookingPayment reserveBed(
+            int type,
+            long packageId,
+            UUID userId,
+            PaymentPlan plan,
+            String paymentMethodCode,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        ReservedBedContext ctx = reserveBedInternal(type, packageId, userId);
+        return bookingPaymentService.attachAcceptedTerms(
+                createBedPaymentPlan(ctx, plan, userId, paymentMethodCode),
+                acceptedTermsVersion,
+                acceptedTermIds,
+                acceptLanguage);
+    }
+
+    private BookingPayment createBedPaymentPlan(
+            ReservedBedContext ctx, PaymentPlan plan, UUID userId, String paymentMethodCode) {
+        return paymentMethodCode == null
+                ? bookingPaymentService.createPaymentPlan(
+                        null, ctx.bedId(), plan, ctx.price(), ctx.pkg(), userId)
+                : bookingPaymentService.createPaymentPlan(
+                        null, ctx.bedId(), plan, ctx.price(), ctx.pkg(), userId, paymentMethodCode);
+    }
+
     /** Mécanique de réservation partagée entre les deux {@link #reserveBed} ci-dessus. */
     private ReservedBedContext reserveBedInternal(int type, long packageId, UUID userId) {
         validateSharedRoomType(type);
@@ -229,6 +273,45 @@ public class RoomService {
                 acceptLanguage);
     }
 
+    /**
+     * Comme {@link #reserveOfferBed(long, UUID)}, avec en plus le choix d'un moyen de paiement
+     * manuel (voir BookingPaymentService.createOfferPaymentPlan).
+     */
+    @Transactional
+    public BookingPayment reserveOfferBed(long packageId, UUID userId, String paymentMethodCode) {
+        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId);
+        return createOfferBedPaymentPlan(ctx, userId, paymentMethodCode);
+    }
+
+    /**
+     * Moyen de paiement manuel et trace des conditions acceptées à la fois (voir {@link
+     * #reserveBed(int, long, UUID, PaymentPlan, String, String, List, String)}, même mécanisme).
+     */
+    @Transactional
+    public BookingPayment reserveOfferBed(
+            long packageId,
+            UUID userId,
+            String paymentMethodCode,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId);
+        return bookingPaymentService.attachAcceptedTerms(
+                createOfferBedPaymentPlan(ctx, userId, paymentMethodCode),
+                acceptedTermsVersion,
+                acceptedTermIds,
+                acceptLanguage);
+    }
+
+    private BookingPayment createOfferBedPaymentPlan(
+            ReservedBedContext ctx, UUID userId, String paymentMethodCode) {
+        return paymentMethodCode == null
+                ? bookingPaymentService.createOfferPaymentPlan(
+                        ctx.bedId(), ctx.price(), ctx.pkg(), userId)
+                : bookingPaymentService.createOfferPaymentPlan(
+                        ctx.bedId(), ctx.price(), ctx.pkg(), userId, paymentMethodCode);
+    }
+
     private ReservedBedContext reserveOfferBedInternal(long packageId, UUID userId) {
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
@@ -299,6 +382,48 @@ public class RoomService {
                 acceptLanguage);
     }
 
+    /**
+     * Comme {@link #purchaseRoom(int, long, UUID, PaymentPlan)}, avec en plus le choix d'un moyen
+     * de paiement manuel (voir BookingPaymentService.createPaymentPlan).
+     */
+    @Transactional
+    public BookingPayment purchaseRoom(
+            int type, long packageId, UUID userId, PaymentPlan plan, String paymentMethodCode) {
+        PurchasedRoomContext ctx = purchaseRoomInternal(type, packageId, userId);
+        return createRoomPaymentPlan(ctx, plan, userId, paymentMethodCode);
+    }
+
+    /**
+     * Moyen de paiement manuel et trace des conditions acceptées à la fois (voir {@link
+     * #reserveBed(int, long, UUID, PaymentPlan, String, String, List, String)}, même mécanisme).
+     */
+    @Transactional
+    public BookingPayment purchaseRoom(
+            int type,
+            long packageId,
+            UUID userId,
+            PaymentPlan plan,
+            String paymentMethodCode,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        PurchasedRoomContext ctx = purchaseRoomInternal(type, packageId, userId);
+        return bookingPaymentService.attachAcceptedTerms(
+                createRoomPaymentPlan(ctx, plan, userId, paymentMethodCode),
+                acceptedTermsVersion,
+                acceptedTermIds,
+                acceptLanguage);
+    }
+
+    private BookingPayment createRoomPaymentPlan(
+            PurchasedRoomContext ctx, PaymentPlan plan, UUID userId, String paymentMethodCode) {
+        return paymentMethodCode == null
+                ? bookingPaymentService.createPaymentPlan(
+                        ctx.roomId(), null, plan, ctx.price(), ctx.pkg(), userId)
+                : bookingPaymentService.createPaymentPlan(
+                        ctx.roomId(), null, plan, ctx.price(), ctx.pkg(), userId, paymentMethodCode);
+    }
+
     private PurchasedRoomContext purchaseRoomInternal(int type, long packageId, UUID userId) {
         validateWholeRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
@@ -362,6 +487,57 @@ public class RoomService {
                 acceptedTermsVersion,
                 acceptedTermIds,
                 acceptLanguage);
+    }
+
+    /**
+     * Comme {@link #purchaseRoomGroup(List, long, UUID, PaymentPlan)}, avec en plus le choix d'un
+     * moyen de paiement manuel (voir BookingPaymentService.createGroupPaymentPlan).
+     */
+    @Transactional
+    public BookingPayment purchaseRoomGroup(
+            List<RoomGroupItem> items,
+            long packageId,
+            UUID userId,
+            PaymentPlan plan,
+            String paymentMethodCode) {
+        PurchasedRoomGroupContext ctx = purchaseRoomGroupInternal(items, packageId, userId);
+        return createGroupPaymentPlan(ctx, plan, userId, paymentMethodCode);
+    }
+
+    /**
+     * Moyen de paiement manuel et trace des conditions acceptées à la fois (voir {@link
+     * #reserveBed(int, long, UUID, PaymentPlan, String, String, List, String)}, même mécanisme).
+     */
+    @Transactional
+    public BookingPayment purchaseRoomGroup(
+            List<RoomGroupItem> items,
+            long packageId,
+            UUID userId,
+            PaymentPlan plan,
+            String paymentMethodCode,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        PurchasedRoomGroupContext ctx = purchaseRoomGroupInternal(items, packageId, userId);
+        return bookingPaymentService.attachAcceptedTerms(
+                createGroupPaymentPlan(ctx, plan, userId, paymentMethodCode),
+                acceptedTermsVersion,
+                acceptedTermIds,
+                acceptLanguage);
+    }
+
+    private BookingPayment createGroupPaymentPlan(
+            PurchasedRoomGroupContext ctx, PaymentPlan plan, UUID userId, String paymentMethodCode) {
+        return paymentMethodCode == null
+                ? bookingPaymentService.createGroupPaymentPlan(
+                        ctx.roomIds(), plan, ctx.totalAmount(), ctx.pkg(), userId)
+                : bookingPaymentService.createGroupPaymentPlan(
+                        ctx.roomIds(),
+                        plan,
+                        ctx.totalAmount(),
+                        ctx.pkg(),
+                        userId,
+                        paymentMethodCode);
     }
 
     private PurchasedRoomGroupContext purchaseRoomGroupInternal(

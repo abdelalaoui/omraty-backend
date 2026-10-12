@@ -61,6 +61,14 @@ public final class PurchaseMapper {
                 payment.remainingAmount(),
                 payment.nextDueDate(),
                 payment.installments().stream().map(PurchaseMapper::toInstallmentResponse).toList(),
+                payment.paymentMethod(),
+                payment.paymentReference(),
+                payment.merchantNumber(),
+                payment.status(),
+                payment.declaredAt(),
+                payment.hasInvoice(),
+                payment.invoiceNumber(),
+                payment.invoiceGeneratedAt(),
                 payment.acceptedTermsVersion(),
                 payment.acceptedTermsAt(),
                 payment.acceptedTerms());
@@ -72,6 +80,10 @@ public final class PurchaseMapper {
                 installment.sequence(),
                 installment.amount(),
                 installment.dueDate(),
-                installment.paidAt());
+                installment.paidAt(),
+                installment.paymentMethod(),
+                installment.paymentReference(),
+                installment.merchantNumber(),
+                installment.declaredAt());
     }
 }

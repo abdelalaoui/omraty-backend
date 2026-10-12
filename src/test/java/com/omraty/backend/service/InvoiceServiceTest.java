@@ -1,6 +1,7 @@
 package com.omraty.backend.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -18,6 +19,7 @@ import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
+import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
@@ -291,5 +293,92 @@ class InvoiceServiceTest {
         invoiceService().generateIfFullyPaid(10L);
 
         verify(bookingPaymentRepository, never()).markInvoiceGenerated(anyLong(), any(), any());
+    }
+
+    @Test
+    void regenerateInvoice_whenPaymentNotFound_throwsException() {
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> invoiceService().regenerateInvoice(10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+        verifyNoInteractions(fileStorageService);
+    }
+
+    @Test
+    void regenerateInvoice_whenNotFullyPaid_throwsException() {
+        when(bookingPaymentRepository.findById(10L))
+                .thenReturn(Optional.of(payment(10L, PaymentPlan.FULL, PaymentStatus.PENDING)));
+
+        assertThatThrownBy(() -> invoiceService().regenerateInvoice(10L))
+                .isInstanceOf(BookingPaymentException.InvoiceNotAvailableException.class);
+        verifyNoInteractions(fileStorageService);
+    }
+
+    @Test
+    void regenerateInvoice_whenNoInvoiceNumberYet_generatesNewOneAndStoresIt() {
+        when(bookingPaymentRepository.findById(10L))
+                .thenReturn(Optional.of(payment(10L, PaymentPlan.FULL, PaymentStatus.CONFIRMED)));
+        when(bookingInstallmentRepository.findByBookingPaymentIds(List.of(10L)))
+                .thenReturn(List.of());
+        when(bookingPaymentRepository.nextInvoiceNumberSequenceValue()).thenReturn(100200L);
+        stubRoomAndOwner();
+        when(fileStorageService.store(
+                        any(byte[].class), anyString(), eq("application/pdf"), eq("invoices")))
+                .thenReturn("invoices/FACT-2.pdf");
+        BookingPayment updated = payment(10L, PaymentPlan.FULL, PaymentStatus.CONFIRMED);
+        when(bookingPaymentRepository.updateInvoice(
+                        eq(10L),
+                        eq("invoices/FACT-2.pdf"),
+                        eq("OMR-" + LocalDate.now().getYear() + "-100200")))
+                .thenReturn(Optional.of(updated));
+
+        BookingPayment result = invoiceService().regenerateInvoice(10L);
+
+        assertThat(result).isEqualTo(updated);
+        verify(bookingPaymentRepository, never()).hasInvoiceGenerated(anyLong());
+    }
+
+    @Test
+    void regenerateInvoice_whenInvoiceNumberAlreadyExists_reusesSameNumber() {
+        BookingPayment withExistingNumber =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.CONFIRMED,
+                        new BigDecimal("90000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        LocalDateTime.now(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "invoices/old-key.pdf",
+                        "OMR-2025-000042",
+                        LocalDateTime.now().minusDays(1));
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(withExistingNumber));
+        when(bookingInstallmentRepository.findByBookingPaymentIds(List.of(10L)))
+                .thenReturn(List.of());
+        stubRoomAndOwner();
+        when(fileStorageService.store(
+                        any(byte[].class), anyString(), eq("application/pdf"), eq("invoices")))
+                .thenReturn("invoices/new-key.pdf");
+        when(bookingPaymentRepository.updateInvoice(10L, "invoices/new-key.pdf", "OMR-2025-000042"))
+                .thenReturn(Optional.of(withExistingNumber));
+
+        invoiceService().regenerateInvoice(10L);
+
+        // Jamais une nouvelle valeur de séquence : le numéro de facture ne change jamais une fois
+        // attribué (voir InvoiceService.regenerateInvoice).
+        verify(bookingPaymentRepository, never()).nextInvoiceNumberSequenceValue();
+        verify(bookingPaymentRepository)
+                .updateInvoice(10L, "invoices/new-key.pdf", "OMR-2025-000042");
     }
 }

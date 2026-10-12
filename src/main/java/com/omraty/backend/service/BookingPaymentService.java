@@ -1,5 +1,7 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.dto.response.AdminInvoiceResponse;
+import com.omraty.backend.dto.response.PaymentResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,8 +12,10 @@ import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.BookingTerm;
 import com.omraty.backend.entities.OmraPackage;
+import com.omraty.backend.entities.PaymentMethod;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.ServiceTier;
+import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
@@ -20,12 +24,15 @@ import com.omraty.backend.exception.BookingTermException;
 import com.omraty.backend.exception.UserException;
 import com.omraty.backend.mapper.BookingTermMapper;
 import com.omraty.backend.mapper.PaymentMapper;
+import com.omraty.backend.mapper.PaymentMethodMapper;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
+import com.omraty.backend.payment.PaymentReferenceGenerator;
 import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import com.omraty.backend.repository.VipRequestRepository;
@@ -33,7 +40,9 @@ import com.omraty.backend.storage.FileStorageService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -69,6 +78,15 @@ public class BookingPaymentService {
 
     private static final int FIRST_INSTALLMENT_SEQUENCE = 1;
 
+    // Nombre de tentatives avant d'abandonner la génération d'un code de paiement unique (voir
+    // #generateUniquePaymentReference) : avec 32^5 combinaisons possibles par code, une collision
+    // est déjà extrêmement improbable, ce seuil n'est qu'un garde-fou contre une boucle infinie.
+    private static final int MAX_PAYMENT_REFERENCE_ATTEMPTS = 10;
+
+    // Délai avant expiration du code de paiement d'un moyen de paiement manuel (voir migration
+    // V52) — distinct du délai côté passerelle Moov (renvoyé par PaymentGatewayClient).
+    static final String MANUAL_PAYMENT_EXPIRATION_MINUTES_KEY = "manual_payment_expiration_minutes";
+
     /**
      * Valeurs du champ status du webhook considérées comme un paiement réussi (voir {@link
      * #confirmFromGateway}). Liste volontairement large, comparée sans tenir compte de la casse :
@@ -90,6 +108,9 @@ public class BookingPaymentService {
     private final InvoiceService invoiceService;
     private final FileStorageService fileStorageService;
     private final AppSettingService appSettingService;
+    private final PaymentMethodService paymentMethodService;
+    private final PaymentReferenceGenerator paymentReferenceGenerator;
+    private final PackageRepository packageRepository;
     private final BookingTermService bookingTermService;
     private final ObjectMapper objectMapper;
 
@@ -112,6 +133,9 @@ public class BookingPaymentService {
             InvoiceService invoiceService,
             FileStorageService fileStorageService,
             AppSettingService appSettingService,
+            PaymentMethodService paymentMethodService,
+            PaymentReferenceGenerator paymentReferenceGenerator,
+            PackageRepository packageRepository,
             BookingTermService bookingTermService,
             ObjectMapper objectMapper) {
         this.serviceTierRepository = serviceTierRepository;
@@ -126,6 +150,9 @@ public class BookingPaymentService {
         this.invoiceService = invoiceService;
         this.fileStorageService = fileStorageService;
         this.appSettingService = appSettingService;
+        this.paymentMethodService = paymentMethodService;
+        this.paymentReferenceGenerator = paymentReferenceGenerator;
+        this.packageRepository = packageRepository;
         this.bookingTermService = bookingTermService;
         this.objectMapper = objectMapper;
     }
@@ -217,9 +244,32 @@ public class BookingPaymentService {
             BigDecimal totalAmount,
             OmraPackage pkg,
             UUID userId) {
+        return createPaymentPlan(roomId, bedId, plan, totalAmount, pkg, userId, null);
+    }
+
+    /**
+     * Comme {@link #createPaymentPlan(Long, Long, PaymentPlan, BigDecimal, OmraPackage, UUID)},
+     * avec en plus le choix d'un moyen de paiement manuel (voir migrations V50/V51, PaymentMethod)
+     * : paymentMethodCode null = flux passerelle Moov inchangé (compatibilité avec les app
+     * 1.0/1.0.1, qui n'envoient jamais ce paramètre) ; renseigné = aucun appel passerelle, un code
+     * de paiement propre est généré et le paiement démarre en attente que le client déclare avoir
+     * payé (voir {@link #declare}).
+     *
+     * @throws
+     *     com.omraty.backend.exception.PaymentMethodException.UnknownOrDisabledPaymentMethodException
+     *     si paymentMethodCode ne correspond à aucun moyen de paiement actif.
+     */
+    public BookingPayment createPaymentPlan(
+            Long roomId,
+            Long bedId,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId,
+            String paymentMethodCode) {
         BigDecimal amount =
                 plan == PaymentPlan.FULL ? applyFullPaymentDiscount(totalAmount) : totalAmount;
-        return createPaymentPlan(roomId, bedId, null, plan, amount, pkg, userId);
+        return createPaymentPlan(roomId, bedId, null, plan, amount, pkg, userId, paymentMethodCode);
     }
 
     /**
@@ -272,7 +322,22 @@ public class BookingPaymentService {
      */
     public BookingPayment createOfferPaymentPlan(
             long bedId, BigDecimal offerPrice, OmraPackage pkg, UUID userId) {
-        return createPaymentPlan(null, bedId, null, PaymentPlan.FULL, offerPrice, pkg, userId);
+        return createOfferPaymentPlan(bedId, offerPrice, pkg, userId, null);
+    }
+
+    /**
+     * Comme {@link #createOfferPaymentPlan(long, BigDecimal, OmraPackage, UUID)}, avec en plus le
+     * choix d'un moyen de paiement manuel (voir {@link #createPaymentPlan(Long, Long, PaymentPlan,
+     * BigDecimal, OmraPackage, UUID, String)}).
+     */
+    public BookingPayment createOfferPaymentPlan(
+            long bedId,
+            BigDecimal offerPrice,
+            OmraPackage pkg,
+            UUID userId,
+            String paymentMethodCode) {
+        return createPaymentPlan(
+                null, bedId, null, PaymentPlan.FULL, offerPrice, pkg, userId, paymentMethodCode);
     }
 
     /**
@@ -299,8 +364,25 @@ public class BookingPaymentService {
      */
     public BookingPayment createVipPaymentPlan(
             long vipRequestId, BigDecimal proposedPrice, UUID userId) {
+        return createVipPaymentPlan(vipRequestId, proposedPrice, userId, null);
+    }
+
+    /**
+     * Comme {@link #createVipPaymentPlan(long, BigDecimal, UUID)}, avec en plus le choix d'un moyen
+     * de paiement manuel (voir {@link #createPaymentPlan(Long, Long, PaymentPlan, BigDecimal,
+     * OmraPackage, UUID, String)}).
+     */
+    public BookingPayment createVipPaymentPlan(
+            long vipRequestId, BigDecimal proposedPrice, UUID userId, String paymentMethodCode) {
         return createPaymentPlan(
-                null, null, vipRequestId, PaymentPlan.FULL, proposedPrice, null, userId);
+                null,
+                null,
+                vipRequestId,
+                PaymentPlan.FULL,
+                proposedPrice,
+                null,
+                userId,
+                paymentMethodCode);
     }
 
     /**
@@ -319,9 +401,25 @@ public class BookingPaymentService {
             BigDecimal totalAmount,
             OmraPackage pkg,
             UUID userId) {
+        return createGroupPaymentPlan(roomIds, plan, totalAmount, pkg, userId, null);
+    }
+
+    /**
+     * Comme {@link #createGroupPaymentPlan(List, PaymentPlan, BigDecimal, OmraPackage, UUID)}, avec
+     * en plus le choix d'un moyen de paiement manuel (voir {@link #createPaymentPlan(Long, Long,
+     * PaymentPlan, BigDecimal, OmraPackage, UUID, String)}).
+     */
+    public BookingPayment createGroupPaymentPlan(
+            List<Long> roomIds,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId,
+            String paymentMethodCode) {
         BigDecimal amount =
                 plan == PaymentPlan.FULL ? applyFullPaymentDiscount(totalAmount) : totalAmount;
-        BookingPayment payment = createPaymentPlan(null, null, null, plan, amount, pkg, userId);
+        BookingPayment payment =
+                createPaymentPlan(null, null, null, plan, amount, pkg, userId, paymentMethodCode);
         bookingPaymentRepository.linkRoomsToGroupPayment(payment.id(), roomIds);
         return payment;
     }
@@ -351,7 +449,8 @@ public class BookingPaymentService {
             PaymentPlan plan,
             BigDecimal totalAmount,
             OmraPackage pkg,
-            UUID userId) {
+            UUID userId,
+            String paymentMethodCode) {
         if (plan == PaymentPlan.INSTALLMENTS && pkg.endDate() == null) {
             throw new BookingPaymentException.PackageDatesMissingException(
                     "Le paiement en 3 tranches nécessite une date de fin (endDate) sur le package"
@@ -362,6 +461,11 @@ public class BookingPaymentService {
         BookingPayment payment =
                 bookingPaymentRepository.insert(
                         roomId, bedId, vipRequestId, plan, PaymentStatus.PENDING, totalAmount);
+        if (paymentMethodCode != null) {
+            PaymentMethod method = paymentMethodService.getEnabledOrThrow(paymentMethodCode);
+            LocalDate packageEndDate = pkg == null ? null : pkg.endDate();
+            return attachManualPayment(payment, method, plan, totalAmount, packageEndDate);
+        }
         // Montant réellement dû à la création : le total en FULL, seulement la 1ère tranche (60%)
         // en INSTALLMENTS — le client ne doit pas payer les 3 tranches d'un coup à la passerelle.
         BigDecimal amountDueNow =
@@ -369,6 +473,92 @@ public class BookingPaymentService {
                         ? createInstallments(payment, totalAmount, LocalDate.now(), pkg.endDate())
                         : totalAmount;
         return attachGatewayPayment(payment, userId, amountDueNow);
+    }
+
+    /**
+     * Équivalent de {@link #attachGatewayPayment} pour un moyen de paiement manuel (voir migrations
+     * V50/V51, PaymentMethod) : aucun appel passerelle, un code de paiement propre est généré (voir
+     * PaymentReferenceGenerator). paymentReference représente toujours « le paiement dû maintenant
+     * » (montant complet en FULL, 1ère tranche en INSTALLMENTS, voir BookingPayment) ; pour un plan
+     * INSTALLMENTS, les tranches 2/3 reçoivent chacune leur propre code (voir {@link
+     * #createManualInstallments}).
+     */
+    private BookingPayment attachManualPayment(
+            BookingPayment payment,
+            PaymentMethod method,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            LocalDate packageEndDate) {
+        if (plan == PaymentPlan.INSTALLMENTS) {
+            createManualInstallments(
+                    payment.id(), method.code(), totalAmount, LocalDate.now(), packageEndDate);
+        }
+        LocalDateTime expiresAt =
+                LocalDateTime.now()
+                        .plusMinutes(
+                                appSettingService.getIntValue(
+                                        MANUAL_PAYMENT_EXPIRATION_MINUTES_KEY));
+        String reference = generateUniquePaymentReference();
+        return bookingPaymentRepository.attachManualPayment(
+                payment.id(), method.code(), reference, expiresAt);
+    }
+
+    /**
+     * Tranches 2 et 3 d'un plan INSTALLMENTS payé via un moyen de paiement manuel, chacune avec son
+     * propre code de paiement (voir migration V51) — la tranche 1 est représentée par
+     * booking_payment.paymentReference (voir {@link #attachManualPayment}), jamais dupliquée ici.
+     * Mêmes montants/échéances que {@link #createInstallments} (60/20/20%, 2e tranche à mi-chemin
+     * entre la réservation et packageEndDate, 3e à packageEndDate).
+     */
+    private void createManualInstallments(
+            long bookingPaymentId,
+            String methodCode,
+            BigDecimal totalAmount,
+            LocalDate reservationDate,
+            LocalDate packageEndDate) {
+        BigDecimal firstAmount = round(totalAmount.multiply(FIRST_INSTALLMENT_RATIO));
+        BigDecimal secondAmount = round(totalAmount.multiply(SECOND_INSTALLMENT_RATIO));
+        BigDecimal thirdAmount = totalAmount.subtract(firstAmount).subtract(secondAmount);
+        long daysUntilEnd = ChronoUnit.DAYS.between(reservationDate, packageEndDate);
+        LocalDate secondDueDate = reservationDate.plusDays(daysUntilEnd / 2);
+        LocalDate thirdDueDate = packageEndDate;
+
+        bookingInstallmentRepository.insert(
+                bookingPaymentId, 1, firstAmount, reservationDate, null);
+        bookingInstallmentRepository.insertManual(
+                bookingPaymentId,
+                2,
+                secondAmount,
+                secondDueDate,
+                methodCode,
+                generateUniquePaymentReference());
+        bookingInstallmentRepository.insertManual(
+                bookingPaymentId,
+                3,
+                thirdAmount,
+                thirdDueDate,
+                methodCode,
+                generateUniquePaymentReference());
+    }
+
+    /**
+     * Code de paiement aléatoire garanti unique (voir PaymentReferenceGenerator, carte "Moyens de
+     * paiement dynamiques") : espace de noms global, vérifié à la fois sur booking_payment et
+     * booking_installment (voir migration V51) — régénère en cas de collision plutôt que de laisser
+     * l'insertion échouer sur la contrainte UNIQUE.
+     */
+    private String generateUniquePaymentReference() {
+        for (int attempt = 0; attempt < MAX_PAYMENT_REFERENCE_ATTEMPTS; attempt++) {
+            String candidate = paymentReferenceGenerator.generate();
+            if (!bookingPaymentRepository.existsByPaymentReference(candidate)
+                    && !bookingInstallmentRepository.existsByPaymentReference(candidate)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException(
+                "Impossible de générer un code de paiement unique après "
+                        + MAX_PAYMENT_REFERENCE_ATTEMPTS
+                        + " tentatives");
     }
 
     private BookingPayment attachGatewayPayment(
@@ -436,7 +626,7 @@ public class BookingPaymentService {
      * @throws BookingTermException.TermsChangedException si acceptedTermsVersion ne correspond plus
      *     à la version actuelle.
      */
-    private BookingPayment attachAcceptedTerms(
+    public BookingPayment attachAcceptedTerms(
             BookingPayment payment,
             String acceptedTermsVersion,
             List<Long> acceptedTermIds,
@@ -493,12 +683,18 @@ public class BookingPaymentService {
      * Marque manuellement une tranche comme payée (PATCH /admin/installments/{id}/mark-paid) —
      * filet de sécurité pour les cas exceptionnels (litige, paiement reçu autrement, panne
      * prolongée côté Moov) maintenant que le flux Moov confirme le paiement de la 1ère tranche
-     * (voir {@link #confirmFromGateway}). adminId est tracé (paid_by_admin_id) et la tranche est
-     * marquée paid_manually pour la distinguer d'une confirmation Moov.
+     * (voir {@link #confirmFromGateway}), et chemin de confirmation d'une tranche payée via un
+     * moyen de paiement manuel (voir migration V51, carte "Backend pour le panel admin" : « tranche
+     * : /admin/installments/{id}/confirm, ou adapter PATCH /admin/installments/{id}/mark-paid » —
+     * choix retenu ici). adminId est tracé (paid_by_admin_id) et la tranche est marquée
+     * paid_manually pour la distinguer d'une confirmation Moov. Notifie le propriétaire de l'achat,
+     * comme {@link #confirmFromGateway}/{@link #confirmManually} — silencieusement ignoré si le
+     * propriétaire n'est pas résolvable (même raisonnement que {@link #notifyPaymentOutcome}).
      *
      * @throws BookingPaymentException.InstallmentNotFoundException si la tranche n'existe pas.
      * @throws BookingPaymentException.InstallmentAlreadyPaidException si elle est déjà payée.
      */
+    @Transactional
     public BookingInstallment markInstallmentPaidManually(long installmentId, UUID adminId) {
         BookingInstallment installment = getInstallmentOrThrow(installmentId);
         if (installment.paidAt() != null) {
@@ -512,10 +708,262 @@ public class BookingPaymentService {
                                 () ->
                                         new IllegalStateException(
                                                 "Tranche introuvable après mise à jour"));
+        bookingPaymentRepository
+                .findById(updated.bookingPaymentId())
+                .ifPresent(payment -> notifyPaymentOutcome(payment, PaymentStatus.CONFIRMED));
         // Seule la 3e tranche marquée payée peut amener l'achat à intégralement payé (voir
         // InvoiceService.generateIfFullyPaid, qui vérifie lui-même que les 3 le sont).
         invoiceService.generateIfFullyPaid(updated.bookingPaymentId());
         return updated;
+    }
+
+    /**
+     * Confirmation manuelle admin d'un paiement (POST /admin/payments/{id}/confirm, voir carte
+     * "Backend pour le panel admin") : même effet qu'une confirmation Moov (voir {@link
+     * #confirmFromGateway}), mais déclenchée par un admin qui a retrouvé le transfert (avec ou sans
+     * que le client ait déclaré « J'ai payé » — possible depuis PENDING ou PENDING_VERIFICATION).
+     * confirmedByAdminId/confirmedAt tracent qui a confirmé et quand (voir migration V53).
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas.
+     * @throws BookingPaymentException.PaymentNotConfirmableException s'il n'est plus PENDING ni
+     *     PENDING_VERIFICATION (déjà confirmé, échoué, ou expiré).
+     */
+    @Transactional
+    public BookingPayment confirmManually(long bookingPaymentId, UUID adminId) {
+        BookingPayment payment = getPaymentOrThrow(bookingPaymentId);
+        BookingPayment confirmed =
+                bookingPaymentRepository
+                        .confirmManually(bookingPaymentId, adminId)
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotConfirmableException(
+                                                "Paiement déjà confirmé, échoué ou expiré (id="
+                                                        + bookingPaymentId
+                                                        + ")"));
+        if (payment.plan() == PaymentPlan.INSTALLMENTS) {
+            markFirstInstallmentPaid(confirmed.id());
+        }
+        notifyPaymentOutcome(confirmed, PaymentStatus.CONFIRMED);
+        invoiceService.generateIfFullyPaid(confirmed.id());
+        // Relit l'état : generateIfFullyPaid peut avoir renseigné invoice_key/invoice_number à
+        // l'instant (voir carte "Facture panel admin") — la réponse de cette route doit permettre
+        // au panel d'afficher le lien vers la facture immédiatement, sans appel séparé.
+        return bookingPaymentRepository.findById(confirmed.id()).orElse(confirmed);
+    }
+
+    /**
+     * Rejet manuel admin d'un paiement (POST /admin/payments/{id}/reject, voir carte "Backend pour
+     * le panel admin") : le paiement redevient PENDING (le client peut re-essayer avec le même
+     * code, voir {@link #declare}) et le client est notifié avec le motif (montant incorrect, aucun
+     * transfert trouvé...).
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas.
+     * @throws BookingPaymentException.PaymentNotConfirmableException s'il n'est plus PENDING ni
+     *     PENDING_VERIFICATION (déjà confirmé, échoué, ou expiré).
+     */
+    @Transactional
+    public BookingPayment rejectManually(long bookingPaymentId, String reason) {
+        getPaymentOrThrow(bookingPaymentId);
+        BookingPayment rejected =
+                bookingPaymentRepository
+                        .rejectManually(bookingPaymentId, reason)
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotConfirmableException(
+                                                "Paiement déjà confirmé, échoué ou expiré (id="
+                                                        + bookingPaymentId
+                                                        + ")"));
+        notifyPaymentRejected(rejected, reason);
+        return rejected;
+    }
+
+    private BookingPayment getPaymentOrThrow(long bookingPaymentId) {
+        return bookingPaymentRepository
+                .findById(bookingPaymentId)
+                .orElseThrow(
+                        () ->
+                                new BookingPaymentException.PaymentNotFoundException(
+                                        "Paiement introuvable (id=" + bookingPaymentId + ")"));
+    }
+
+    private void notifyPaymentRejected(BookingPayment payment, String reason) {
+        UUID userId = resolveOwnerUserId(payment);
+        if (userId == null) {
+            log.warn(
+                    "Paiement {} rejeté mais propriétaire introuvable : aucune notification"
+                            + " envoyée",
+                    payment.id());
+            return;
+        }
+        notificationService.create(
+                userId,
+                "Paiement rejeté",
+                "Votre paiement de "
+                        + payment.totalAmount()
+                        + " n'a pas pu être vérifié ("
+                        + reason
+                        + "). Vous pouvez réessayer avec le même code ou nous contacter.");
+    }
+
+    /**
+     * File d'attente admin des paiements et tranches manuels à vérifier (GET /admin/payments, voir
+     * carte "Backend pour le panel admin") : mélange booking_payment (plan FULL, ou 1ère tranche
+     * d'un plan INSTALLMENTS) et booking_installment (tranches 2/3), triés par date de mise en
+     * attente croissante (déclaration si renseignée, sinon création/échéance). status filtre les
+     * deux granularités : PENDING/PENDING_VERIFICATION s'appliquent aux deux (traduit en
+     * declared_at pour une tranche, qui n'a pas de colonne status) ; CONFIRMED/FAILED/EXPIRED n'ont
+     * pas d'équivalent côté tranche, qui n'est alors pas interrogée. reference est insensible à la
+     * casse et aux espaces (voir {@link #normalizeReference}).
+     */
+    public List<AdminPaymentVerificationItem> listPaymentsForAdmin(
+            PaymentStatus status,
+            String paymentMethod,
+            String reference,
+            LocalDateTime from,
+            LocalDateTime to) {
+        String normalizedReference = normalizeReference(reference);
+        List<AdminPaymentVerificationItem> items = new ArrayList<>();
+        for (BookingPayment payment :
+                bookingPaymentRepository.findForAdminVerification(
+                        status, paymentMethod, normalizedReference, from, to)) {
+            items.add(toAdminItem(payment));
+        }
+        boolean installmentStatusApplies =
+                status == null
+                        || status == PaymentStatus.PENDING
+                        || status == PaymentStatus.PENDING_VERIFICATION;
+        if (installmentStatusApplies) {
+            Boolean requireDeclared =
+                    status == null ? null : status == PaymentStatus.PENDING_VERIFICATION;
+            for (BookingInstallment installment :
+                    bookingInstallmentRepository.findForAdminVerification(
+                            requireDeclared, paymentMethod, normalizedReference, from, to)) {
+                toAdminItem(installment).ifPresent(items::add);
+            }
+        }
+        items.sort(Comparator.comparing(AdminPaymentVerificationItem::queuedAt));
+        return items;
+    }
+
+    private AdminPaymentVerificationItem toAdminItem(BookingPayment payment) {
+        UUID userId = resolveOwnerUserId(payment);
+        return new AdminPaymentVerificationItem(
+                "payment-" + payment.id(),
+                payment.id(),
+                null,
+                null,
+                userId,
+                resolvePhone(userId),
+                payment.paymentMethod(),
+                payment.paymentReference(),
+                payment.totalAmount(),
+                payment.status(),
+                payment.declaredAt(),
+                payment.declaredAt() != null ? payment.declaredAt() : payment.createdAt(),
+                resolvePurchaseDescription(payment),
+                payment.invoiceKey() != null,
+                payment.invoiceNumber(),
+                payment.invoiceGeneratedAt());
+    }
+
+    /**
+     * Vide si le booking_payment parent n'existe plus (ne devrait pas arriver, mais une tranche ne
+     * doit jamais faire échouer toute la liste pour une incohérence isolée).
+     */
+    private Optional<AdminPaymentVerificationItem> toAdminItem(BookingInstallment installment) {
+        return bookingPaymentRepository
+                .findById(installment.bookingPaymentId())
+                .map(
+                        payment -> {
+                            UUID userId = resolveOwnerUserId(payment);
+                            LocalDateTime queuedAt =
+                                    installment.declaredAt() != null
+                                            ? installment.declaredAt()
+                                            : installment.dueDate().atStartOfDay();
+                            return new AdminPaymentVerificationItem(
+                                    "installment-" + installment.id(),
+                                    installment.bookingPaymentId(),
+                                    installment.id(),
+                                    installment.sequence(),
+                                    userId,
+                                    resolvePhone(userId),
+                                    installment.paymentMethod(),
+                                    installment.paymentReference(),
+                                    installment.amount(),
+                                    installment.declaredAt() != null
+                                            ? PaymentStatus.PENDING_VERIFICATION
+                                            : PaymentStatus.PENDING,
+                                    installment.declaredAt(),
+                                    queuedAt,
+                                    resolvePurchaseDescription(payment),
+                                    false,
+                                    null,
+                                    null);
+                        });
+    }
+
+    private String resolvePhone(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        return authRepository.findById(userId).map(User::phone).orElse(null);
+    }
+
+    /**
+     * Normalise un code de paiement pour une recherche insensible à la casse et aux espaces (voir
+     * carte "Backend pour le panel admin" : "om7k3p9, OM 7K3P9 → trouvé").
+     */
+    private static String normalizeReference(String reference) {
+        if (reference == null) {
+            return null;
+        }
+        return reference.replace(" ", "").toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * Description de ce qui est acheté (package / chambre / VIP / groupe), pour l'affichage admin
+     * (GET /admin/payments) — même branchement que {@link #resolveOwnerUserId}.
+     */
+    private String resolvePurchaseDescription(BookingPayment payment) {
+        if (payment.roomId() != null) {
+            return roomRepository.findByIds(List.of(payment.roomId())).stream()
+                    .findFirst()
+                    .map(
+                            room ->
+                                    "Chambre "
+                                            + room.totalCapacity()
+                                            + " places - "
+                                            + packageLabel(room.packageId()))
+                    .orElse(null);
+        }
+        if (payment.bedId() != null) {
+            return bedRepository.findByIds(List.of(payment.bedId())).stream()
+                    .findFirst()
+                    .map(
+                            bed ->
+                                    "Lit n°"
+                                            + bed.number()
+                                            + " (chambre partagée) - "
+                                            + roomRepository
+                                                    .findByIds(List.of(bed.roomId()))
+                                                    .stream()
+                                                    .findFirst()
+                                                    .map(room -> packageLabel(room.packageId()))
+                                                    .orElse(""))
+                    .orElse(null);
+        }
+        if (payment.vipRequestId() != null) {
+            return vipRequestRepository.findByIds(List.of(payment.vipRequestId())).stream()
+                    .findFirst()
+                    .map(vip -> "Offre VIP - " + packageLabel(vip.packageId()))
+                    .orElse(null);
+        }
+        List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
+        return "Achat groupé (" + groupRoomIds.size() + " chambre(s))";
+    }
+
+    private String packageLabel(long packageId) {
+        return packageRepository.findById(packageId).map(OmraPackage::label).orElse(null);
     }
 
     private BookingInstallment getInstallmentOrThrow(long installmentId) {
@@ -666,6 +1114,90 @@ public class BookingPaymentService {
     }
 
     /**
+     * Réponse de création d'un paiement (POST /rooms/.../reserve, /purchase, /vip-requests/{id}
+     * /accept, /rooms/offer/beds/reserve) : résout le moyen de paiement manuel choisi (s'il y en a
+     * un) pour renvoyer numéro marchand/instructions dans la langue demandée (voir
+     * PaymentMethodMapper) — reste null pour le flux passerelle Moov (paymentMethod non renseigné).
+     */
+    public PaymentResponse toCreationResponse(BookingPayment payment, String acceptLanguage) {
+        PaymentMethod method =
+                paymentMethodService.findByCode(payment.paymentMethod()).orElse(null);
+        return PaymentMapper.toResponse(
+                payment, method, PaymentMethodMapper.resolveLanguage(acceptLanguage));
+    }
+
+    /**
+     * « J'ai payé » (voir carte "Moyens de paiement dynamiques") : le client déclare avoir effectué
+     * son paiement manuel dans son wallet avec le code reçu à la création. Passe le paiement en
+     * PENDING_VERIFICATION, en attente de vérification par l'admin (carte "[Backend - Admin]") —
+     * n'expire plus une fois déclaré (voir PaymentExpirationService, qui ne cible que le statut
+     * PENDING).
+     *
+     * <p>Ownership vérifiée comme {@link #getStatusForUser} : un paiement qui n'appartient pas à
+     * userId est traité comme introuvable. Même 404 si le paiement n'a pas de code de paiement
+     * manuel (flux passerelle Moov) ou n'est plus PENDING (déjà déclaré/confirmé/expiré) — rien à
+     * déclarer dans ces cas.
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas,
+     *     n'appartient pas à userId, ou n'est pas en attente de déclaration.
+     */
+    @Transactional
+    public BookingPayment declare(UUID userId, long bookingPaymentId) {
+        bookingPaymentRepository
+                .findById(bookingPaymentId)
+                .filter(candidate -> userId.equals(resolveOwnerUserId(candidate)))
+                .orElseThrow(
+                        () ->
+                                new BookingPaymentException.PaymentNotFoundException(
+                                        "Paiement introuvable (id=" + bookingPaymentId + ")"));
+        return bookingPaymentRepository
+                .declare(bookingPaymentId)
+                .orElseThrow(
+                        () ->
+                                new BookingPaymentException.PaymentNotFoundException(
+                                        "Paiement pas en attente de déclaration (id="
+                                                + bookingPaymentId
+                                                + ")"));
+    }
+
+    /**
+     * « J'ai payé » pour une tranche (2e ou 3e, voir {@link #createManualInstallments}) d'un plan
+     * INSTALLMENTS payé via un moyen de paiement manuel — même principe que {@link #declare} mais
+     * au niveau de la tranche, puisque chacune a son propre code de paiement.
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si la tranche n'existe pas,
+     *     n'appartient pas à bookingPaymentId, n'appartient pas à userId, ou n'est pas en attente
+     *     de déclaration (pas de code manuel, déjà payée, ou déjà déclarée).
+     */
+    @Transactional
+    public BookingInstallment declareInstallment(
+            UUID userId, long bookingPaymentId, long installmentId) {
+        BookingInstallment installment =
+                bookingInstallmentRepository
+                        .findById(installmentId)
+                        .filter(candidate -> candidate.bookingPaymentId() == bookingPaymentId)
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotFoundException(
+                                                "Tranche introuvable (id=" + installmentId + ")"));
+        bookingPaymentRepository
+                .findById(bookingPaymentId)
+                .filter(candidate -> userId.equals(resolveOwnerUserId(candidate)))
+                .orElseThrow(
+                        () ->
+                                new BookingPaymentException.PaymentNotFoundException(
+                                        "Tranche introuvable (id=" + installmentId + ")"));
+        return bookingInstallmentRepository
+                .declare(installment.id())
+                .orElseThrow(
+                        () ->
+                                new BookingPaymentException.PaymentNotFoundException(
+                                        "Tranche pas en attente de déclaration (id="
+                                                + installmentId
+                                                + ")"));
+    }
+
+    /**
      * URL présignée du PDF de facture, pour GET /users/me/purchases/{id}/invoice (voir
      * InvoiceService, migration V39 pour invoice_key). Même vérification de propriété que {@link
      * #getStatusForUser} : un paiement qui n'appartient pas à userId est traité comme introuvable,
@@ -755,12 +1287,19 @@ public class BookingPaymentService {
     /**
      * Vue synthétique d'un plan de paiement pour GET /users/me/purchases : montant payé, restant,
      * et prochaine échéance (1ère tranche non payée, triée par sequence — null si plan FULL ou si
-     * tout est payé).
+     * tout est payé). paymentMethod/paymentReference/status/declaredAt et merchantNumber (voir
+     * migrations V50/V51) permettent au client de revenir copier son code — null/non renseignés
+     * pour un achat payé via la passerelle Moov (paymentMethod non choisi à la création).
      */
     public UserPurchasePayment toPurchasePayment(
             BookingPayment payment, List<BookingInstallment> installments) {
         List<BookingTermItemResponse> acceptedTerms =
                 parseTermsSnapshot(payment.acceptedTermsSnapshot());
+        String merchantNumber =
+                paymentMethodService
+                        .findByCode(payment.paymentMethod())
+                        .map(PaymentMethod::merchantNumber)
+                        .orElse(null);
         if (payment.plan() == PaymentPlan.FULL) {
             return new UserPurchasePayment(
                     payment.id(),
@@ -770,6 +1309,14 @@ public class BookingPaymentService {
                     BigDecimal.ZERO,
                     null,
                     List.of(),
+                    payment.paymentMethod(),
+                    payment.paymentReference(),
+                    merchantNumber,
+                    payment.status(),
+                    payment.declaredAt(),
+                    payment.invoiceKey() != null,
+                    payment.invoiceNumber(),
+                    payment.invoiceGeneratedAt(),
                     payment.acceptedTermsVersion(),
                     payment.acceptedTermsAt(),
                     acceptedTerms);
@@ -795,7 +1342,11 @@ public class BookingPaymentService {
                                                 installment.sequence(),
                                                 installment.amount(),
                                                 installment.dueDate(),
-                                                installment.paidAt()))
+                                                installment.paidAt(),
+                                                installment.paymentMethod(),
+                                                installment.paymentReference(),
+                                                merchantNumber,
+                                                installment.declaredAt()))
                         .toList();
         return new UserPurchasePayment(
                 payment.id(),
@@ -805,8 +1356,55 @@ public class BookingPaymentService {
                 payment.totalAmount().subtract(paidAmount),
                 nextDueDate,
                 userInstallments,
+                payment.paymentMethod(),
+                payment.paymentReference(),
+                merchantNumber,
+                payment.status(),
+                payment.declaredAt(),
+                payment.invoiceKey() != null,
+                payment.invoiceNumber(),
+                payment.invoiceGeneratedAt(),
                 payment.acceptedTermsVersion(),
                 payment.acceptedTermsAt(),
                 acceptedTerms);
+    }
+
+    /**
+     * Facture d'un paiement côté admin (GET /admin/payments/{id}/invoice, voir carte "Facture panel
+     * admin") : même mécanisme que {@link #getInvoiceDownloadUrl} (URL présignée de courte durée),
+     * mais sans vérification de propriétaire — l'admin voit toutes les factures.
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas.
+     * @throws BookingPaymentException.InvoiceNotAvailableException si l'achat n'est pas encore
+     *     intégralement payé (aucune facture générée).
+     */
+    public AdminInvoiceResponse getInvoiceForAdmin(long bookingPaymentId) {
+        BookingPayment payment = getPaymentOrThrow(bookingPaymentId);
+        if (payment.invoiceKey() == null) {
+            throw new BookingPaymentException.InvoiceNotAvailableException(
+                    "Facture pas encore disponible (id=" + bookingPaymentId + ")");
+        }
+        return new AdminInvoiceResponse(
+                payment.invoiceNumber(),
+                payment.invoiceGeneratedAt(),
+                fileStorageService.generatePresignedUrl(payment.invoiceKey()));
+    }
+
+    /**
+     * Régénère la facture d'un paiement (POST /admin/payments/{id}/invoice/regenerate, voir carte
+     * "Facture panel admin") : pour un échec de stockage lors de la 1ère génération, ou une info
+     * client corrigée depuis — voir InvoiceService.regenerateInvoice, qui conserve le numéro
+     * existant.
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas.
+     * @throws BookingPaymentException.InvoiceNotAvailableException si l'achat n'est pas encore
+     *     intégralement payé.
+     */
+    public AdminInvoiceResponse regenerateInvoiceForAdmin(long bookingPaymentId) {
+        BookingPayment payment = invoiceService.regenerateInvoice(bookingPaymentId);
+        return new AdminInvoiceResponse(
+                payment.invoiceNumber(),
+                payment.invoiceGeneratedAt(),
+                fileStorageService.generatePresignedUrl(payment.invoiceKey()));
     }
 }

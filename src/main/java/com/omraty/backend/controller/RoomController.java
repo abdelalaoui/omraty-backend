@@ -10,9 +10,9 @@ import com.omraty.backend.dto.response.PaymentResponse;
 import com.omraty.backend.dto.response.PurchaseResponse;
 import com.omraty.backend.dto.response.RoomBedsResponse;
 import com.omraty.backend.entities.BookingPayment;
-import com.omraty.backend.mapper.PaymentMapper;
 import com.omraty.backend.mapper.PurchaseMapper;
 import com.omraty.backend.mapper.RoomMapper;
+import com.omraty.backend.service.BookingPaymentService;
 import com.omraty.backend.service.RoomService;
 import com.omraty.backend.service.RoomService.RoomGroupItem;
 import com.omraty.backend.service.RoomWithBeds;
@@ -51,9 +51,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class RoomController {
 
     private final RoomService roomService;
+    private final BookingPaymentService bookingPaymentService;
 
-    public RoomController(RoomService roomService) {
+    public RoomController(RoomService roomService, BookingPaymentService bookingPaymentService) {
         this.roomService = roomService;
+        this.bookingPaymentService = bookingPaymentService;
     }
 
     @GetMapping("/rooms/{type}/beds")
@@ -92,10 +94,12 @@ public class RoomController {
                         request.packageId(),
                         userId,
                         request.plan(),
+                        request.paymentMethod(),
                         request.acceptedTermsVersion(),
                         request.acceptedTermIds(),
                         acceptLanguage);
-        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }
 
     /**
@@ -113,10 +117,12 @@ public class RoomController {
                 roomService.reserveOfferBed(
                         request.packageId(),
                         userId,
+                        request.paymentMethod(),
                         request.acceptedTermsVersion(),
                         request.acceptedTermIds(),
                         acceptLanguage);
-        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }
 
     /**
@@ -137,10 +143,12 @@ public class RoomController {
                         request.packageId(),
                         userId,
                         request.plan(),
+                        request.paymentMethod(),
                         request.acceptedTermsVersion(),
                         request.acceptedTermIds(),
                         acceptLanguage);
-        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }
 
     /**
@@ -168,10 +176,12 @@ public class RoomController {
                         request.packageId(),
                         userId,
                         request.plan(),
+                        request.paymentMethod(),
                         request.acceptedTermsVersion(),
                         request.acceptedTermIds(),
                         acceptLanguage);
-        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }
 
     /** Chambres achetées et lits réservés par l'utilisateur connecté, les plus récents d'abord. */

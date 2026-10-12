@@ -7,9 +7,11 @@ import java.util.List;
 public record ReserveBedRequest(
         @NotNull(message = "Le packageId est requis") Long packageId,
         @NotNull(message = "Le plan de paiement est requis") PaymentPlan plan,
-        // Optionnels : compatibilité avec les app antérieures à la carte "Conditions de
-        // réservation gérées depuis le serveur", qui ne les envoient pas (voir
-        // BookingPaymentService, SecurityConfig). Version renvoyée par GET /booking-terms ;
-        // périmée -> 409.
+        // Optionnels : compatibilité avec les app antérieures aux cartes "Moyens de paiement" et
+        // "Conditions de réservation gérées depuis le serveur", qui ne les envoient pas (voir
+        // BookingPaymentService, SecurityConfig). paymentMethod : code d'un moyen de paiement actif
+        // (voir GET /payment-methods), inconnu ou désactivé -> 400. acceptedTermsVersion : version
+        // renvoyée par GET /booking-terms, périmée -> 409.
+        String paymentMethod,
         String acceptedTermsVersion,
         List<Long> acceptedTermIds) {}

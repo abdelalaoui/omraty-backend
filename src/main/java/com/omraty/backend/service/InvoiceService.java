@@ -9,6 +9,7 @@ import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
+import com.omraty.backend.exception.BookingPaymentException;
 import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
@@ -155,6 +156,58 @@ public class InvoiceService {
                             + " doublon ignoré.",
                     paymentId);
         }
+    }
+
+    /**
+     * Régénère la facture d'un achat déjà intégralement payé (POST /admin/payments/{id}/invoice
+     * /regenerate, voir carte "Facture panel admin") : pour un échec de stockage lors de la 1ère
+     * génération, ou une info client corrigée depuis — contourne volontairement la garde
+     * d'idempotence de {@link #generateIfFullyPaid} (voir {@link
+     * com.omraty.backend.repository.BookingPaymentRepository#updateInvoice}). Conserve le numéro
+     * existant s'il y en a un (une facture ne change jamais de numéro une fois attribué) ; en tire
+     * un nouveau sinon (ne devrait arriver que si la 1ère génération avait échoué avant même
+     * l'obtention du numéro).
+     *
+     * <p>Contrairement à {@link #generateIfFullyPaid} (best-effort, jamais d'exception), cette
+     * méthode est appelée directement par une route admin et doit remonter un échec clair.
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas.
+     * @throws BookingPaymentException.InvoiceNotAvailableException si l'achat n'est pas encore
+     *     intégralement payé.
+     */
+    public BookingPayment regenerateInvoice(long paymentId) {
+        BookingPayment payment =
+                bookingPaymentRepository
+                        .findById(paymentId)
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotFoundException(
+                                                "Paiement introuvable (id=" + paymentId + ")"));
+        List<BookingInstallment> installments =
+                bookingInstallmentRepository.findByBookingPaymentIds(List.of(paymentId));
+        if (payment.status() != PaymentStatus.CONFIRMED || !isFullyPaid(payment, installments)) {
+            throw new BookingPaymentException.InvoiceNotAvailableException(
+                    "L'achat n'est pas encore intégralement payé (id=" + paymentId + ")");
+        }
+        PurchaseDescription purchase = resolvePurchaseDescription(payment);
+        if (purchase == null) {
+            throw new IllegalStateException(
+                    "Contexte d'achat introuvable pour le paiement " + paymentId);
+        }
+        String invoiceNumber =
+                payment.invoiceNumber() != null ? payment.invoiceNumber() : buildInvoiceNumber();
+        byte[] pdf = renderPdf(payment, installments, purchase, invoiceNumber);
+        String invoiceKey =
+                fileStorageService.store(
+                        pdf, invoiceNumber + ".pdf", "application/pdf", INVOICE_SUBDIR);
+        return bookingPaymentRepository
+                .updateInvoice(paymentId, invoiceKey, invoiceNumber)
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "Paiement introuvable après mise à jour (id="
+                                                + paymentId
+                                                + ")"));
     }
 
     private static boolean isFullyPaid(
