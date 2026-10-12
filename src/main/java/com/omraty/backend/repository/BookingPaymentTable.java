@@ -8,7 +8,9 @@ final class BookingPaymentTable {
             "id, room_id, bed_id, vip_request_id, plan, status, total_amount, moov_payment_code,"
                     + " moov_transaction_id, payer_phone, expires_at, created_at, payment_method,"
                     + " payment_reference, declared_at, confirmed_by_admin_id, confirmed_at,"
-                    + " rejection_reason, invoice_key, invoice_number, invoice_generated_at";
+                    + " rejection_reason, invoice_key, invoice_number, invoice_generated_at,"
+                    + " accepted_terms_version, accepted_terms_at, accepted_terms_snapshot::text"
+                    + " AS accepted_terms_snapshot";
 
     // status <> 'EXPIRED' : depuis la migration V35, une chambre/un lit expiré(e) peut être
     // réservé(e) de nouveau, donc plusieurs lignes peuvent exister pour un même room_id au fil du
@@ -136,7 +138,9 @@ final class BookingPaymentTable {
                     + " bp.expires_at, bp.created_at, bp.payment_method, bp.payment_reference,"
                     + " bp.declared_at, bp.confirmed_by_admin_id, bp.confirmed_at,"
                     + " bp.rejection_reason, bp.invoice_key, bp.invoice_number,"
-                    + " bp.invoice_generated_at FROM booking_payment_room bpr JOIN"
+                    + " bp.invoice_generated_at, bp.accepted_terms_version, bp.accepted_terms_at,"
+                    + " bp.accepted_terms_snapshot::text AS accepted_terms_snapshot FROM"
+                    + " booking_payment_room bpr JOIN"
                     + " booking_payment bp ON bp.id = bpr.booking_payment_id WHERE bpr.room_id ="
                     + " ANY (?) AND bp.status <> 'EXPIRED'";
 
@@ -209,5 +213,16 @@ final class BookingPaymentTable {
     static final String UPDATE_INVOICE =
             "UPDATE booking_payment SET invoice_key = ?, invoice_number = ?, invoice_generated_at ="
                     + " now() WHERE id = ? RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
+
+    // Trace de l'acceptation des conditions de réservation (voir migration V55,
+    // BookingPaymentService#attachAcceptedTerms, carte "Conditions de réservation gérées depuis le
+    // serveur") : renseignée juste après la création du paiement, dans la même transaction que la
+    // réservation (room/bed) — un rejet (version périmée) annule donc tout, cohérent avec
+    // ATTACH_GATEWAY_RESULT qui suit le même schéma. ?::jsonb : le pilote JDBC ne convertit pas
+    // automatiquement une String en jsonb sans cast explicite.
+    static final String ATTACH_ACCEPTED_TERMS =
+            "UPDATE booking_payment SET accepted_terms_version = ?, accepted_terms_at = now(),"
+                    + " accepted_terms_snapshot = ?::jsonb WHERE id = ? RETURNING "
                     + BOOKING_PAYMENT_COLUMNS;
 }

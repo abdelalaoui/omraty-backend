@@ -1,11 +1,16 @@
 package com.omraty.backend.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omraty.backend.dto.response.AdminInvoiceResponse;
+import com.omraty.backend.dto.response.BookingTermItemResponse;
 import com.omraty.backend.dto.response.PaymentResponse;
 import com.omraty.backend.dto.response.PaymentStatusResponse;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
+import com.omraty.backend.entities.BookingTerm;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.PaymentMethod;
 import com.omraty.backend.entities.Room;
@@ -15,7 +20,9 @@ import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
+import com.omraty.backend.exception.BookingTermException;
 import com.omraty.backend.exception.UserException;
+import com.omraty.backend.mapper.BookingTermMapper;
 import com.omraty.backend.mapper.PaymentMapper;
 import com.omraty.backend.mapper.PaymentMethodMapper;
 import com.omraty.backend.payment.PaymentGatewayClient;
@@ -104,6 +111,8 @@ public class BookingPaymentService {
     private final PaymentMethodService paymentMethodService;
     private final PaymentReferenceGenerator paymentReferenceGenerator;
     private final PackageRepository packageRepository;
+    private final BookingTermService bookingTermService;
+    private final ObjectMapper objectMapper;
 
     static final String FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY = "full_payment_discount_percentage";
 
@@ -126,7 +135,9 @@ public class BookingPaymentService {
             AppSettingService appSettingService,
             PaymentMethodService paymentMethodService,
             PaymentReferenceGenerator paymentReferenceGenerator,
-            PackageRepository packageRepository) {
+            PackageRepository packageRepository,
+            BookingTermService bookingTermService,
+            ObjectMapper objectMapper) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
@@ -142,6 +153,8 @@ public class BookingPaymentService {
         this.paymentMethodService = paymentMethodService;
         this.paymentReferenceGenerator = paymentReferenceGenerator;
         this.packageRepository = packageRepository;
+        this.bookingTermService = bookingTermService;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -260,6 +273,30 @@ public class BookingPaymentService {
     }
 
     /**
+     * Comme {@link #createPaymentPlan(Long, Long, PaymentPlan, BigDecimal, OmraPackage, UUID)},
+     * avec en plus la trace de l'acceptation des conditions de réservation (voir migration V55,
+     * carte "Conditions de réservation gérées depuis le serveur") — appelé par RoomController pour
+     * tout achat de chambre/réservation de lit (hors VIP, hors scope de cette carte). Voir {@link
+     * #attachAcceptedTerms}.
+     *
+     * @throws BookingTermException.TermsChangedException si acceptedTermsVersion ne correspond plus
+     *     à la version actuelle des conditions.
+     */
+    public BookingPayment createPaymentPlan(
+            Long roomId,
+            Long bedId,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        BookingPayment payment = createPaymentPlan(roomId, bedId, plan, totalAmount, pkg, userId);
+        return attachAcceptedTerms(payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
+    }
+
+    /**
      * Réduction appliquée au paiement complet d'une chambre/d'un lit (voir migration V41, réglage
      * {@code full_payment_discount_percentage}) : jusqu'ici affichée côté app
      * (payment_plan_screen.dart) mais jamais réellement appliquée par le backend — le client voyait
@@ -301,6 +338,22 @@ public class BookingPaymentService {
             String paymentMethodCode) {
         return createPaymentPlan(
                 null, bedId, null, PaymentPlan.FULL, offerPrice, pkg, userId, paymentMethodCode);
+    }
+
+    /**
+     * Comme {@link #createOfferPaymentPlan(long, BigDecimal, OmraPackage, UUID)}, avec en plus la
+     * trace de l'acceptation des conditions de réservation (voir {@link #attachAcceptedTerms}).
+     */
+    public BookingPayment createOfferPaymentPlan(
+            long bedId,
+            BigDecimal offerPrice,
+            OmraPackage pkg,
+            UUID userId,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        BookingPayment payment = createOfferPaymentPlan(bedId, offerPrice, pkg, userId);
+        return attachAcceptedTerms(payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
     }
 
     /**
@@ -369,6 +422,24 @@ public class BookingPaymentService {
                 createPaymentPlan(null, null, null, plan, amount, pkg, userId, paymentMethodCode);
         bookingPaymentRepository.linkRoomsToGroupPayment(payment.id(), roomIds);
         return payment;
+    }
+
+    /**
+     * Comme {@link #createGroupPaymentPlan(List, PaymentPlan, BigDecimal, OmraPackage, UUID)}, avec
+     * en plus la trace de l'acceptation des conditions de réservation (voir {@link
+     * #attachAcceptedTerms}).
+     */
+    public BookingPayment createGroupPaymentPlan(
+            List<Long> roomIds,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        BookingPayment payment = createGroupPaymentPlan(roomIds, plan, totalAmount, pkg, userId);
+        return attachAcceptedTerms(payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
     }
 
     private BookingPayment createPaymentPlan(
@@ -538,6 +609,74 @@ public class BookingPaymentService {
 
     private static BigDecimal round(BigDecimal amount) {
         return amount.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Trace de l'acceptation des conditions de réservation (voir migration V55, carte "Conditions
+     * de réservation gérées depuis le serveur") : vérifie que acceptedTermsVersion correspond
+     * toujours à la version actuelle (voir BookingTermService#getCurrentVersion), puis enregistre
+     * une copie figée des textes acceptés. acceptedTermsVersion null (app antérieure à cette carte)
+     * : aucune vérification, mais la version actuelle est quand même enregistrée (voir critère
+     * d'acceptation "requête sans version -> acceptée, enregistrée avec la version actuelle").
+     *
+     * <p>acceptedTermIds, si fourni, détermine quelles conditions figent la copie (ce que l'app a
+     * réellement affiché/coché) ; sinon, repli sur toutes les conditions actives (meilleure
+     * estimation possible pour une app qui ne les transmet pas encore).
+     *
+     * @throws BookingTermException.TermsChangedException si acceptedTermsVersion ne correspond plus
+     *     à la version actuelle.
+     */
+    public BookingPayment attachAcceptedTerms(
+            BookingPayment payment,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        String currentVersion = bookingTermService.getCurrentVersion();
+        if (acceptedTermsVersion != null && !acceptedTermsVersion.equals(currentVersion)) {
+            throw new BookingTermException.TermsChangedException(
+                    "Les conditions de réservation ont changé, veuillez recharger la liste");
+        }
+        List<BookingTerm> terms =
+                (acceptedTermIds != null && !acceptedTermIds.isEmpty())
+                        ? bookingTermService.findByIds(acceptedTermIds)
+                        : bookingTermService.getActiveTerms();
+        String snapshotJson = buildTermsSnapshotJson(terms, acceptLanguage);
+        return bookingPaymentRepository.attachAcceptedTerms(
+                payment.id(), currentVersion, snapshotJson);
+    }
+
+    private String buildTermsSnapshotJson(List<BookingTerm> terms, String acceptLanguage) {
+        String language = BookingTermMapper.resolveLanguage(acceptLanguage);
+        List<BookingTermItemResponse> entries =
+                terms.stream().map(term -> BookingTermMapper.toResponse(term, language)).toList();
+        try {
+            return objectMapper.writeValueAsString(entries);
+        } catch (JsonProcessingException e) {
+            log.error(
+                    "Échec de la sérialisation des conditions acceptées (paiement en cours de"
+                            + " création) : la réservation reste acquise, la copie sera vide.",
+                    e);
+            return "[]";
+        }
+    }
+
+    /**
+     * Relit la copie figée des conditions acceptées (voir {@link #attachAcceptedTerms}), pour GET
+     * /users/me/purchases et GET /admin/bookings (voir {@link #toPurchasePayment}). Vide si jamais
+     * renseignée (achat antérieur à cette carte, ou VIP) ou si la désérialisation échoue — ne doit
+     * jamais faire échouer tout l'affichage des achats pour une ligne isolée.
+     */
+    private List<BookingTermItemResponse> parseTermsSnapshot(String snapshotJson) {
+        if (snapshotJson == null) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    snapshotJson, new TypeReference<List<BookingTermItemResponse>>() {});
+        } catch (JsonProcessingException e) {
+            log.error("Échec de la désérialisation des conditions acceptées", e);
+            return List.of();
+        }
     }
 
     /**
@@ -1154,6 +1293,8 @@ public class BookingPaymentService {
      */
     public UserPurchasePayment toPurchasePayment(
             BookingPayment payment, List<BookingInstallment> installments) {
+        List<BookingTermItemResponse> acceptedTerms =
+                parseTermsSnapshot(payment.acceptedTermsSnapshot());
         String merchantNumber =
                 paymentMethodService
                         .findByCode(payment.paymentMethod())
@@ -1175,7 +1316,10 @@ public class BookingPaymentService {
                     payment.declaredAt(),
                     payment.invoiceKey() != null,
                     payment.invoiceNumber(),
-                    payment.invoiceGeneratedAt());
+                    payment.invoiceGeneratedAt(),
+                    payment.acceptedTermsVersion(),
+                    payment.acceptedTermsAt(),
+                    acceptedTerms);
         }
         BigDecimal paidAmount =
                 installments.stream()
@@ -1219,7 +1363,10 @@ public class BookingPaymentService {
                 payment.declaredAt(),
                 payment.invoiceKey() != null,
                 payment.invoiceNumber(),
-                payment.invoiceGeneratedAt());
+                payment.invoiceGeneratedAt(),
+                payment.acceptedTermsVersion(),
+                payment.acceptedTermsAt(),
+                acceptedTerms);
     }
 
     /**

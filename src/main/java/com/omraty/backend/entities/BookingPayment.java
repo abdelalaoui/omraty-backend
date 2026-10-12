@@ -40,9 +40,17 @@ import java.util.UUID;
  * Chargés directement ici pour éviter une requête séparée partout où l'état de la facture doit être
  * connu (GET /admin/bookings, GET /admin/payments, réponse de confirmation).
  *
- * <p>Les constructeurs à 12, 15 et 18 arguments sont conservés pour tous les appelants/tests
- * antérieurs aux migrations V51/V53/cette carte : les champs correspondants valent alors null
- * (aucun moyen de paiement manuel / pas encore de vérification admin / pas encore de facture).
+ * <p>Les constructeurs à 12, 15, 18 et 21 arguments sont conservés pour tous les appelants/tests
+ * antérieurs aux migrations V51/V53/V55 et à la facture admin : les champs correspondants valent
+ * alors null (aucun moyen de paiement manuel / pas encore de vérification admin / pas encore de
+ * facture / pas de trace des conditions acceptées).
+ *
+ * <p>acceptedTermsVersion/acceptedTermsAt/acceptedTermsSnapshot (migration V55, carte "Conditions
+ * de réservation gérées depuis le serveur") : trace de l'acceptation des conditions de réservation
+ * au moment de la création (voir BookingPaymentService#attachAcceptedTerms) — nullables pour le VIP
+ * (jamais renseignés, hors scope de cette carte) et pour les requêtes antérieures à cette carte.
+ * acceptedTermsSnapshot est une copie figée des textes acceptés (JSON), jamais recalculée depuis
+ * booking_term, qui peut avoir changé depuis.
  */
 public record BookingPayment(
         long id,
@@ -65,7 +73,59 @@ public record BookingPayment(
         String rejectionReason,
         String invoiceKey,
         String invoiceNumber,
-        LocalDateTime invoiceGeneratedAt) {
+        LocalDateTime invoiceGeneratedAt,
+        String acceptedTermsVersion,
+        LocalDateTime acceptedTermsAt,
+        String acceptedTermsSnapshot) {
+
+    public BookingPayment(
+            long id,
+            Long roomId,
+            Long bedId,
+            Long vipRequestId,
+            PaymentPlan plan,
+            PaymentStatus status,
+            BigDecimal totalAmount,
+            String moovPaymentCode,
+            String moovTransactionId,
+            String payerPhone,
+            LocalDateTime expiresAt,
+            LocalDateTime createdAt,
+            String paymentMethod,
+            String paymentReference,
+            LocalDateTime declaredAt,
+            UUID confirmedByAdminId,
+            LocalDateTime confirmedAt,
+            String rejectionReason,
+            String invoiceKey,
+            String invoiceNumber,
+            LocalDateTime invoiceGeneratedAt) {
+        this(
+                id,
+                roomId,
+                bedId,
+                vipRequestId,
+                plan,
+                status,
+                totalAmount,
+                moovPaymentCode,
+                moovTransactionId,
+                payerPhone,
+                expiresAt,
+                createdAt,
+                paymentMethod,
+                paymentReference,
+                declaredAt,
+                confirmedByAdminId,
+                confirmedAt,
+                rejectionReason,
+                invoiceKey,
+                invoiceNumber,
+                invoiceGeneratedAt,
+                null,
+                null,
+                null);
+    }
 
     public BookingPayment(
             long id,

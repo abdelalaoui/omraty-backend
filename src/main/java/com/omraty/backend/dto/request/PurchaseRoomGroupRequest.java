@@ -16,7 +16,11 @@ public record PurchaseRoomGroupRequest(
         @NotEmpty(message = "Au moins une chambre est requise")
                 List<@Valid RoomGroupItemRequest> items,
         @NotNull(message = "Le plan de paiement est requis") PaymentPlan plan,
-        // Optionnel : compatibilité avec les app 1.0/1.0.1, qui ne l'envoient pas (voir
-        // BookingPaymentService, SecurityConfig). Code d'un moyen de paiement actif (voir GET
-        // /payment-methods) ; inconnu ou désactivé -> 400.
-        String paymentMethod) {}
+        // Optionnels : compatibilité avec les app antérieures aux cartes "Moyens de paiement" et
+        // "Conditions de réservation gérées depuis le serveur", qui ne les envoient pas (voir
+        // BookingPaymentService, SecurityConfig). paymentMethod : code d'un moyen de paiement actif
+        // (voir GET /payment-methods), inconnu ou désactivé -> 400. acceptedTermsVersion : version
+        // renvoyée par GET /booking-terms, périmée -> 409.
+        String paymentMethod,
+        String acceptedTermsVersion,
+        List<Long> acceptedTermIds) {}

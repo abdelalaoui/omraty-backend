@@ -73,6 +73,10 @@ public class SecurityConfig {
                                                 "/hotels",
                                                 "/reservation-groups",
                                                 "/rooms/*/beds",
+                                                // Conditions à cocher avant de réserver, affichées
+                                                // avant même la connexion (voir
+                                                // BookingTermController).
+                                                "/booking-terms",
                                                 // Choix du moyen de paiement manuel (Moov,
                                                 // Bankily...), nécessaire avant même la connexion
                                                 // pour afficher l'écran de paiement (voir

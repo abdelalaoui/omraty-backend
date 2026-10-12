@@ -68,7 +68,10 @@ public final class PurchaseMapper {
                 payment.declaredAt(),
                 payment.hasInvoice(),
                 payment.invoiceNumber(),
-                payment.invoiceGeneratedAt());
+                payment.invoiceGeneratedAt(),
+                payment.acceptedTermsVersion(),
+                payment.acceptedTermsAt(),
+                payment.acceptedTerms());
     }
 
     private static InstallmentResponse toInstallmentResponse(UserInstallment installment) {

@@ -90,7 +90,14 @@ public class RoomController {
                     String acceptLanguage) {
         BookingPayment payment =
                 roomService.reserveBed(
-                        type, request.packageId(), userId, request.plan(), request.paymentMethod());
+                        type,
+                        request.packageId(),
+                        userId,
+                        request.plan(),
+                        request.paymentMethod(),
+                        request.acceptedTermsVersion(),
+                        request.acceptedTermIds(),
+                        acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }
@@ -107,7 +114,13 @@ public class RoomController {
             @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
                     String acceptLanguage) {
         BookingPayment payment =
-                roomService.reserveOfferBed(request.packageId(), userId, request.paymentMethod());
+                roomService.reserveOfferBed(
+                        request.packageId(),
+                        userId,
+                        request.paymentMethod(),
+                        request.acceptedTermsVersion(),
+                        request.acceptedTermIds(),
+                        acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }
@@ -126,7 +139,14 @@ public class RoomController {
                     String acceptLanguage) {
         BookingPayment payment =
                 roomService.purchaseRoom(
-                        type, request.packageId(), userId, request.plan(), request.paymentMethod());
+                        type,
+                        request.packageId(),
+                        userId,
+                        request.plan(),
+                        request.paymentMethod(),
+                        request.acceptedTermsVersion(),
+                        request.acceptedTermIds(),
+                        acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }
@@ -156,7 +176,10 @@ public class RoomController {
                         request.packageId(),
                         userId,
                         request.plan(),
-                        request.paymentMethod());
+                        request.paymentMethod(),
+                        request.acceptedTermsVersion(),
+                        request.acceptedTermIds(),
+                        acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }

@@ -19,6 +19,11 @@ import java.util.List;
  *
  * <p>hasInvoice/invoiceNumber/invoiceGeneratedAt : renseignés une fois l'achat intégralement payé
  * (voir InvoiceService) — permettent d'afficher le bouton « Facture » sans appel séparé.
+ *
+ * <p>acceptedTermsVersion/acceptedTermsAt/acceptedTerms : conditions de réservation acceptées par
+ * le client à la réservation (voir migration V55) — null/vide pour un achat antérieur à cette
+ * fonctionnalité ou une offre VIP. Exposé aussi dans GET /admin/bookings (même type), pour le
+ * détail d'une réservation côté panel admin.
  */
 public record PurchasePaymentResponse(
         long id,
@@ -35,4 +40,7 @@ public record PurchasePaymentResponse(
         LocalDateTime declaredAt,
         boolean hasInvoice,
         String invoiceNumber,
-        LocalDateTime invoiceGeneratedAt) {}
+        LocalDateTime invoiceGeneratedAt,
+        String acceptedTermsVersion,
+        LocalDateTime acceptedTermsAt,
+        List<BookingTermItemResponse> acceptedTerms) {}

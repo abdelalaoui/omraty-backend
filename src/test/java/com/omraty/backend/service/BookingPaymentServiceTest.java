@@ -11,12 +11,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omraty.backend.dto.response.AdminInvoiceResponse;
 import com.omraty.backend.dto.response.PaymentStatusResponse;
 import com.omraty.backend.entities.AppSetting;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
+import com.omraty.backend.entities.BookingTerm;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.PaymentMethod;
 import com.omraty.backend.entities.Room;
@@ -28,6 +30,7 @@ import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.entities.enums.ServiceTierType;
 import com.omraty.backend.entities.enums.VipRequestStatus;
 import com.omraty.backend.exception.BookingPaymentException;
+import com.omraty.backend.exception.BookingTermException;
 import com.omraty.backend.exception.PaymentMethodException;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
@@ -73,6 +76,8 @@ class BookingPaymentServiceTest {
     @Mock private InvoiceService invoiceService;
     @Mock private FileStorageService fileStorageService;
     @Mock private AppSettingService appSettingService;
+    @Mock private BookingTermService bookingTermService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
     @Mock private PaymentMethodService paymentMethodService;
     @Mock private PaymentReferenceGenerator paymentReferenceGenerator;
     @Mock private PackageRepository packageRepository;
@@ -93,7 +98,9 @@ class BookingPaymentServiceTest {
                 appSettingService,
                 paymentMethodService,
                 paymentReferenceGenerator,
-                packageRepository);
+                packageRepository,
+                bookingTermService,
+                objectMapper);
     }
 
     private User user(String phone) {
@@ -245,6 +252,262 @@ class BookingPaymentServiceTest {
         assertThat(result).isEqualTo(withGateway);
         verify(bookingInstallmentRepository, never())
                 .insert(anyLongV(), anyIntV(), any(), any(), any());
+    }
+
+    private BookingTerm term(long id, String textAr) {
+        return new BookingTerm(
+                id, textAr, null, null, 1, true, LocalDateTime.now(), LocalDateTime.now());
+    }
+
+    @Test
+    void createPaymentPlan_withTerms_whenVersionMatches_attachesSnapshotFromRequestedIds() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(BigDecimal.ZERO);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("90000.00")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+        when(bookingTermService.getCurrentVersion()).thenReturn("v1");
+        when(bookingTermService.findByIds(List.of(1L))).thenReturn(List.of(term(1L, "شرط 1")));
+        BookingPayment withTerms =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "v1",
+                        LocalDateTime.now(),
+                        "[{\"id\":1,\"text\":\"شرط 1\"}]");
+        when(bookingPaymentRepository.attachAcceptedTerms(
+                        eq(10L), eq("v1"), eq("[{\"id\":1,\"text\":\"شرط 1\"}]")))
+                .thenReturn(withTerms);
+
+        BookingPayment result =
+                bookingPaymentService()
+                        .createPaymentPlan(
+                                30L,
+                                null,
+                                PaymentPlan.FULL,
+                                new BigDecimal("90000"),
+                                pkg,
+                                USER_ID,
+                                "v1",
+                                List.of(1L),
+                                "ar");
+
+        assertThat(result).isEqualTo(withTerms);
+        verify(bookingTermService, never()).getActiveTerms();
+    }
+
+    @Test
+    void createPaymentPlan_withTerms_whenVersionMismatches_throwsConflictWithoutAttaching() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(BigDecimal.ZERO);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("90000.00")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+        // Les conditions ont changé entre l'affichage (v1, côté app) et la réservation (v2
+        // désormais en base, voir carte "Conditions de réservation gérées depuis le serveur").
+        when(bookingTermService.getCurrentVersion()).thenReturn("v2");
+
+        assertThatThrownBy(
+                        () ->
+                                bookingPaymentService()
+                                        .createPaymentPlan(
+                                                30L,
+                                                null,
+                                                PaymentPlan.FULL,
+                                                new BigDecimal("90000"),
+                                                pkg,
+                                                USER_ID,
+                                                "v1",
+                                                List.of(1L),
+                                                "ar"))
+                .isInstanceOf(BookingTermException.TermsChangedException.class);
+        verify(bookingPaymentRepository, never()).attachAcceptedTerms(anyLongV(), any(), any());
+    }
+
+    @Test
+    void createPaymentPlan_withTerms_whenVersionNull_fallsBackToCurrentVersionAndActiveTerms() {
+        // Compatibilité app antérieure à cette carte (voir critère d'acceptation "requête sans
+        // version -> acceptée, enregistrée avec la version actuelle").
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(BigDecimal.ZERO);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("90000.00")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+        when(bookingTermService.getCurrentVersion()).thenReturn("v2");
+        when(bookingTermService.getActiveTerms()).thenReturn(List.of(term(1L, "شرط 1")));
+        when(bookingPaymentRepository.attachAcceptedTerms(eq(10L), eq("v2"), any()))
+                .thenReturn(inserted);
+
+        bookingPaymentService()
+                .createPaymentPlan(
+                        30L,
+                        null,
+                        PaymentPlan.FULL,
+                        new BigDecimal("90000"),
+                        pkg,
+                        USER_ID,
+                        null,
+                        null,
+                        "ar");
+
+        verify(bookingTermService, never()).findByIds(any());
+        verify(bookingPaymentRepository).attachAcceptedTerms(eq(10L), eq("v2"), any());
+    }
+
+    @Test
+    void toPurchasePayment_full_parsesAcceptedTermsSnapshot() {
+        BookingPayment payment =
+                new BookingPayment(
+                        1L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.CONFIRMED,
+                        new BigDecimal("90000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "v1",
+                        LocalDateTime.now(),
+                        "[{\"id\":1,\"text\":\"شرط 1\"}]");
+
+        UserPurchasePayment result = bookingPaymentService().toPurchasePayment(payment, List.of());
+
+        assertThat(result.acceptedTermsVersion()).isEqualTo("v1");
+        assertThat(result.acceptedTerms()).hasSize(1);
+        assertThat(result.acceptedTerms().get(0).id()).isEqualTo(1L);
+        assertThat(result.acceptedTerms().get(0).text()).isEqualTo("شرط 1");
+    }
+
+    @Test
+    void toPurchasePayment_full_whenNoSnapshotYet_returnsEmptyAcceptedTerms() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+
+        UserPurchasePayment result = bookingPaymentService().toPurchasePayment(payment, List.of());
+
+        assertThat(result.acceptedTermsVersion()).isNull();
+        assertThat(result.acceptedTerms()).isEmpty();
     }
 
     @Test

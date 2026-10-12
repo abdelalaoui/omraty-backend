@@ -1,5 +1,6 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.dto.response.BookingTermItemResponse;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import java.math.BigDecimal;
@@ -24,6 +25,10 @@ import java.util.List;
  * une fois l'achat intégralement payé — permettent d'afficher le bouton « Facture » sans appeler
  * GET /users/me/purchases/{id}/invoice (ou son équivalent admin, voir
  * BookingPaymentService.getInvoiceForAdmin) pour chaque ligne.
+ *
+ * <p>acceptedTermsVersion/acceptedTermsAt/acceptedTerms (migration V55, carte "Conditions de
+ * réservation gérées depuis le serveur") : trace de l'acceptation des conditions au moment de la
+ * réservation — null/vide pour un achat antérieur à cette carte ou une offre VIP.
  */
 public record UserPurchasePayment(
         long id,
@@ -40,4 +45,7 @@ public record UserPurchasePayment(
         LocalDateTime declaredAt,
         boolean hasInvoice,
         String invoiceNumber,
-        LocalDateTime invoiceGeneratedAt) {}
+        LocalDateTime invoiceGeneratedAt,
+        String acceptedTermsVersion,
+        LocalDateTime acceptedTermsAt,
+        List<BookingTermItemResponse> acceptedTerms) {}
