@@ -6,7 +6,8 @@ import java.time.LocalDate;
 /**
  * Package promo (voir migration V57, PromoPackageService) : un package Omra ordinaire (champs du
  * package recopiés ici pour l'affichage) plus son prix de lit propre (type 5, null s'il n'est pas
- * encore saisi), sa visibilité et son ordre dans la liste de la bannière.
+ * encore saisi), sa visibilité et son ordre dans la liste de la bannière. priceText : prix en
+ * lettres (arabe) affiché sous le prix en chiffres, null si non renseigné (voir migration V59).
  */
 public record PromoPackage(
         long packageId,
@@ -16,4 +17,5 @@ public record PromoPackage(
         LocalDate endDate,
         BigDecimal bedPrice,
         boolean visible,
-        int displayOrder) {}
+        int displayOrder,
+        String priceText) {}

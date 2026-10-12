@@ -5,7 +5,8 @@ import java.time.LocalDate;
 
 /**
  * Un package promo proposé depuis la bannière (GET /promo-packages) : mêmes infos qu'un groupe de
- * réservation (voir ReservationGroupResponse) plus son prix de lit propre.
+ * réservation (voir ReservationGroupResponse) plus son prix de lit propre et, si l'admin l'a
+ * renseigné, ce prix en lettres (priceText, arabe — null sinon).
  */
 public record PromoPackageResponse(
         long id,
@@ -14,4 +15,5 @@ public record PromoPackageResponse(
         LocalDate endDate,
         int groupSize,
         int reservedSeats,
-        BigDecimal bedPrice) {}
+        BigDecimal bedPrice,
+        String priceText) {}

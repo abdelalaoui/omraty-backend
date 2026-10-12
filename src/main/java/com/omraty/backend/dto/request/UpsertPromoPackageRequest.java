@@ -4,7 +4,8 @@ import java.math.BigDecimal;
 
 /**
  * Ajout d'un package à la promo ou modification (PUT /admin/promo-packages/{packageId}) : bedPrice
- * requis à l'ajout, tous les champs optionnels ensuite (null = inchangé).
+ * requis à l'ajout, tous les champs optionnels ensuite (null = inchangé). priceText : prix en
+ * lettres (arabe, 200 caractères max), "" pour l'effacer.
  */
 public record UpsertPromoPackageRequest(
-        BigDecimal bedPrice, Boolean visible, Integer displayOrder) {}
+        BigDecimal bedPrice, Boolean visible, Integer displayOrder, String priceText) {}

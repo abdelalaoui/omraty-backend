@@ -42,7 +42,8 @@ public class PromoPackageController {
                                                 pkg.groupSize(),
                                                 packageCapacityService.committedSeats(
                                                         pkg.packageId()),
-                                                pkg.bedPrice()))
+                                                pkg.bedPrice(),
+                                                pkg.priceText()))
                         .toList());
     }
 }
