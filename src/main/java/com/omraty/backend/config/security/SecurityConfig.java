@@ -72,6 +72,7 @@ public class SecurityConfig {
                                                 "/packages/*",
                                                 "/hotels",
                                                 "/reservation-groups",
+                                                "/promo-packages",
                                                 "/rooms/*/beds",
                                                 // Conditions à cocher avant de réserver, affichées
                                                 // avant même la connexion (voir

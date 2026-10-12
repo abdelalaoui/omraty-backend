@@ -184,6 +184,27 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler({
+        PromoPackageException.PackageNotInOfferException.class,
+        PromoPackageException.PromoPackageNotBookableException.class
+    })
+    public ResponseEntity<ErrorResponse> handlePromoPackageConflict(PromoPackageException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(PromoPackageException.PromoPackageNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handlePromoPackageNotFound(
+            PromoPackageException.PromoPackageNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(PromoPackageException.InvalidPromoPackageRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPromoPackageRequest(
+            PromoPackageException.InvalidPromoPackageRequestException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(RoomException.InvalidRoomTypeException.class)
     public ResponseEntity<ErrorResponse> handleInvalidRoomType(
             RoomException.InvalidRoomTypeException e) {

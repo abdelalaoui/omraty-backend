@@ -4,7 +4,7 @@ import com.omraty.backend.dto.response.BannerResponse;
 import com.omraty.backend.entities.Banner;
 import com.omraty.backend.mapper.BannerMapper;
 import com.omraty.backend.service.BannerService;
-import com.omraty.backend.service.BookingPaymentService;
+import com.omraty.backend.service.PromoPackageService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -26,22 +26,22 @@ public class BannerController {
     private static final String BED_OFFER_CTA_TYPE = "BED_OFFER";
 
     private final BannerService bannerService;
-    private final BookingPaymentService bookingPaymentService;
+    private final PromoPackageService promoPackageService;
 
-    public BannerController(
-            BannerService bannerService, BookingPaymentService bookingPaymentService) {
+    public BannerController(BannerService bannerService, PromoPackageService promoPackageService) {
         this.bannerService = bannerService;
-        this.bookingPaymentService = bookingPaymentService;
+        this.promoPackageService = promoPackageService;
     }
 
     /**
-     * Le prix de l'offre BED_OFFER (voir BookingPaymentService.getActiveOfferPrice) n'est résolu
-     * qu'une fois ici, pas par bannière (voir BannerMapper.toResponse) : une seule offre active à
-     * la fois quel que soit le nombre de bannières qui la référencent.
+     * ctaPrice d'une bannière BED_OFFER : prix de lit le plus bas des packages promo proposés (voir
+     * PromoPackageService.getMinimumBedPrice), résolu une fois ici. Gardé pour les versions de
+     * l'app antérieures aux packages promo, qui n'ouvrent l'offre que s'il est renseigné ; les
+     * versions récentes listent les packages et leurs prix via GET /promo-packages.
      */
     @GetMapping
     public ResponseEntity<List<BannerResponse>> listActiveBanners() {
-        Optional<BigDecimal> offerPrice = bookingPaymentService.getActiveOfferPrice();
+        Optional<BigDecimal> offerPrice = promoPackageService.getMinimumBedPrice();
         List<BannerResponse> responses =
                 bannerService.getActiveBanners().stream()
                         .map(
