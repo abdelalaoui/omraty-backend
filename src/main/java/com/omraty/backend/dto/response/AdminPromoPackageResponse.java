@@ -12,4 +12,5 @@ public record AdminPromoPackageResponse(
         int groupSize,
         BigDecimal bedPrice,
         boolean visible,
-        int displayOrder) {}
+        int displayOrder,
+        String priceText) {}

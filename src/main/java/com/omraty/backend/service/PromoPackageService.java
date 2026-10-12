@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PromoPackageService {
 
     static final String BED_OFFER_ENABLED_KEY = "bed_offer_enabled";
+    static final int MAX_PRICE_TEXT_LENGTH = 200;
 
     private final PackagePromoRepository packagePromoRepository;
     private final PackageRepository packageRepository;
@@ -109,10 +110,15 @@ public class PromoPackageService {
     /**
      * Met un package Omra existant en promo, ou modifie sa promo : bedPrice requis à l'ajout,
      * visible/displayOrder optionnels (valeur existante, ou visible et en tête à l'ajout).
+     * priceText (prix en lettres, arabe) : null = inchangé, "" = effacé.
      */
     @Transactional
     public PromoPackage upsertPromoPackage(
-            long packageId, BigDecimal bedPrice, Boolean visible, Integer displayOrder) {
+            long packageId,
+            BigDecimal bedPrice,
+            Boolean visible,
+            Integer displayOrder,
+            String priceText) {
         packageRepository
                 .findById(packageId)
                 .orElseThrow(
@@ -128,7 +134,14 @@ public class PromoPackageService {
             throw new PromoPackageException.InvalidPromoPackageRequestException(
                     "Le prix du lit doit être supérieur à 0");
         }
-        packagePromoRepository.upsertPromo(packageId, visible, displayOrder);
+        if (priceText != null && priceText.trim().length() > MAX_PRICE_TEXT_LENGTH) {
+            throw new PromoPackageException.InvalidPromoPackageRequestException(
+                    "Le prix en lettres ne doit pas dépasser "
+                            + MAX_PRICE_TEXT_LENGTH
+                            + " caractères");
+        }
+        packagePromoRepository.upsertPromo(
+                packageId, visible, displayOrder, priceText == null ? null : priceText.trim());
         if (bedPrice != null) {
             packagePromoRepository.upsertBedPrice(packageId, bedPrice);
         }

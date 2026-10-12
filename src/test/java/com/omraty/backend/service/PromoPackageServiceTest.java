@@ -64,7 +64,8 @@ class PromoPackageServiceTest {
                 LocalDate.of(2026, 11, 15),
                 bedPrice == null ? null : new BigDecimal(bedPrice),
                 visible,
-                0);
+                0,
+                null);
     }
 
     @Test
@@ -161,7 +162,7 @@ class PromoPackageServiceTest {
         assertThatThrownBy(
                         () ->
                                 promoPackageService.upsertPromoPackage(
-                                        9L, new BigDecimal("30000"), null, null))
+                                        9L, new BigDecimal("30000"), null, null, null))
                 .isInstanceOf(PackageException.PackageNotFoundException.class);
     }
 
@@ -171,9 +172,9 @@ class PromoPackageServiceTest {
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
         when(packagePromoRepository.isPromo(1L)).thenReturn(false);
 
-        assertThatThrownBy(() -> promoPackageService.upsertPromoPackage(1L, null, null, null))
+        assertThatThrownBy(() -> promoPackageService.upsertPromoPackage(1L, null, null, null, null))
                 .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
-        verify(packagePromoRepository, never()).upsertPromo(anyLong(), any(), any());
+        verify(packagePromoRepository, never()).upsertPromo(anyLong(), any(), any(), any());
     }
 
     @Test
@@ -185,7 +186,7 @@ class PromoPackageServiceTest {
         assertThatThrownBy(
                         () ->
                                 promoPackageService.upsertPromoPackage(
-                                        1L, BigDecimal.ZERO, null, null))
+                                        1L, BigDecimal.ZERO, null, null, null))
                 .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
     }
 
@@ -198,11 +199,25 @@ class PromoPackageServiceTest {
                 .thenReturn(Optional.of(promo(1L, "30000", true)));
 
         PromoPackage result =
-                promoPackageService.upsertPromoPackage(1L, new BigDecimal("30000"), null, 2);
+                promoPackageService.upsertPromoPackage(
+                        1L, new BigDecimal("30000"), null, 2, "  ثلاثون ألف أوقية ");
 
         assertThat(result.bedPrice()).isEqualByComparingTo("30000");
-        verify(packagePromoRepository).upsertPromo(1L, null, 2);
+        verify(packagePromoRepository).upsertPromo(1L, null, 2, "ثلاثون ألف أوقية");
         verify(packagePromoRepository).upsertBedPrice(1L, new BigDecimal("30000"));
+    }
+
+    @Test
+    void upsertPromoPackage_withTooLongPriceText_throwsInvalidRequest() {
+        when(packageRepository.findById(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
+        when(packagePromoRepository.isPromo(1L)).thenReturn(true);
+
+        assertThatThrownBy(
+                        () ->
+                                promoPackageService.upsertPromoPackage(
+                                        1L, null, null, null, "أ".repeat(201)))
+                .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
     }
 
     @Test

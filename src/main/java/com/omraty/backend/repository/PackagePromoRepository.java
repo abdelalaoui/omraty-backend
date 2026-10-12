@@ -22,7 +22,8 @@ public class PackagePromoRepository {
                             rs.getObject("end_date", LocalDate.class),
                             rs.getBigDecimal("bed_price"),
                             rs.getBoolean("visible"),
-                            rs.getInt("display_order"));
+                            rs.getInt("display_order"),
+                            rs.getString("price_text"));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -59,14 +60,19 @@ public class PackagePromoRepository {
                         PackagePromoTable.SELECT_MIN_BOOKABLE_BED_PRICE, BigDecimal.class));
     }
 
-    public void upsertPromo(long packageId, Boolean visible, Integer displayOrder) {
+    /** priceText : null = inchangé, "" = effacé. */
+    public void upsertPromo(
+            long packageId, Boolean visible, Integer displayOrder, String priceText) {
         jdbcTemplate.update(
                 PackagePromoTable.UPSERT_PROMO,
                 packageId,
                 visible,
                 displayOrder,
+                priceText,
                 visible,
-                displayOrder);
+                displayOrder,
+                priceText,
+                priceText);
     }
 
     public void upsertBedPrice(long packageId, BigDecimal price) {

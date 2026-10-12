@@ -47,7 +47,8 @@ public class AdminPromoPackageController {
                                 packageId,
                                 request.bedPrice(),
                                 request.visible(),
-                                request.displayOrder())));
+                                request.displayOrder(),
+                                request.priceText())));
     }
 
     /** Retire le package de l'offre : il redevient un package Omra ordinaire. */
@@ -66,6 +67,7 @@ public class AdminPromoPackageController {
                 pkg.groupSize(),
                 pkg.bedPrice(),
                 pkg.visible(),
-                pkg.displayOrder());
+                pkg.displayOrder(),
+                pkg.priceText());
     }
 }
