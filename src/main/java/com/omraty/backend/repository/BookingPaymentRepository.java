@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowMapper;
@@ -36,7 +37,10 @@ public class BookingPaymentRepository {
                             rs.getObject("created_at", LocalDateTime.class),
                             rs.getString("payment_method"),
                             rs.getString("payment_reference"),
-                            rs.getObject("declared_at", LocalDateTime.class));
+                            rs.getObject("declared_at", LocalDateTime.class),
+                            (UUID) rs.getObject("confirmed_by_admin_id", UUID.class),
+                            rs.getObject("confirmed_at", LocalDateTime.class),
+                            rs.getString("rejection_reason"));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -236,6 +240,71 @@ public class BookingPaymentRepository {
                         Boolean.class,
                         paymentReference);
         return Boolean.TRUE.equals(result);
+    }
+
+    /**
+     * Confirmation manuelle admin (voir BookingPaymentService.confirmManually) : même garde d'état
+     * que {@link #updateStatusIfPending}, élargie à PENDING_VERIFICATION.
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était ni PENDING ni
+     *     PENDING_VERIFICATION (déjà confirmé, échoué, ou expiré).
+     */
+    public Optional<BookingPayment> confirmManually(long paymentId, UUID adminId) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.CONFIRM_MANUALLY,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        adminId,
+                        paymentId)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * Rejet manuel admin (voir BookingPaymentService.rejectManually) : repasse le paiement en
+     * PENDING. Même garde d'état que {@link #confirmManually}.
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était ni PENDING ni
+     *     PENDING_VERIFICATION.
+     */
+    public Optional<BookingPayment> rejectManually(long paymentId, String reason) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.REJECT_MANUALLY,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        reason,
+                        paymentId)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * File d'attente admin des paiements manuels à vérifier (voir
+     * BookingPaymentService.listPaymentsForAdmin) : chaque filtre est optionnel (null = pas de
+     * contrainte), passé deux fois pour le motif "(? IS NULL OR colonne = ?)" (voir
+     * BookingPaymentTable.SELECT_PAYMENTS_FOR_ADMIN_VERIFICATION, pas de support des paramètres
+     * nommés avec JdbcTemplate).
+     */
+    public List<BookingPayment> findForAdminVerification(
+            PaymentStatus status,
+            String paymentMethod,
+            String normalizedReference,
+            LocalDateTime from,
+            LocalDateTime to) {
+        String statusValue = status == null ? null : status.name();
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_PAYMENTS_FOR_ADMIN_VERIFICATION,
+                BOOKING_PAYMENT_ROW_MAPPER,
+                statusValue,
+                statusValue,
+                paymentMethod,
+                paymentMethod,
+                normalizedReference,
+                normalizedReference,
+                from,
+                from,
+                to,
+                to);
     }
 
     /**

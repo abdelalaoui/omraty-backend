@@ -9,6 +9,7 @@ import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.PaymentMethod;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.ServiceTier;
+import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
@@ -23,6 +24,7 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import com.omraty.backend.repository.VipRequestRepository;
@@ -32,6 +34,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -99,6 +102,7 @@ public class BookingPaymentService {
     private final AppSettingService appSettingService;
     private final PaymentMethodService paymentMethodService;
     private final PaymentReferenceGenerator paymentReferenceGenerator;
+    private final PackageRepository packageRepository;
 
     static final String FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY = "full_payment_discount_percentage";
 
@@ -120,7 +124,8 @@ public class BookingPaymentService {
             FileStorageService fileStorageService,
             AppSettingService appSettingService,
             PaymentMethodService paymentMethodService,
-            PaymentReferenceGenerator paymentReferenceGenerator) {
+            PaymentReferenceGenerator paymentReferenceGenerator,
+            PackageRepository packageRepository) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
@@ -135,6 +140,7 @@ public class BookingPaymentService {
         this.appSettingService = appSettingService;
         this.paymentMethodService = paymentMethodService;
         this.paymentReferenceGenerator = paymentReferenceGenerator;
+        this.packageRepository = packageRepository;
     }
 
     /**
@@ -537,12 +543,18 @@ public class BookingPaymentService {
      * Marque manuellement une tranche comme payée (PATCH /admin/installments/{id}/mark-paid) —
      * filet de sécurité pour les cas exceptionnels (litige, paiement reçu autrement, panne
      * prolongée côté Moov) maintenant que le flux Moov confirme le paiement de la 1ère tranche
-     * (voir {@link #confirmFromGateway}). adminId est tracé (paid_by_admin_id) et la tranche est
-     * marquée paid_manually pour la distinguer d'une confirmation Moov.
+     * (voir {@link #confirmFromGateway}), et chemin de confirmation d'une tranche payée via un
+     * moyen de paiement manuel (voir migration V51, carte "Backend pour le panel admin" : « tranche
+     * : /admin/installments/{id}/confirm, ou adapter PATCH /admin/installments/{id}/mark-paid » —
+     * choix retenu ici). adminId est tracé (paid_by_admin_id) et la tranche est marquée
+     * paid_manually pour la distinguer d'une confirmation Moov. Notifie le propriétaire de l'achat,
+     * comme {@link #confirmFromGateway}/{@link #confirmManually} — silencieusement ignoré si le
+     * propriétaire n'est pas résolvable (même raisonnement que {@link #notifyPaymentOutcome}).
      *
      * @throws BookingPaymentException.InstallmentNotFoundException si la tranche n'existe pas.
      * @throws BookingPaymentException.InstallmentAlreadyPaidException si elle est déjà payée.
      */
+    @Transactional
     public BookingInstallment markInstallmentPaidManually(long installmentId, UUID adminId) {
         BookingInstallment installment = getInstallmentOrThrow(installmentId);
         if (installment.paidAt() != null) {
@@ -556,10 +568,253 @@ public class BookingPaymentService {
                                 () ->
                                         new IllegalStateException(
                                                 "Tranche introuvable après mise à jour"));
+        bookingPaymentRepository
+                .findById(updated.bookingPaymentId())
+                .ifPresent(payment -> notifyPaymentOutcome(payment, PaymentStatus.CONFIRMED));
         // Seule la 3e tranche marquée payée peut amener l'achat à intégralement payé (voir
         // InvoiceService.generateIfFullyPaid, qui vérifie lui-même que les 3 le sont).
         invoiceService.generateIfFullyPaid(updated.bookingPaymentId());
         return updated;
+    }
+
+    /**
+     * Confirmation manuelle admin d'un paiement (POST /admin/payments/{id}/confirm, voir carte
+     * "Backend pour le panel admin") : même effet qu'une confirmation Moov (voir {@link
+     * #confirmFromGateway}), mais déclenchée par un admin qui a retrouvé le transfert (avec ou sans
+     * que le client ait déclaré « J'ai payé » — possible depuis PENDING ou PENDING_VERIFICATION).
+     * confirmedByAdminId/confirmedAt tracent qui a confirmé et quand (voir migration V53).
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas.
+     * @throws BookingPaymentException.PaymentNotConfirmableException s'il n'est plus PENDING ni
+     *     PENDING_VERIFICATION (déjà confirmé, échoué, ou expiré).
+     */
+    @Transactional
+    public BookingPayment confirmManually(long bookingPaymentId, UUID adminId) {
+        BookingPayment payment = getPaymentOrThrow(bookingPaymentId);
+        BookingPayment confirmed =
+                bookingPaymentRepository
+                        .confirmManually(bookingPaymentId, adminId)
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotConfirmableException(
+                                                "Paiement déjà confirmé, échoué ou expiré (id="
+                                                        + bookingPaymentId
+                                                        + ")"));
+        if (payment.plan() == PaymentPlan.INSTALLMENTS) {
+            markFirstInstallmentPaid(confirmed.id());
+        }
+        notifyPaymentOutcome(confirmed, PaymentStatus.CONFIRMED);
+        invoiceService.generateIfFullyPaid(confirmed.id());
+        return confirmed;
+    }
+
+    /**
+     * Rejet manuel admin d'un paiement (POST /admin/payments/{id}/reject, voir carte "Backend pour
+     * le panel admin") : le paiement redevient PENDING (le client peut re-essayer avec le même
+     * code, voir {@link #declare}) et le client est notifié avec le motif (montant incorrect, aucun
+     * transfert trouvé...).
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas.
+     * @throws BookingPaymentException.PaymentNotConfirmableException s'il n'est plus PENDING ni
+     *     PENDING_VERIFICATION (déjà confirmé, échoué, ou expiré).
+     */
+    @Transactional
+    public BookingPayment rejectManually(long bookingPaymentId, String reason) {
+        getPaymentOrThrow(bookingPaymentId);
+        BookingPayment rejected =
+                bookingPaymentRepository
+                        .rejectManually(bookingPaymentId, reason)
+                        .orElseThrow(
+                                () ->
+                                        new BookingPaymentException.PaymentNotConfirmableException(
+                                                "Paiement déjà confirmé, échoué ou expiré (id="
+                                                        + bookingPaymentId
+                                                        + ")"));
+        notifyPaymentRejected(rejected, reason);
+        return rejected;
+    }
+
+    private BookingPayment getPaymentOrThrow(long bookingPaymentId) {
+        return bookingPaymentRepository
+                .findById(bookingPaymentId)
+                .orElseThrow(
+                        () ->
+                                new BookingPaymentException.PaymentNotFoundException(
+                                        "Paiement introuvable (id=" + bookingPaymentId + ")"));
+    }
+
+    private void notifyPaymentRejected(BookingPayment payment, String reason) {
+        UUID userId = resolveOwnerUserId(payment);
+        if (userId == null) {
+            log.warn(
+                    "Paiement {} rejeté mais propriétaire introuvable : aucune notification"
+                            + " envoyée",
+                    payment.id());
+            return;
+        }
+        notificationService.create(
+                userId,
+                "Paiement rejeté",
+                "Votre paiement de "
+                        + payment.totalAmount()
+                        + " n'a pas pu être vérifié ("
+                        + reason
+                        + "). Vous pouvez réessayer avec le même code ou nous contacter.");
+    }
+
+    /**
+     * File d'attente admin des paiements et tranches manuels à vérifier (GET /admin/payments, voir
+     * carte "Backend pour le panel admin") : mélange booking_payment (plan FULL, ou 1ère tranche
+     * d'un plan INSTALLMENTS) et booking_installment (tranches 2/3), triés par date de mise en
+     * attente croissante (déclaration si renseignée, sinon création/échéance). status filtre les
+     * deux granularités : PENDING/PENDING_VERIFICATION s'appliquent aux deux (traduit en
+     * declared_at pour une tranche, qui n'a pas de colonne status) ; CONFIRMED/FAILED/EXPIRED n'ont
+     * pas d'équivalent côté tranche, qui n'est alors pas interrogée. reference est insensible à la
+     * casse et aux espaces (voir {@link #normalizeReference}).
+     */
+    public List<AdminPaymentVerificationItem> listPaymentsForAdmin(
+            PaymentStatus status,
+            String paymentMethod,
+            String reference,
+            LocalDateTime from,
+            LocalDateTime to) {
+        String normalizedReference = normalizeReference(reference);
+        List<AdminPaymentVerificationItem> items = new ArrayList<>();
+        for (BookingPayment payment :
+                bookingPaymentRepository.findForAdminVerification(
+                        status, paymentMethod, normalizedReference, from, to)) {
+            items.add(toAdminItem(payment));
+        }
+        boolean installmentStatusApplies =
+                status == null
+                        || status == PaymentStatus.PENDING
+                        || status == PaymentStatus.PENDING_VERIFICATION;
+        if (installmentStatusApplies) {
+            Boolean requireDeclared =
+                    status == null ? null : status == PaymentStatus.PENDING_VERIFICATION;
+            for (BookingInstallment installment :
+                    bookingInstallmentRepository.findForAdminVerification(
+                            requireDeclared, paymentMethod, normalizedReference, from, to)) {
+                toAdminItem(installment).ifPresent(items::add);
+            }
+        }
+        items.sort(Comparator.comparing(AdminPaymentVerificationItem::queuedAt));
+        return items;
+    }
+
+    private AdminPaymentVerificationItem toAdminItem(BookingPayment payment) {
+        UUID userId = resolveOwnerUserId(payment);
+        return new AdminPaymentVerificationItem(
+                "payment-" + payment.id(),
+                payment.id(),
+                null,
+                null,
+                userId,
+                resolvePhone(userId),
+                payment.paymentMethod(),
+                payment.paymentReference(),
+                payment.totalAmount(),
+                payment.status(),
+                payment.declaredAt(),
+                payment.declaredAt() != null ? payment.declaredAt() : payment.createdAt(),
+                resolvePurchaseDescription(payment));
+    }
+
+    /**
+     * Vide si le booking_payment parent n'existe plus (ne devrait pas arriver, mais une tranche ne
+     * doit jamais faire échouer toute la liste pour une incohérence isolée).
+     */
+    private Optional<AdminPaymentVerificationItem> toAdminItem(BookingInstallment installment) {
+        return bookingPaymentRepository
+                .findById(installment.bookingPaymentId())
+                .map(
+                        payment -> {
+                            UUID userId = resolveOwnerUserId(payment);
+                            LocalDateTime queuedAt =
+                                    installment.declaredAt() != null
+                                            ? installment.declaredAt()
+                                            : installment.dueDate().atStartOfDay();
+                            return new AdminPaymentVerificationItem(
+                                    "installment-" + installment.id(),
+                                    installment.bookingPaymentId(),
+                                    installment.id(),
+                                    installment.sequence(),
+                                    userId,
+                                    resolvePhone(userId),
+                                    installment.paymentMethod(),
+                                    installment.paymentReference(),
+                                    installment.amount(),
+                                    installment.declaredAt() != null
+                                            ? PaymentStatus.PENDING_VERIFICATION
+                                            : PaymentStatus.PENDING,
+                                    installment.declaredAt(),
+                                    queuedAt,
+                                    resolvePurchaseDescription(payment));
+                        });
+    }
+
+    private String resolvePhone(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        return authRepository.findById(userId).map(User::phone).orElse(null);
+    }
+
+    /**
+     * Normalise un code de paiement pour une recherche insensible à la casse et aux espaces (voir
+     * carte "Backend pour le panel admin" : "om7k3p9, OM 7K3P9 → trouvé").
+     */
+    private static String normalizeReference(String reference) {
+        if (reference == null) {
+            return null;
+        }
+        return reference.replace(" ", "").toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * Description de ce qui est acheté (package / chambre / VIP / groupe), pour l'affichage admin
+     * (GET /admin/payments) — même branchement que {@link #resolveOwnerUserId}.
+     */
+    private String resolvePurchaseDescription(BookingPayment payment) {
+        if (payment.roomId() != null) {
+            return roomRepository.findByIds(List.of(payment.roomId())).stream()
+                    .findFirst()
+                    .map(
+                            room ->
+                                    "Chambre "
+                                            + room.totalCapacity()
+                                            + " places - "
+                                            + packageLabel(room.packageId()))
+                    .orElse(null);
+        }
+        if (payment.bedId() != null) {
+            return bedRepository.findByIds(List.of(payment.bedId())).stream()
+                    .findFirst()
+                    .map(
+                            bed ->
+                                    "Lit n°"
+                                            + bed.number()
+                                            + " (chambre partagée) - "
+                                            + roomRepository
+                                                    .findByIds(List.of(bed.roomId()))
+                                                    .stream()
+                                                    .findFirst()
+                                                    .map(room -> packageLabel(room.packageId()))
+                                                    .orElse(""))
+                    .orElse(null);
+        }
+        if (payment.vipRequestId() != null) {
+            return vipRequestRepository.findByIds(List.of(payment.vipRequestId())).stream()
+                    .findFirst()
+                    .map(vip -> "Offre VIP - " + packageLabel(vip.packageId()))
+                    .orElse(null);
+        }
+        List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
+        return "Achat groupé (" + groupRoomIds.size() + " chambre(s))";
+    }
+
+    private String packageLabel(long packageId) {
+        return packageRepository.findById(packageId).map(OmraPackage::label).orElse(null);
     }
 
     private BookingInstallment getInstallmentOrThrow(long installmentId) {

@@ -188,4 +188,31 @@ public class BookingInstallmentRepository {
     public void markReminderSent(long id) {
         jdbcTemplate.update(BookingInstallmentTable.MARK_REMINDER_SENT, id);
     }
+
+    /**
+     * File d'attente admin des tranches (2e/3e) à vérifier (voir
+     * BookingPaymentService.listPaymentsForAdmin). requireDeclared : null = pas de contrainte, true
+     * = déclarée (PENDING_VERIFICATION), false = pas encore déclarée (PENDING) — voir
+     * BookingInstallmentTable.SELECT_INSTALLMENTS_FOR_ADMIN_VERIFICATION.
+     */
+    public List<BookingInstallment> findForAdminVerification(
+            Boolean requireDeclared,
+            String paymentMethod,
+            String normalizedReference,
+            LocalDateTime from,
+            LocalDateTime to) {
+        return jdbcTemplate.query(
+                BookingInstallmentTable.SELECT_INSTALLMENTS_FOR_ADMIN_VERIFICATION,
+                BOOKING_INSTALLMENT_ROW_MAPPER,
+                requireDeclared,
+                requireDeclared,
+                paymentMethod,
+                paymentMethod,
+                normalizedReference,
+                normalizedReference,
+                from,
+                from,
+                to,
+                to);
+    }
 }

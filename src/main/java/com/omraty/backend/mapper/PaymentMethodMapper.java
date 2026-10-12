@@ -1,5 +1,6 @@
 package com.omraty.backend.mapper;
 
+import com.omraty.backend.dto.response.AdminPaymentMethodResponse;
 import com.omraty.backend.dto.response.PaymentMethodResponse;
 import com.omraty.backend.entities.PaymentMethod;
 import java.util.List;
@@ -50,6 +51,30 @@ public final class PaymentMethodMapper {
                     default -> paymentMethod.instructionsFr();
                 };
         return translated != null ? translated : paymentMethod.instructionsFr();
+    }
+
+    public static AdminPaymentMethodResponse toAdminResponse(PaymentMethod paymentMethod) {
+        return new AdminPaymentMethodResponse(
+                paymentMethod.id(),
+                paymentMethod.code(),
+                paymentMethod.nameFr(),
+                paymentMethod.nameEn(),
+                paymentMethod.nameAr(),
+                paymentMethod.merchantNumber(),
+                paymentMethod.merchantName(),
+                paymentMethod.instructionsFr(),
+                paymentMethod.instructionsEn(),
+                paymentMethod.instructionsAr(),
+                paymentMethod.logoUrl(),
+                paymentMethod.enabled(),
+                paymentMethod.displayOrder(),
+                paymentMethod.createdAt(),
+                paymentMethod.updatedAt());
+    }
+
+    public static List<AdminPaymentMethodResponse> toAdminResponseList(
+            List<PaymentMethod> paymentMethods) {
+        return paymentMethods.stream().map(PaymentMethodMapper::toAdminResponse).toList();
     }
 
     public static String resolveLanguage(String acceptLanguage) {

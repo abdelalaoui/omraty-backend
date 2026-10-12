@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -34,6 +35,7 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
 import com.omraty.backend.repository.VipRequestRepository;
@@ -72,6 +74,7 @@ class BookingPaymentServiceTest {
     @Mock private AppSettingService appSettingService;
     @Mock private PaymentMethodService paymentMethodService;
     @Mock private PaymentReferenceGenerator paymentReferenceGenerator;
+    @Mock private PackageRepository packageRepository;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
@@ -88,7 +91,8 @@ class BookingPaymentServiceTest {
                 fileStorageService,
                 appSettingService,
                 paymentMethodService,
-                paymentReferenceGenerator);
+                paymentReferenceGenerator,
+                packageRepository);
     }
 
     private User user(String phone) {
@@ -1120,6 +1124,211 @@ class BookingPaymentServiceTest {
         // Peut amener l'achat à intégralement payé (voir InvoiceService.generateIfFullyPaid, qui
         // vérifie lui-même que les 3 tranches le sont).
         verify(invoiceService).generateIfFullyPaid(10L);
+    }
+
+    @Test
+    void markInstallmentPaidManually_whenOwnerResolvable_notifiesOwner() {
+        BookingInstallment unpaid =
+                new BookingInstallment(
+                        1L,
+                        10L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
+                        false);
+        BookingInstallment updated =
+                new BookingInstallment(
+                        1L,
+                        10L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        LocalDateTime.now(),
+                        null,
+                        ADMIN_ID,
+                        true);
+        when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.of(unpaid));
+        when(bookingInstallmentRepository.markPaidManually(1L, ADMIN_ID))
+                .thenReturn(Optional.of(updated));
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.INSTALLMENTS);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        bookingPaymentService().markInstallmentPaidManually(1L, ADMIN_ID);
+
+        verify(notificationService).create(eq(USER_ID), eq("Paiement confirmé"), anyString());
+    }
+
+    @Test
+    void confirmManually_whenPaymentDoesNotExist_throwsException() {
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().confirmManually(10L, ADMIN_ID))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+        verify(bookingPaymentRepository, never()).confirmManually(anyLongV(), any());
+    }
+
+    @Test
+    void confirmManually_whenAlreadyConfirmedOrExpired_throwsConflict() {
+        BookingPayment payment =
+                withStatus(pendingPayment(30L, null, PaymentPlan.FULL), PaymentStatus.CONFIRMED);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.confirmManually(10L, ADMIN_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().confirmManually(10L, ADMIN_ID))
+                .isInstanceOf(BookingPaymentException.PaymentNotConfirmableException.class);
+        verify(invoiceService, never()).generateIfFullyPaid(anyLongV());
+    }
+
+    @Test
+    void confirmManually_full_confirmsNotifiesAndGeneratesInvoice() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        BookingPayment confirmed = withStatus(payment, PaymentStatus.CONFIRMED);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.confirmManually(10L, ADMIN_ID))
+                .thenReturn(Optional.of(confirmed));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        BookingPayment result = bookingPaymentService().confirmManually(10L, ADMIN_ID);
+
+        assertThat(result.status()).isEqualTo(PaymentStatus.CONFIRMED);
+        verify(notificationService).create(eq(USER_ID), eq("Paiement confirmé"), anyString());
+        verify(invoiceService).generateIfFullyPaid(10L);
+        // Pas déclenché pour un plan FULL (aucune tranche à marquer payée).
+        verify(bookingInstallmentRepository, never())
+                .findByPaymentIdAndSequence(anyLongV(), anyIntV());
+    }
+
+    @Test
+    void confirmManually_installments_marksFirstInstallmentPaidEvenWithoutUserDeclaration() {
+        // Possible même si l'utilisateur n'a pas appuyé sur « J'ai payé » (voir carte "Backend pour
+        // le panel admin") : le paiement reste PENDING (jamais déclaré) quand l'admin confirme.
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.INSTALLMENTS);
+        BookingPayment confirmed = withStatus(payment, PaymentStatus.CONFIRMED);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.confirmManually(10L, ADMIN_ID))
+                .thenReturn(Optional.of(confirmed));
+        when(bookingInstallmentRepository.findByPaymentIdAndSequence(10L, 1))
+                .thenReturn(
+                        Optional.of(
+                                new BookingInstallment(
+                                        1L,
+                                        10L,
+                                        1,
+                                        new BigDecimal("54000"),
+                                        LocalDate.now(),
+                                        null,
+                                        null,
+                                        null,
+                                        false)));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        bookingPaymentService().confirmManually(10L, ADMIN_ID);
+
+        verify(bookingInstallmentRepository).markPaid(1L);
+    }
+
+    @Test
+    void rejectManually_whenPaymentDoesNotExist_throwsException() {
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().rejectManually(10L, "Montant incorrect"))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+    }
+
+    @Test
+    void rejectManually_whenAlreadyConfirmedOrExpired_throwsConflict() {
+        BookingPayment payment =
+                withStatus(pendingPayment(30L, null, PaymentPlan.FULL), PaymentStatus.EXPIRED);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.rejectManually(10L, "Expiré")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().rejectManually(10L, "Expiré"))
+                .isInstanceOf(BookingPaymentException.PaymentNotConfirmableException.class);
+    }
+
+    @Test
+    void rejectManually_whenPending_notifiesOwnerWithReasonAndReturnsToPending() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        BookingPayment rejected = withStatus(payment, PaymentStatus.PENDING);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.rejectManually(10L, "Aucun transfert trouvé"))
+                .thenReturn(Optional.of(rejected));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        BookingPayment result =
+                bookingPaymentService().rejectManually(10L, "Aucun transfert trouvé");
+
+        assertThat(result.status()).isEqualTo(PaymentStatus.PENDING);
+        verify(notificationService)
+                .create(
+                        eq(USER_ID),
+                        eq("Paiement rejeté"),
+                        org.mockito.ArgumentMatchers.contains("Aucun transfert trouvé"));
+    }
+
+    @Test
+    void listPaymentsForAdmin_normalizesReferenceAndMergesPaymentsAndInstallments() {
+        BookingPayment payment =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING_VERIFICATION,
+                        new BigDecimal("90000"),
+                        null,
+                        null,
+                        null,
+                        LocalDateTime.now(),
+                        LocalDateTime.now().minusHours(2),
+                        "MOOV",
+                        "OM7K3P9",
+                        LocalDateTime.now().minusHours(1));
+        when(bookingPaymentRepository.findForAdminVerification(
+                        eq(PaymentStatus.PENDING_VERIFICATION),
+                        isNull(),
+                        eq("OM7K3P9"),
+                        isNull(),
+                        isNull()))
+                .thenReturn(List.of(payment));
+        when(bookingInstallmentRepository.findForAdminVerification(
+                        eq(true), isNull(), eq("OM7K3P9"), isNull(), isNull()))
+                .thenReturn(List.of());
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+
+        List<AdminPaymentVerificationItem> result =
+                bookingPaymentService()
+                        .listPaymentsForAdmin(
+                                PaymentStatus.PENDING_VERIFICATION, null, "om 7k3p9", null, null);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo("payment-10");
+        assertThat(result.get(0).paymentReference()).isEqualTo("OM7K3P9");
+        assertThat(result.get(0).userPhone()).isEqualTo("+22890000000");
+    }
+
+    @Test
+    void listPaymentsForAdmin_whenStatusIsConfirmed_skipsInstallmentQueryEntirely() {
+        when(bookingPaymentRepository.findForAdminVerification(
+                        eq(PaymentStatus.CONFIRMED), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(List.of());
+
+        bookingPaymentService()
+                .listPaymentsForAdmin(PaymentStatus.CONFIRMED, null, null, null, null);
+
+        verify(bookingInstallmentRepository, never())
+                .findForAdminVerification(any(), any(), any(), any(), any());
     }
 
     @Test
