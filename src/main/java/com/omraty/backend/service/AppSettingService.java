@@ -5,6 +5,7 @@ import com.omraty.backend.entities.AppSetting;
 import com.omraty.backend.exception.AppSettingException;
 import com.omraty.backend.repository.AppSettingRepository;
 import java.math.BigDecimal;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 /**
@@ -20,6 +21,22 @@ public class AppSettingService {
     private static final String LATEST_VERSION_KEY = "latest_version";
     private static final String STORE_URL_IOS_KEY = "store_url_ios";
     private static final String STORE_URL_ANDROID_KEY = "store_url_android";
+
+    /**
+     * Réglages dont la valeur vide a un sens (pas de date, message par défaut de l'app, aucune
+     * liste, lien non renseigné) : l'admin doit pouvoir les remettre à "". Pour tous les autres
+     * (nombres, versions, booléens...), une valeur vide casserait leur lecture et est refusée.
+     */
+    static final Set<String> CLEARABLE_KEYS =
+            Set.of(
+                    "app_opening_at",
+                    "app_closed_message_ar",
+                    "app_closed_message_fr",
+                    "app_closed_message_en",
+                    "app_allowed_phones",
+                    "otp_test_phone_numbers",
+                    STORE_URL_IOS_KEY,
+                    STORE_URL_ANDROID_KEY);
 
     private final AppSettingRepository appSettingRepository;
 
@@ -52,6 +69,13 @@ public class AppSettingService {
     }
 
     public AppSetting updateSetting(String key, String value) {
+        if (value.isBlank()) {
+            if (!CLEARABLE_KEYS.contains(key)) {
+                throw new AppSettingException.InvalidAppSettingException(
+                        "La valeur est requise (key=" + key + ")");
+            }
+            value = "";
+        }
         return appSettingRepository
                 .updateValue(key, value)
                 .orElseThrow(
