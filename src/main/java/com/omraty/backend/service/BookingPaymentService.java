@@ -86,7 +86,6 @@ public class BookingPaymentService {
 
     static final String FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY = "full_payment_discount_percentage";
 
-
     public BookingPaymentService(
             ServiceTierRepository serviceTierRepository,
             BookingPaymentRepository bookingPaymentRepository,

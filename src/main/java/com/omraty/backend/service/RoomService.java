@@ -153,12 +153,11 @@ public class RoomService {
 
     /**
      * Réserve un lit (chambre de 5) d'un package promo à son prix propre (voir
-     * PromoPackageService.resolveBedPrice, migration V51) plutôt qu'au prix catalogue — toujours
-     * en paiement complet (plan FULL forcé), jamais en tranches, contrairement à {@link
-     * #reserveBed} qui laisse le client choisir, et sans jamais appliquer la réduction
-     * paiement-complet (voir BookingPaymentService.createOfferPaymentPlan) : le prix de l'offre est
-     * déjà le prix final. Même mécanique sinon : chambre ouverte réutilisée ou créée, lit choisi
-     * par le serveur.
+     * PromoPackageService.resolveBedPrice, migration V51) plutôt qu'au prix catalogue — toujours en
+     * paiement complet (plan FULL forcé), jamais en tranches, contrairement à {@link #reserveBed}
+     * qui laisse le client choisir, et sans jamais appliquer la réduction paiement-complet (voir
+     * BookingPaymentService.createOfferPaymentPlan) : le prix de l'offre est déjà le prix final.
+     * Même mécanique sinon : chambre ouverte réutilisée ou créée, lit choisi par le serveur.
      *
      * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
      * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si

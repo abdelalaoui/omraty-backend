@@ -154,11 +154,9 @@ class RoomServiceTest {
 
     @Test
     void reserveBed_onPromoPackage_isRefusedBeforeReservingAnything() {
-        doThrow(
-                        new PromoPackageException.PromoPackageNotBookableException(
-                                "Ce package est réservé à l'offre spéciale"))
-                .when(promoPackageService)
-                .ensureNotPromo(1L);
+        PromoPackageException refused =
+                new PromoPackageException.PromoPackageNotBookableException("Réservé à l'offre");
+        doThrow(refused).when(promoPackageService).ensureNotPromo(1L);
 
         assertThatThrownBy(() -> roomService().reserveBed(5, 1L, USER_ID, PaymentPlan.FULL))
                 .isInstanceOf(PromoPackageException.PromoPackageNotBookableException.class);

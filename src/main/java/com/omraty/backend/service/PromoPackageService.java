@@ -71,8 +71,8 @@ public class PromoPackageService {
      * RoomService.reserveOfferBed).
      *
      * @throws BookingPaymentException.PriceNotConfiguredException si l'offre est coupée.
-     * @throws PromoPackageException.PackageNotInOfferException si le package n'est pas proposé
-     *     dans l'offre (pas en promo, masqué ou sans prix).
+     * @throws PromoPackageException.PackageNotInOfferException si le package n'est pas proposé dans
+     *     l'offre (pas en promo, masqué ou sans prix).
      */
     public BigDecimal resolveBedPrice(long packageId) {
         if (!isOfferEnabled()) {

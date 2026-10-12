@@ -41,10 +41,7 @@ public class PackagePromoRepository {
 
     public Optional<PromoPackage> findByPackageId(long packageId) {
         return jdbcTemplate
-                .query(
-                        PackagePromoTable.SELECT_BY_PACKAGE_ID,
-                        PROMO_PACKAGE_ROW_MAPPER,
-                        packageId)
+                .query(PackagePromoTable.SELECT_BY_PACKAGE_ID, PROMO_PACKAGE_ROW_MAPPER, packageId)
                 .stream()
                 .findFirst();
     }
