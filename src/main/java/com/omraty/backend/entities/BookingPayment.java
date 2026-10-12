@@ -51,7 +51,6 @@ import java.util.UUID;
  * (jamais renseignés, hors scope de cette carte) et pour les requêtes antérieures à cette carte.
  * acceptedTermsSnapshot est une copie figée des textes acceptés (JSON), jamais recalculée depuis
  * booking_term, qui peut avoir changé depuis.
- *
  */
 public record BookingPayment(
         long id,

@@ -421,7 +421,13 @@ public class RoomService {
                 ? bookingPaymentService.createPaymentPlan(
                         ctx.roomId(), null, plan, ctx.price(), ctx.pkg(), userId)
                 : bookingPaymentService.createPaymentPlan(
-                        ctx.roomId(), null, plan, ctx.price(), ctx.pkg(), userId, paymentMethodCode);
+                        ctx.roomId(),
+                        null,
+                        plan,
+                        ctx.price(),
+                        ctx.pkg(),
+                        userId,
+                        paymentMethodCode);
     }
 
     private PurchasedRoomContext purchaseRoomInternal(int type, long packageId, UUID userId) {
@@ -527,7 +533,10 @@ public class RoomService {
     }
 
     private BookingPayment createGroupPaymentPlan(
-            PurchasedRoomGroupContext ctx, PaymentPlan plan, UUID userId, String paymentMethodCode) {
+            PurchasedRoomGroupContext ctx,
+            PaymentPlan plan,
+            UUID userId,
+            String paymentMethodCode) {
         return paymentMethodCode == null
                 ? bookingPaymentService.createGroupPaymentPlan(
                         ctx.roomIds(), plan, ctx.totalAmount(), ctx.pkg(), userId)
