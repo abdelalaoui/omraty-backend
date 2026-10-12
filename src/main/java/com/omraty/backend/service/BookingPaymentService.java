@@ -602,9 +602,9 @@ public class BookingPaymentService {
 
     /**
      * roomId/bedId/vipRequestId/promoRoomId/promoBedId : au plus l'un des cinq renseigné (voir
-     * migrations V43, V52) — tous NULL pour un paiement groupé (voir {@link #createGroupPaymentPlan}), dont l'owner est porté
-     * par n'importe laquelle de ses chambres (même utilisateur pour toutes, voir
-     * RoomService.purchaseRoomGroup).
+     * migrations V43, V52) — tous NULL pour un paiement groupé (voir {@link
+     * #createGroupPaymentPlan}), dont l'owner est porté par n'importe laquelle de ses chambres
+     * (même utilisateur pour toutes, voir RoomService.purchaseRoomGroup).
      */
     private UUID resolveOwnerUserId(BookingPayment payment) {
         if (payment.roomId() != null) {
