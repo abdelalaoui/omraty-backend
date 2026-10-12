@@ -16,4 +16,25 @@ public class PaymentMethodException extends RuntimeException {
             super(message);
         }
     }
+
+    /** POST/PATCH /admin/payment-methods invalide (champ requis manquant, trop long...). */
+    public static class InvalidPaymentMethodRequestException extends PaymentMethodException {
+        public InvalidPaymentMethodRequestException(String message) {
+            super(message);
+        }
+    }
+
+    /** PATCH /admin/payment-methods/{id}[/logo] demandé pour un id inexistant. */
+    public static class PaymentMethodNotFoundException extends PaymentMethodException {
+        public PaymentMethodNotFoundException(String message) {
+            super(message);
+        }
+    }
+
+    /** POST /admin/payment-methods : code déjà utilisé par un autre moyen de paiement. */
+    public static class DuplicatePaymentMethodCodeException extends PaymentMethodException {
+        public DuplicatePaymentMethodCodeException(String message) {
+            super(message);
+        }
+    }
 }

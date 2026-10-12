@@ -51,4 +51,90 @@ public class PaymentMethodRepository {
                 .stream()
                 .findFirst();
     }
+
+    /** Tous les moyens de paiement (actifs + inactifs), pour GET /admin/payment-methods. */
+    public List<PaymentMethod> findAll() {
+        return jdbcTemplate.query(
+                PaymentMethodTable.SELECT_ALL_PAYMENT_METHODS, PAYMENT_METHOD_ROW_MAPPER);
+    }
+
+    public PaymentMethod insert(
+            String code,
+            String nameFr,
+            String nameEn,
+            String nameAr,
+            String merchantNumber,
+            String merchantName,
+            String instructionsFr,
+            String instructionsEn,
+            String instructionsAr,
+            int displayOrder,
+            boolean enabled) {
+        return jdbcTemplate
+                .query(
+                        PaymentMethodTable.INSERT_PAYMENT_METHOD,
+                        PAYMENT_METHOD_ROW_MAPPER,
+                        code,
+                        nameFr,
+                        nameEn,
+                        nameAr,
+                        merchantNumber,
+                        merchantName,
+                        instructionsFr,
+                        instructionsEn,
+                        instructionsAr,
+                        displayOrder,
+                        enabled)
+                .stream()
+                .findFirst()
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "Échec de la création du moyen de paiement"));
+    }
+
+    /**
+     * Mise à jour partielle : seuls les champs non null sont modifiés (voir PaymentMethodTable).
+     */
+    public Optional<PaymentMethod> update(
+            long id,
+            String nameFr,
+            String nameEn,
+            String nameAr,
+            String merchantNumber,
+            String merchantName,
+            String instructionsFr,
+            String instructionsEn,
+            String instructionsAr,
+            Boolean enabled,
+            Integer displayOrder) {
+        return jdbcTemplate
+                .query(
+                        PaymentMethodTable.UPDATE_PAYMENT_METHOD,
+                        PAYMENT_METHOD_ROW_MAPPER,
+                        nameFr,
+                        nameEn,
+                        nameAr,
+                        merchantNumber,
+                        merchantName,
+                        instructionsFr,
+                        instructionsEn,
+                        instructionsAr,
+                        enabled,
+                        displayOrder,
+                        id)
+                .stream()
+                .findFirst();
+    }
+
+    public Optional<PaymentMethod> updateLogo(long id, String logoUrl) {
+        return jdbcTemplate
+                .query(
+                        PaymentMethodTable.UPDATE_PAYMENT_METHOD_LOGO,
+                        PAYMENT_METHOD_ROW_MAPPER,
+                        logoUrl,
+                        id)
+                .stream()
+                .findFirst();
+    }
 }

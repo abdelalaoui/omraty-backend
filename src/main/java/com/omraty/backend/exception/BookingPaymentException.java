@@ -59,4 +59,16 @@ public class BookingPaymentException extends RuntimeException {
             super(message);
         }
     }
+
+    /**
+     * POST /admin/payments/{id}/confirm ou /reject demandé pour un paiement qui n'est plus PENDING
+     * ou PENDING_VERIFICATION (déjà confirmé, échoué, ou expiré) — voir
+     * BookingPaymentService.confirmManually/rejectManually. 409 : la ressource existe mais n'est
+     * plus dans un état actionnable, contrairement à PaymentNotFoundException (404).
+     */
+    public static class PaymentNotConfirmableException extends BookingPaymentException {
+        public PaymentNotConfirmableException(String message) {
+            super(message);
+        }
+    }
 }

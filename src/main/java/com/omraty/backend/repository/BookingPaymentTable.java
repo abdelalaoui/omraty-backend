@@ -7,7 +7,8 @@ final class BookingPaymentTable {
     static final String BOOKING_PAYMENT_COLUMNS =
             "id, room_id, bed_id, vip_request_id, plan, status, total_amount, moov_payment_code,"
                     + " moov_transaction_id, payer_phone, expires_at, created_at, payment_method,"
-                    + " payment_reference, declared_at";
+                    + " payment_reference, declared_at, confirmed_by_admin_id, confirmed_at,"
+                    + " rejection_reason";
 
     // status <> 'EXPIRED' : depuis la migration V35, une chambre/un lit expiré(e) peut être
     // réservé(e) de nouveau, donc plusieurs lignes peuvent exister pour un même room_id au fil du
@@ -133,7 +134,8 @@ final class BookingPaymentTable {
                     + " bp.vip_request_id, bp.plan, bp.status, bp.total_amount,"
                     + " bp.moov_payment_code, bp.moov_transaction_id, bp.payer_phone,"
                     + " bp.expires_at, bp.created_at, bp.payment_method, bp.payment_reference,"
-                    + " bp.declared_at FROM booking_payment_room bpr JOIN"
+                    + " bp.declared_at, bp.confirmed_by_admin_id, bp.confirmed_at,"
+                    + " bp.rejection_reason FROM booking_payment_room bpr JOIN"
                     + " booking_payment bp ON bp.id = bpr.booking_payment_id WHERE bpr.room_id ="
                     + " ANY (?) AND bp.status <> 'EXPIRED'";
 
@@ -160,4 +162,41 @@ final class BookingPaymentTable {
     // global (voir migration V51).
     static final String EXISTS_BY_PAYMENT_REFERENCE =
             "SELECT EXISTS (SELECT 1 FROM booking_payment WHERE payment_reference = ?)";
+
+    // Confirmation manuelle admin (voir BookingPaymentService.confirmManually, migration V53) :
+    // même effet que UPDATE_STATUS_IF_PENDING mais déclenchable depuis PENDING (l'admin a trouvé le
+    // transfert lui-même, sans que le client ait déclaré) ou PENDING_VERIFICATION (cas normal).
+    // Toute autre valeur (déjà CONFIRMED/FAILED/EXPIRED) ne matche aucune ligne -> 409 côté
+    // service.
+    static final String CONFIRM_MANUALLY =
+            "UPDATE booking_payment SET status = 'CONFIRMED', confirmed_by_admin_id = ?,"
+                    + " confirmed_at = now() WHERE id = ? AND status IN ('PENDING',"
+                    + " 'PENDING_VERIFICATION') RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
+
+    // Rejet manuel admin (voir BookingPaymentService.rejectManually, migration V53) : repasse en
+    // PENDING (le client peut re-essayer avec le même code) et efface declared_at (la précédente
+    // déclaration n'est plus valide). Même garde d'état que CONFIRM_MANUALLY.
+    static final String REJECT_MANUALLY =
+            "UPDATE booking_payment SET status = 'PENDING', declared_at = NULL, rejection_reason = ?"
+                    + " WHERE id = ? AND status IN ('PENDING', 'PENDING_VERIFICATION') RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
+
+    // File d'attente admin des paiements manuels à vérifier (voir
+    // BookingPaymentService.listPaymentsForAdmin) : payment_method IS NOT NULL exclut le flux
+    // passerelle Moov, hors scope de cet écran (confirmé par webhook, pas par un admin qui
+    // recherche un code). Chaque filtre est optionnel : "? IS NULL" laisse passer la ligne si
+    // l'appelant n'a pas fourni ce critère (voir le doublement des paramètres dans
+    // BookingPaymentRepository.findForAdminVerification). reference est comparée déjà normalisée
+    // (majuscules, espaces retirés) côté Java, voir BookingPaymentService#normalizeReference.
+    static final String SELECT_PAYMENTS_FOR_ADMIN_VERIFICATION =
+            "SELECT "
+                    + BOOKING_PAYMENT_COLUMNS
+                    + " FROM booking_payment WHERE payment_method IS NOT NULL"
+                    + " AND (?::varchar IS NULL OR status = ?)"
+                    + " AND (?::varchar IS NULL OR payment_method = ?)"
+                    + " AND (?::varchar IS NULL OR UPPER(REPLACE(payment_reference, ' ', '')) = ?)"
+                    + " AND (?::timestamp IS NULL OR created_at >= ?)"
+                    + " AND (?::timestamp IS NULL OR created_at <= ?)"
+                    + " ORDER BY COALESCE(declared_at, created_at) ASC";
 }

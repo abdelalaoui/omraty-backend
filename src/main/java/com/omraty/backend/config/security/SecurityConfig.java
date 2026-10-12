@@ -51,7 +51,8 @@ public class SecurityConfig {
                                                 // /uploads/** : identity/ et invoices/ (photos
                                                 // d'identité, factures) doivent rester privés.
                                                 "/uploads/banner/**",
-                                                "/uploads/service-card/**")
+                                                "/uploads/service-card/**",
+                                                "/uploads/payment-method/**")
                                         .permitAll()
                                         // Consultation du catalogue (bannières, avantages,
                                         // services, formules, packages, hôtels, groupes de
