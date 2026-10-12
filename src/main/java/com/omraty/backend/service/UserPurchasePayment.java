@@ -1,8 +1,11 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.dto.response.BookingTermItemResponse;
 import com.omraty.backend.entities.enums.PaymentPlan;
+import com.omraty.backend.entities.enums.PaymentStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -11,6 +14,21 @@ import java.util.List;
  * installments est vide pour plan = FULL (payé intégralement à la confirmation, aucune tranche).
  * nextDueDate = échéance de la 1ère tranche non payée, null si tout est payé (voir
  * BookingPaymentService.toPurchasePayment).
+ *
+ * <p>paymentMethod/paymentReference/merchantNumber/declaredAt (voir migrations V50/V51) :
+ * renseignés uniquement pour un achat payé via un moyen de paiement manuel (Moov, Bankily... voir
+ * PaymentMethod), null pour un achat via la passerelle Moov — permettent au client de revenir
+ * copier son code. status reflète celui de booking_payment (voir PaymentStatus), notamment
+ * PENDING_VERIFICATION une fois le paiement déclaré.
+ *
+ * <p>hasInvoice/invoiceNumber/invoiceGeneratedAt (voir InvoiceService, migration V39) : renseignés
+ * une fois l'achat intégralement payé — permettent d'afficher le bouton « Facture » sans appeler
+ * GET /users/me/purchases/{id}/invoice (ou son équivalent admin, voir
+ * BookingPaymentService.getInvoiceForAdmin) pour chaque ligne.
+ *
+ * <p>acceptedTermsVersion/acceptedTermsAt/acceptedTerms (migration V55, carte "Conditions de
+ * réservation gérées depuis le serveur") : trace de l'acceptation des conditions au moment de la
+ * réservation — null/vide pour un achat antérieur à cette carte ou une offre VIP.
  */
 public record UserPurchasePayment(
         long id,
@@ -19,4 +37,15 @@ public record UserPurchasePayment(
         BigDecimal paidAmount,
         BigDecimal remainingAmount,
         LocalDate nextDueDate,
-        List<UserInstallment> installments) {}
+        List<UserInstallment> installments,
+        String paymentMethod,
+        String paymentReference,
+        String merchantNumber,
+        PaymentStatus status,
+        LocalDateTime declaredAt,
+        boolean hasInvoice,
+        String invoiceNumber,
+        LocalDateTime invoiceGeneratedAt,
+        String acceptedTermsVersion,
+        LocalDateTime acceptedTermsAt,
+        List<BookingTermItemResponse> acceptedTerms) {}

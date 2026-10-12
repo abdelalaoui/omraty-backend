@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowMapper;
@@ -33,7 +34,19 @@ public class BookingPaymentRepository {
                             rs.getString("moov_transaction_id"),
                             rs.getString("payer_phone"),
                             rs.getObject("expires_at", LocalDateTime.class),
-                            rs.getObject("created_at", LocalDateTime.class));
+                            rs.getObject("created_at", LocalDateTime.class),
+                            rs.getString("payment_method"),
+                            rs.getString("payment_reference"),
+                            rs.getObject("declared_at", LocalDateTime.class),
+                            (UUID) rs.getObject("confirmed_by_admin_id", UUID.class),
+                            rs.getObject("confirmed_at", LocalDateTime.class),
+                            rs.getString("rejection_reason"),
+                            rs.getString("invoice_key"),
+                            rs.getString("invoice_number"),
+                            rs.getObject("invoice_generated_at", LocalDateTime.class),
+                            rs.getString("accepted_terms_version"),
+                            rs.getObject("accepted_terms_at", LocalDateTime.class),
+                            rs.getString("accepted_terms_snapshot"));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -155,6 +168,28 @@ public class BookingPaymentRepository {
     }
 
     /**
+     * Trace de l'acceptation des conditions de réservation (voir migration V55,
+     * BookingPaymentService#attachAcceptedTerms) : version affichée/acceptée et copie figée des
+     * textes acceptés (JSON déjà sérialisé côté service).
+     */
+    public BookingPayment attachAcceptedTerms(
+            long paymentId, String acceptedTermsVersion, String acceptedTermsSnapshotJson) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.ATTACH_ACCEPTED_TERMS,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        acceptedTermsVersion,
+                        acceptedTermsSnapshotJson,
+                        paymentId)
+                .stream()
+                .findFirst()
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
      * Renseigne la référence Moov sur un paiement déjà créé (voir PaymentGatewayClient, migration
      * V33).
      */
@@ -179,6 +214,125 @@ public class BookingPaymentRepository {
                         () ->
                                 new IllegalStateException(
                                         "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
+     * Renseigne le moyen de paiement manuel choisi et son code de paiement (voir migrations
+     * V50/V51, BookingPaymentService) — équivalent de {@link #attachGatewayResult} mais sans appel
+     * passerelle. paymentReference est null pour un plan INSTALLMENTS (voir
+     * BookingPaymentTable#ATTACH_MANUAL_PAYMENT).
+     */
+    public BookingPayment attachManualPayment(
+            long paymentId,
+            String paymentMethod,
+            String paymentReference,
+            LocalDateTime expiresAt) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.ATTACH_MANUAL_PAYMENT,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        paymentMethod,
+                        paymentReference,
+                        expiresAt,
+                        paymentId)
+                .stream()
+                .findFirst()
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
+     * « J'ai payé » (voir BookingPaymentService#declare) : passage PENDING -> PENDING_VERIFICATION.
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était pas PENDING ou
+     *     n'avait pas de code de paiement manuel (déjà déclaré, expiré, ou paiement via la
+     *     passerelle Moov).
+     */
+    public Optional<BookingPayment> declare(long paymentId) {
+        return jdbcTemplate
+                .query(BookingPaymentTable.DECLARE_PAYMENT, BOOKING_PAYMENT_ROW_MAPPER, paymentId)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * Pour la boucle de régénération en cas de collision (voir
+     * BookingPaymentService#generateUniquePaymentReference).
+     */
+    public boolean existsByPaymentReference(String paymentReference) {
+        Boolean result =
+                jdbcTemplate.queryForObject(
+                        BookingPaymentTable.EXISTS_BY_PAYMENT_REFERENCE,
+                        Boolean.class,
+                        paymentReference);
+        return Boolean.TRUE.equals(result);
+    }
+
+    /**
+     * Confirmation manuelle admin (voir BookingPaymentService.confirmManually) : même garde d'état
+     * que {@link #updateStatusIfPending}, élargie à PENDING_VERIFICATION.
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était ni PENDING ni
+     *     PENDING_VERIFICATION (déjà confirmé, échoué, ou expiré).
+     */
+    public Optional<BookingPayment> confirmManually(long paymentId, UUID adminId) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.CONFIRM_MANUALLY,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        adminId,
+                        paymentId)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * Rejet manuel admin (voir BookingPaymentService.rejectManually) : repasse le paiement en
+     * PENDING. Même garde d'état que {@link #confirmManually}.
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était ni PENDING ni
+     *     PENDING_VERIFICATION.
+     */
+    public Optional<BookingPayment> rejectManually(long paymentId, String reason) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.REJECT_MANUALLY,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        reason,
+                        paymentId)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * File d'attente admin des paiements manuels à vérifier (voir
+     * BookingPaymentService.listPaymentsForAdmin) : chaque filtre est optionnel (null = pas de
+     * contrainte), passé deux fois pour le motif "(? IS NULL OR colonne = ?)" (voir
+     * BookingPaymentTable.SELECT_PAYMENTS_FOR_ADMIN_VERIFICATION, pas de support des paramètres
+     * nommés avec JdbcTemplate).
+     */
+    public List<BookingPayment> findForAdminVerification(
+            PaymentStatus status,
+            String paymentMethod,
+            String normalizedReference,
+            LocalDateTime from,
+            LocalDateTime to) {
+        String statusValue = status == null ? null : status.name();
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_PAYMENTS_FOR_ADMIN_VERIFICATION,
+                BOOKING_PAYMENT_ROW_MAPPER,
+                statusValue,
+                statusValue,
+                paymentMethod,
+                paymentMethod,
+                normalizedReference,
+                normalizedReference,
+                from,
+                from,
+                to,
+                to);
     }
 
     /**
@@ -251,6 +405,24 @@ public class BookingPaymentRepository {
                         invoiceNumber,
                         paymentId);
         return updated > 0;
+    }
+
+    /**
+     * Régénération admin (voir InvoiceService.regenerateInvoice) : contrairement à {@link
+     * #markInvoiceGenerated}, aucune garde d'idempotence — écrase volontairement une facture déjà
+     * générée.
+     */
+    public Optional<BookingPayment> updateInvoice(
+            long paymentId, String invoiceKey, String invoiceNumber) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.UPDATE_INVOICE,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        invoiceKey,
+                        invoiceNumber,
+                        paymentId)
+                .stream()
+                .findFirst();
     }
 
     /**

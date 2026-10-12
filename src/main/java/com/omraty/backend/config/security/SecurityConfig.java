@@ -51,7 +51,8 @@ public class SecurityConfig {
                                                 // /uploads/** : identity/ et invoices/ (photos
                                                 // d'identité, factures) doivent rester privés.
                                                 "/uploads/banner/**",
-                                                "/uploads/service-card/**")
+                                                "/uploads/service-card/**",
+                                                "/uploads/payment-method/**")
                                         .permitAll()
                                         // Consultation du catalogue (bannières, avantages,
                                         // services, formules, packages, hôtels, groupes de
@@ -71,7 +72,17 @@ public class SecurityConfig {
                                                 "/packages/*",
                                                 "/hotels",
                                                 "/reservation-groups",
-                                                "/rooms/*/beds")
+                                                "/promo-packages",
+                                                "/rooms/*/beds",
+                                                // Conditions à cocher avant de réserver, affichées
+                                                // avant même la connexion (voir
+                                                // BookingTermController).
+                                                "/booking-terms",
+                                                // Choix du moyen de paiement manuel (Moov,
+                                                // Bankily...), nécessaire avant même la connexion
+                                                // pour afficher l'écran de paiement (voir
+                                                // PaymentMethodController).
+                                                "/payment-methods")
                                         .permitAll()
                                         .requestMatchers("/admin/**")
                                         .hasRole("ADMIN")

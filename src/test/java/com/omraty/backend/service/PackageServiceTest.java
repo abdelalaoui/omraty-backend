@@ -141,7 +141,7 @@ class PackageServiceTest {
                 new OmraPackage(1L, "Omra Ramadan du 10 au 20 mars", 40, null, null);
         OmraPackage fullPackage =
                 new OmraPackage(2L, "Omra Chaabane du 1 au 10 mars", 10, null, null);
-        when(packageRepository.findAll()).thenReturn(List.of(openPackage, fullPackage));
+        when(packageRepository.findAllNonPromo()).thenReturn(List.of(openPackage, fullPackage));
         when(packageCapacityService.committedSeats(1L)).thenReturn(15);
         when(packageCapacityService.committedSeats(2L)).thenReturn(10);
 
@@ -163,7 +163,7 @@ class PackageServiceTest {
                 new OmraPackage(3L, "Omra Rajab du 5 au 15 mars", 20, null, null);
         int roomSeats = 5;
         int vipSeats = 8;
-        when(packageRepository.findAll()).thenReturn(List.of(pkgWithVipRequests));
+        when(packageRepository.findAllNonPromo()).thenReturn(List.of(pkgWithVipRequests));
         when(packageCapacityService.committedSeats(3L)).thenReturn(roomSeats + vipSeats);
 
         List<ReservationGroup> groups = packageService().getReservationGroups();

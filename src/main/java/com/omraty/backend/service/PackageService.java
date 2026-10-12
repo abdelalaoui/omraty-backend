@@ -83,14 +83,15 @@ public class PackageService {
     }
 
     /**
-     * Tous les packages (périodes de départ), pleins ou non — aucun filtrage ici, voir
-     * ReservationGroup. Pour l'utilisateur qui doit choisir sa période avant de réserver une
-     * chambre (voir GET /reservation-groups). reservedSeats reflète le même plafond partagé que
+     * Tous les packages (périodes de départ), pleins ou non, sauf les packages promo (proposés
+     * seulement depuis la bannière, voir PromoPackageService) — voir ReservationGroup. Pour
+     * l'utilisateur qui doit choisir sa période avant de réserver une chambre (voir GET
+     * /reservation-groups). reservedSeats reflète le même plafond partagé que
      * PackageCapacityService (chambres + demandes VIP actives), pour éviter d'afficher un groupe
      * comme disponible alors qu'il est déjà plein une fois les VIP comptés.
      */
     public List<ReservationGroup> getReservationGroups() {
-        return packageRepository.findAll().stream()
+        return packageRepository.findAllNonPromo().stream()
                 .map(
                         pkg ->
                                 new ReservationGroup(
