@@ -16,6 +16,7 @@ import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
+import com.omraty.backend.entities.PaymentMethod;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.ServiceTier;
 import com.omraty.backend.entities.User;
@@ -25,8 +26,10 @@ import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.entities.enums.ServiceTierType;
 import com.omraty.backend.entities.enums.VipRequestStatus;
 import com.omraty.backend.exception.BookingPaymentException;
+import com.omraty.backend.exception.PaymentMethodException;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
+import com.omraty.backend.payment.PaymentReferenceGenerator;
 import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
@@ -67,6 +70,8 @@ class BookingPaymentServiceTest {
     @Mock private InvoiceService invoiceService;
     @Mock private FileStorageService fileStorageService;
     @Mock private AppSettingService appSettingService;
+    @Mock private PaymentMethodService paymentMethodService;
+    @Mock private PaymentReferenceGenerator paymentReferenceGenerator;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
@@ -81,7 +86,9 @@ class BookingPaymentServiceTest {
                 notificationService,
                 invoiceService,
                 fileStorageService,
-                appSettingService);
+                appSettingService,
+                paymentMethodService,
+                paymentReferenceGenerator);
     }
 
     private User user(String phone) {
@@ -596,6 +603,455 @@ class BookingPaymentServiceTest {
         assertThat(result.vipRequestId()).isEqualTo(5L);
         verify(bookingInstallmentRepository, never())
                 .insert(anyLongV(), anyIntV(), any(), any(), any());
+    }
+
+    private PaymentMethod moovMethod() {
+        return new PaymentMethod(
+                1L,
+                "MOOV",
+                "Moov Money",
+                null,
+                null,
+                "12345678",
+                "RAHA Voyages",
+                "Payez avec le code dans la note",
+                null,
+                null,
+                null,
+                true,
+                1,
+                LocalDateTime.now(),
+                LocalDateTime.now());
+    }
+
+    @Test
+    void createPaymentPlan_full_withPaymentMethod_attachesManualPaymentWithoutGatewayCall() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(BigDecimal.ZERO);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00")))
+                .thenReturn(inserted);
+        when(paymentMethodService.getEnabledOrThrow("MOOV")).thenReturn(moovMethod());
+        when(appSettingService.getIntValue(
+                        BookingPaymentService.MANUAL_PAYMENT_EXPIRATION_MINUTES_KEY))
+                .thenReturn(1440);
+        when(paymentReferenceGenerator.generate()).thenReturn("OM23456");
+        when(bookingPaymentRepository.existsByPaymentReference("OM23456")).thenReturn(false);
+        when(bookingInstallmentRepository.existsByPaymentReference("OM23456")).thenReturn(false);
+        BookingPayment withManualPayment =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        LocalDateTime.now().plusMinutes(1440),
+                        null,
+                        "MOOV",
+                        "OM23456",
+                        null);
+        when(bookingPaymentRepository.attachManualPayment(
+                        eq(10L), eq("MOOV"), eq("OM23456"), any()))
+                .thenReturn(withManualPayment);
+
+        BookingPayment result =
+                bookingPaymentService()
+                        .createPaymentPlan(
+                                30L,
+                                null,
+                                PaymentPlan.FULL,
+                                new BigDecimal("90000"),
+                                pkg,
+                                USER_ID,
+                                "MOOV");
+
+        assertThat(result).isEqualTo(withManualPayment);
+        verifyNoInteractions(paymentGatewayClient);
+        verify(bookingInstallmentRepository, never())
+                .insert(anyLongV(), anyIntV(), any(), any(), any());
+    }
+
+    @Test
+    void createPaymentPlan_withPaymentMethod_regeneratesReferenceOnCollision() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(BigDecimal.ZERO);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00")))
+                .thenReturn(inserted);
+        when(paymentMethodService.getEnabledOrThrow("MOOV")).thenReturn(moovMethod());
+        when(appSettingService.getIntValue(
+                        BookingPaymentService.MANUAL_PAYMENT_EXPIRATION_MINUTES_KEY))
+                .thenReturn(1440);
+        // 1er code déjà pris (collision) : doit régénérer plutôt que d'échouer ou d'insérer un
+        // doublon (voir BookingPaymentService#generateUniquePaymentReference).
+        when(paymentReferenceGenerator.generate()).thenReturn("OM00001", "OM00002");
+        when(bookingPaymentRepository.existsByPaymentReference("OM00001")).thenReturn(true);
+        when(bookingPaymentRepository.existsByPaymentReference("OM00002")).thenReturn(false);
+        when(bookingInstallmentRepository.existsByPaymentReference("OM00002")).thenReturn(false);
+        BookingPayment withManualPayment =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        LocalDateTime.now().plusMinutes(1440),
+                        null,
+                        "MOOV",
+                        "OM00002",
+                        null);
+        when(bookingPaymentRepository.attachManualPayment(
+                        eq(10L), eq("MOOV"), eq("OM00002"), any()))
+                .thenReturn(withManualPayment);
+
+        BookingPayment result =
+                bookingPaymentService()
+                        .createPaymentPlan(
+                                30L,
+                                null,
+                                PaymentPlan.FULL,
+                                new BigDecimal("90000"),
+                                pkg,
+                                USER_ID,
+                                "MOOV");
+
+        assertThat(result.paymentReference()).isEqualTo("OM00002");
+        verify(paymentReferenceGenerator, times(2)).generate();
+        verify(bookingPaymentRepository, never())
+                .attachManualPayment(eq(10L), eq("MOOV"), eq("OM00001"), any());
+    }
+
+    @Test
+    void createPaymentPlan_withUnknownOrDisabledPaymentMethod_throwsExceptionWithoutGatewayCall() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(BigDecimal.ZERO);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("90000.00")))
+                .thenReturn(inserted);
+        when(paymentMethodService.getEnabledOrThrow("INCONNU"))
+                .thenThrow(
+                        new PaymentMethodException.UnknownOrDisabledPaymentMethodException(
+                                "Moyen de paiement inconnu ou désactivé"));
+
+        assertThatThrownBy(
+                        () ->
+                                bookingPaymentService()
+                                        .createPaymentPlan(
+                                                30L,
+                                                null,
+                                                PaymentPlan.FULL,
+                                                new BigDecimal("90000"),
+                                                pkg,
+                                                USER_ID,
+                                                "INCONNU"))
+                .isInstanceOf(PaymentMethodException.UnknownOrDisabledPaymentMethodException.class);
+        verifyNoInteractions(paymentGatewayClient);
+    }
+
+    @Test
+    void createPaymentPlan_installments_withPaymentMethod_createsTranches2And3WithOwnCodes() {
+        LocalDate today = LocalDate.now();
+        LocalDate endDate = today.plusDays(120);
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, endDate);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        null,
+                        200L,
+                        null,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("100000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        null,
+                        200L,
+                        null,
+                        PaymentPlan.INSTALLMENTS,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("100000")))
+                .thenReturn(inserted);
+        when(paymentMethodService.getEnabledOrThrow("MOOV")).thenReturn(moovMethod());
+        when(appSettingService.getIntValue(
+                        BookingPaymentService.MANUAL_PAYMENT_EXPIRATION_MINUTES_KEY))
+                .thenReturn(1440);
+        // 1er/2e appel : codes des tranches 2 et 3 (voir createManualInstallments) ; 3e appel :
+        // code
+        // du paiement lui-même, qui représente la 1ère tranche (voir attachManualPayment).
+        when(paymentReferenceGenerator.generate()).thenReturn("OM00001", "OM00002", "OM00003");
+        when(bookingPaymentRepository.existsByPaymentReference(any())).thenReturn(false);
+        when(bookingInstallmentRepository.existsByPaymentReference(any())).thenReturn(false);
+        when(bookingPaymentRepository.attachManualPayment(
+                        eq(10L), eq("MOOV"), eq("OM00003"), any()))
+                .thenReturn(inserted);
+
+        bookingPaymentService()
+                .createPaymentPlan(
+                        null,
+                        200L,
+                        PaymentPlan.INSTALLMENTS,
+                        new BigDecimal("100000"),
+                        pkg,
+                        USER_ID,
+                        "MOOV");
+
+        // Tranche 1 : pas de code propre, représentée par booking_payment.paymentReference.
+        verify(bookingInstallmentRepository)
+                .insert(
+                        eq(10L),
+                        eq(1),
+                        eq(new BigDecimal("60000.00")),
+                        eq(today),
+                        org.mockito.ArgumentMatchers.isNull());
+        verify(bookingInstallmentRepository)
+                .insertManual(
+                        eq(10L),
+                        eq(2),
+                        eq(new BigDecimal("20000.00")),
+                        any(),
+                        eq("MOOV"),
+                        eq("OM00001"));
+        verify(bookingInstallmentRepository)
+                .insertManual(
+                        eq(10L),
+                        eq(3),
+                        eq(new BigDecimal("20000.00")),
+                        any(),
+                        eq("MOOV"),
+                        eq("OM00002"));
+        verifyNoInteractions(paymentGatewayClient);
+    }
+
+    @Test
+    void declare_whenPaymentDoesNotExist_throwsException() {
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().declare(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+        verify(bookingPaymentRepository, never()).declare(anyLongV());
+    }
+
+    @Test
+    void declare_whenPaymentBelongsToAnotherUser_throwsException() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(
+                        List.of(
+                                new Room(
+                                        30L, 2, 1L, 2, 2, UUID.randomUUID(), LocalDateTime.now())));
+
+        assertThatThrownBy(() -> bookingPaymentService().declare(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+        verify(bookingPaymentRepository, never()).declare(anyLongV());
+    }
+
+    @Test
+    void declare_whenNotPendingManualPayment_throwsException() {
+        // Ex. flux passerelle Moov (pas de payment_reference) ou déjà déclaré/confirmé/expiré :
+        // la clause SQL ne matche aucune ligne (voir BookingPaymentTable.DECLARE_PAYMENT).
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+        when(bookingPaymentRepository.declare(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().declare(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+    }
+
+    @Test
+    void declare_whenPendingManualPayment_declaresAndReturnsUpdatedPayment() {
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+        BookingPayment declared = withStatus(payment, PaymentStatus.PENDING_VERIFICATION);
+        when(bookingPaymentRepository.declare(10L)).thenReturn(Optional.of(declared));
+
+        BookingPayment result = bookingPaymentService().declare(USER_ID, 10L);
+
+        assertThat(result.status()).isEqualTo(PaymentStatus.PENDING_VERIFICATION);
+    }
+
+    @Test
+    void declareInstallment_whenInstallmentDoesNotExist_throwsException() {
+        when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().declareInstallment(USER_ID, 10L, 1L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+    }
+
+    @Test
+    void declareInstallment_whenInstallmentBelongsToDifferentPayment_throwsException() {
+        BookingInstallment installment =
+                new BookingInstallment(
+                        1L,
+                        99L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
+                        false,
+                        "MOOV",
+                        "OM00001",
+                        null);
+        when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.of(installment));
+
+        assertThatThrownBy(() -> bookingPaymentService().declareInstallment(USER_ID, 10L, 1L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+        verify(bookingPaymentRepository, never()).findById(anyLongV());
+    }
+
+    @Test
+    void declareInstallment_whenBelongsToAnotherUser_throwsException() {
+        BookingInstallment installment =
+                new BookingInstallment(
+                        1L,
+                        10L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
+                        false,
+                        "MOOV",
+                        "OM00001",
+                        null);
+        when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.of(installment));
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.INSTALLMENTS);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(
+                        List.of(
+                                new Room(
+                                        30L, 2, 1L, 2, 2, UUID.randomUUID(), LocalDateTime.now())));
+
+        assertThatThrownBy(() -> bookingPaymentService().declareInstallment(USER_ID, 10L, 1L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+        verify(bookingInstallmentRepository, never()).declare(anyLongV());
+    }
+
+    @Test
+    void declareInstallment_whenPending_declaresAndReturnsUpdatedInstallment() {
+        BookingInstallment installment =
+                new BookingInstallment(
+                        1L,
+                        10L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
+                        false,
+                        "MOOV",
+                        "OM00001",
+                        null);
+        when(bookingInstallmentRepository.findById(1L)).thenReturn(Optional.of(installment));
+        BookingPayment payment = pendingPayment(30L, null, PaymentPlan.INSTALLMENTS);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(roomRepository.findByIds(List.of(30L)))
+                .thenReturn(List.of(new Room(30L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+        BookingInstallment declared =
+                new BookingInstallment(
+                        1L,
+                        10L,
+                        2,
+                        new BigDecimal("20000"),
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
+                        false,
+                        "MOOV",
+                        "OM00001",
+                        LocalDateTime.now());
+        when(bookingInstallmentRepository.declare(1L)).thenReturn(Optional.of(declared));
+
+        BookingInstallment result = bookingPaymentService().declareInstallment(USER_ID, 10L, 1L);
+
+        assertThat(result.declaredAt()).isNotNull();
     }
 
     @Test

@@ -16,6 +16,18 @@ import java.time.LocalDateTime;
  * expiresAt : référence du paiement côté Moov (migration V33), renseignés une fois le paiement créé
  * côté passerelle — nullables tant que ce n'est pas le cas. moovTransactionId est unique en base,
  * c'est la clé d'idempotence du webhook.
+ *
+ * <p>paymentMethod/paymentReference/declaredAt (migration V51) : équivalent de
+ * moovPaymentCode/moovTransactionId mais pour un moyen de paiement manuel (voir PaymentMethod) —
+ * mutuellement exclusifs avec les champs moov_* (l'un ou l'autre selon qu'un paymentMethod a été
+ * choisi à la création, jamais les deux, voir BookingPaymentService). paymentReference représente
+ * toujours « le paiement dû maintenant » (montant complet en FULL, 1ère tranche en INSTALLMENTS) —
+ * les tranches 2/3 ont leur propre code, voir BookingInstallment. declaredAt renseigné une fois le
+ * client a cliqué « J'ai payé » (voir BookingPaymentService#declare) ; status passe alors à
+ * PENDING_VERIFICATION et n'expire plus.
+ *
+ * <p>Le constructeur à 12 arguments est conservé pour tous les appelants/tests antérieurs à la
+ * migration V51 : les 3 nouveaux champs valent alors null (aucun moyen de paiement manuel).
  */
 public record BookingPayment(
         long id,
@@ -29,4 +41,39 @@ public record BookingPayment(
         String moovTransactionId,
         String payerPhone,
         LocalDateTime expiresAt,
-        LocalDateTime createdAt) {}
+        LocalDateTime createdAt,
+        String paymentMethod,
+        String paymentReference,
+        LocalDateTime declaredAt) {
+
+    public BookingPayment(
+            long id,
+            Long roomId,
+            Long bedId,
+            Long vipRequestId,
+            PaymentPlan plan,
+            PaymentStatus status,
+            BigDecimal totalAmount,
+            String moovPaymentCode,
+            String moovTransactionId,
+            String payerPhone,
+            LocalDateTime expiresAt,
+            LocalDateTime createdAt) {
+        this(
+                id,
+                roomId,
+                bedId,
+                vipRequestId,
+                plan,
+                status,
+                totalAmount,
+                moovPaymentCode,
+                moovTransactionId,
+                payerPhone,
+                expiresAt,
+                createdAt,
+                null,
+                null,
+                null);
+    }
+}

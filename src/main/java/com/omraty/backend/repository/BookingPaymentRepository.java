@@ -33,7 +33,10 @@ public class BookingPaymentRepository {
                             rs.getString("moov_transaction_id"),
                             rs.getString("payer_phone"),
                             rs.getObject("expires_at", LocalDateTime.class),
-                            rs.getObject("created_at", LocalDateTime.class));
+                            rs.getObject("created_at", LocalDateTime.class),
+                            rs.getString("payment_method"),
+                            rs.getString("payment_reference"),
+                            rs.getObject("declared_at", LocalDateTime.class));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -179,6 +182,60 @@ public class BookingPaymentRepository {
                         () ->
                                 new IllegalStateException(
                                         "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
+     * Renseigne le moyen de paiement manuel choisi et son code de paiement (voir migrations
+     * V50/V51, BookingPaymentService) — équivalent de {@link #attachGatewayResult} mais sans appel
+     * passerelle. paymentReference est null pour un plan INSTALLMENTS (voir
+     * BookingPaymentTable#ATTACH_MANUAL_PAYMENT).
+     */
+    public BookingPayment attachManualPayment(
+            long paymentId,
+            String paymentMethod,
+            String paymentReference,
+            LocalDateTime expiresAt) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.ATTACH_MANUAL_PAYMENT,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        paymentMethod,
+                        paymentReference,
+                        expiresAt,
+                        paymentId)
+                .stream()
+                .findFirst()
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
+     * « J'ai payé » (voir BookingPaymentService#declare) : passage PENDING -> PENDING_VERIFICATION.
+     *
+     * @return le paiement mis à jour, ou {@link Optional#empty()} s'il n'était pas PENDING ou
+     *     n'avait pas de code de paiement manuel (déjà déclaré, expiré, ou paiement via la
+     *     passerelle Moov).
+     */
+    public Optional<BookingPayment> declare(long paymentId) {
+        return jdbcTemplate
+                .query(BookingPaymentTable.DECLARE_PAYMENT, BOOKING_PAYMENT_ROW_MAPPER, paymentId)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * Pour la boucle de régénération en cas de collision (voir
+     * BookingPaymentService#generateUniquePaymentReference).
+     */
+    public boolean existsByPaymentReference(String paymentReference) {
+        Boolean result =
+                jdbcTemplate.queryForObject(
+                        BookingPaymentTable.EXISTS_BY_PAYMENT_REFERENCE,
+                        Boolean.class,
+                        paymentReference);
+        return Boolean.TRUE.equals(result);
     }
 
     /**
