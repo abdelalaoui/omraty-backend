@@ -3,11 +3,13 @@ package com.omraty.backend.service;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.Hotel;
 import com.omraty.backend.entities.OmraPackage;
+import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.HotelCity;
 import com.omraty.backend.entities.enums.VipRequestStatus;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.VipRequestException;
+import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.HotelRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.VipRequestRepository;
@@ -15,7 +17,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +40,7 @@ public class VipRequestService {
     private final PackageCapacityService packageCapacityService;
     private final BookingPaymentService bookingPaymentService;
     private final NotificationService notificationService;
+    private final AuthRepository authRepository;
     private final long offerExpirationHours;
 
     public VipRequestService(
@@ -45,6 +50,7 @@ public class VipRequestService {
             PackageCapacityService packageCapacityService,
             BookingPaymentService bookingPaymentService,
             NotificationService notificationService,
+            AuthRepository authRepository,
             @Value("${app.vip.offer-expiration-hours}") long offerExpirationHours) {
         this.vipRequestRepository = vipRequestRepository;
         this.hotelRepository = hotelRepository;
@@ -52,6 +58,7 @@ public class VipRequestService {
         this.packageCapacityService = packageCapacityService;
         this.bookingPaymentService = bookingPaymentService;
         this.notificationService = notificationService;
+        this.authRepository = authRepository;
         this.offerExpirationHours = offerExpirationHours;
     }
 
@@ -100,6 +107,19 @@ public class VipRequestService {
     /** Demandes en attente de traitement, pour l'admin. */
     public List<VipRequest> getPendingRequests() {
         return vipRequestRepository.findPending();
+    }
+
+    /** Téléphone du client de chaque demande, pour l'identifier dans la liste admin. */
+    public Map<UUID, String> resolvePhones(List<VipRequest> vipRequests) {
+        return authRepository
+                .findByIds(vipRequests.stream().map(VipRequest::userId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(User::id, User::phone));
+    }
+
+    /** Téléphone du client, null si le compte n'existe plus. */
+    public String resolvePhone(UUID userId) {
+        return authRepository.findById(userId).map(User::phone).orElse(null);
     }
 
     /** Demandes du client connecté, avec l'offre reçue le cas échéant. */

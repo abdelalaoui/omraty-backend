@@ -11,6 +11,10 @@ final class TripPackageTable {
     static final String SELECT_TRIP_PACKAGE_BY_ID =
             "SELECT " + TRIP_PACKAGE_COLUMNS + " FROM trip_package WHERE id = ?";
 
+    /** Tous les packages du catalogue (visibles ou masqués), pour l'admin. */
+    static final String SELECT_ALL_TRIP_PACKAGES =
+            "SELECT " + TRIP_PACKAGE_COLUMNS + " FROM trip_package ORDER BY id ASC";
+
     // Chaque filtre est passé deux fois (une pour le test IS NULL, une pour la comparaison) : JDBC
     // ne permet pas de réutiliser un même "?" à plusieurs endroits d'une requête.
     // Cast explicite (?::varchar / ?::numeric) sur CHAQUE paramètre : en protocole étendu (celui
@@ -44,4 +48,8 @@ final class TripPackageTable {
                     + " COALESCE(?, includes_visa), group_size = COALESCE(?, group_size), visible ="
                     + " COALESCE(?, visible) WHERE id = ? RETURNING "
                     + TRIP_PACKAGE_COLUMNS;
+
+    // Les images (trip_package_image) sont supprimées automatiquement (ON DELETE CASCADE, voir
+    // migration V22).
+    static final String DELETE_TRIP_PACKAGE = "DELETE FROM trip_package WHERE id = ?";
 }

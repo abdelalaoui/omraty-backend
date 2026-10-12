@@ -7,4 +7,5 @@ public record AdminBannerResponse(
         String title,
         String description,
         int displayOrder,
-        boolean visible) {}
+        boolean visible,
+        String ctaType) {}

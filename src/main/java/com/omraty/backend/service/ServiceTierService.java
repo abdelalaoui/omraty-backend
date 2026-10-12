@@ -28,6 +28,11 @@ public class ServiceTierService {
         return serviceTierRepository.findActiveServiceTiers();
     }
 
+    /** Toutes les formules (visibles ou masquées), triées par ordre d'affichage, pour l'admin. */
+    public List<ServiceTier> getAllServiceTiers() {
+        return serviceTierRepository.findAll();
+    }
+
     /**
      * Ajoute une nouvelle formule à la grille des services Omra. capacity n'est autorisé que pour
      * type = ROOM ; price aussi, et y est requis (remplace le montant codé en dur côté app) —
@@ -124,6 +129,14 @@ public class ServiceTierService {
                         () ->
                                 new ServiceTierException.ServiceTierNotFoundException(
                                         "Formule introuvable (id=" + id + ")"));
+    }
+
+    public void deleteServiceTier(long id) {
+        boolean deleted = serviceTierRepository.deleteById(id);
+        if (!deleted) {
+            throw new ServiceTierException.ServiceTierNotFoundException(
+                    "Formule introuvable (id=" + id + ")");
+        }
     }
 
     private ServiceTier getServiceTierOrThrow(long id) {

@@ -115,17 +115,36 @@ class PaymentExpirationServiceTest {
     }
 
     @Test
-    void expireOverduePayments_forPromoWholeRoomPayment_marksExpiredAndReleasesThePromoRoom() {
-        BookingPayment payment = overduePayment(6L, null, null, null, 60L, null);
+    void expireOverduePayments_forGroupPayment_marksExpiredAndReleasesEachRoom() {
+        // roomId/bedId/vipRequestId tous null : paiement groupé (voir migration V43) — ses chambres
+        // vivent dans booking_payment_room, voir BookingPaymentRepository.findGroupRoomIds.
+        BookingPayment payment = overduePayment(6L, null, null, null);
         when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
         when(bookingPaymentRepository.markExpiredIfPending(6L))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.EXPIRED)));
+        when(bookingPaymentRepository.findGroupRoomIds(6L)).thenReturn(List.of(31L, 32L));
+
+        int expiredCount = paymentExpirationService().expireOverduePayments();
+
+        assertThat(expiredCount).isEqualTo(1);
+        verify(roomService).releaseGroupReservation(List.of(31L, 32L));
+        verify(roomService, never()).releaseReservation(any(), any(), any());
+        verify(promoRoomService, never()).releaseReservation(any(), any());
+    }
+
+    @Test
+    void expireOverduePayments_forPromoWholeRoomPayment_marksExpiredAndReleasesThePromoRoom() {
+        BookingPayment payment = overduePayment(8L, null, null, null, 60L, null);
+        when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
+        when(bookingPaymentRepository.markExpiredIfPending(8L))
                 .thenReturn(Optional.of(withStatus(payment, PaymentStatus.EXPIRED)));
 
         int expiredCount = paymentExpirationService().expireOverduePayments();
 
         assertThat(expiredCount).isEqualTo(1);
         verify(promoRoomService).releaseReservation(60L, null);
-        verify(roomService).releaseReservation(null, null, null);
+        verify(roomService, never()).releaseReservation(any(), any(), any());
+        verify(roomService, never()).releaseGroupReservation(any());
     }
 
     @Test
@@ -139,6 +158,7 @@ class PaymentExpirationServiceTest {
 
         assertThat(expiredCount).isEqualTo(1);
         verify(promoRoomService).releaseReservation(isNull(), eq(700L));
+        verify(roomService, never()).releaseGroupReservation(any());
     }
 
     @Test

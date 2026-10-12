@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.omraty.backend.dto.response.PaymentStatusResponse;
+import com.omraty.backend.entities.AppSetting;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
@@ -41,6 +42,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -90,7 +92,7 @@ class BookingPaymentServiceTest {
 
     private User user(String phone) {
         return new User(
-                USER_ID, phone, "hash", "M", null, null, false, LocalDateTime.now(), "USER");
+                USER_ID, phone, "hash", "M", null, null, false, LocalDateTime.now(), "USER", null);
     }
 
     private ServiceTier roomTier(int capacity, BigDecimal price) {
@@ -131,6 +133,50 @@ class BookingPaymentServiceTest {
                 .thenReturn(Optional.of(roomTier(2, new BigDecimal("90000"))));
 
         assertThat(bookingPaymentService().resolvePrice(2)).isEqualByComparingTo("90000");
+    }
+
+    @Test
+    void getActiveOfferPrice_whenDisabled_returnsEmpty() {
+        when(appSettingService.getSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY))
+                .thenReturn(
+                        new AppSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY, "false", null));
+
+        assertThat(bookingPaymentService().getActiveOfferPrice()).isEmpty();
+    }
+
+    @Test
+    void getActiveOfferPrice_whenEnabled_returnsConfiguredPrice() {
+        when(appSettingService.getSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY))
+                .thenReturn(
+                        new AppSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY, "true", null));
+        when(appSettingService.getDecimalValue(BookingPaymentService.BED_OFFER_PRICE_KEY))
+                .thenReturn(new BigDecimal("45000"));
+
+        Optional<BigDecimal> result = bookingPaymentService().getActiveOfferPrice();
+
+        assertThat(result).isPresent();
+        assertThat(result.get()).isEqualByComparingTo("45000");
+    }
+
+    @Test
+    void resolveOfferPrice_whenDisabled_throwsException() {
+        when(appSettingService.getSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY))
+                .thenReturn(
+                        new AppSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY, "false", null));
+
+        assertThatThrownBy(() -> bookingPaymentService().resolveOfferPrice())
+                .isInstanceOf(BookingPaymentException.PriceNotConfiguredException.class);
+    }
+
+    @Test
+    void resolveOfferPrice_whenEnabled_returnsConfiguredPrice() {
+        when(appSettingService.getSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY))
+                .thenReturn(
+                        new AppSetting(BookingPaymentService.BED_OFFER_ENABLED_KEY, "true", null));
+        when(appSettingService.getDecimalValue(BookingPaymentService.BED_OFFER_PRICE_KEY))
+                .thenReturn(new BigDecimal("45000"));
+
+        assertThat(bookingPaymentService().resolveOfferPrice()).isEqualByComparingTo("45000");
     }
 
     @Test
@@ -260,6 +306,63 @@ class BookingPaymentServiceTest {
     }
 
     @Test
+    void createGroupPaymentPlan_full_appliesDiscountAndLinksAllRooms() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        // Même réduction que createPaymentPlan (voir applyFullPaymentDiscount), appliquée au total
+        // du groupe : 5% de 90000 -> 85500.00.
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(new BigDecimal("5"));
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("85500.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("85500.00")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("85500.00")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+
+        BookingPayment result =
+                bookingPaymentService()
+                        .createGroupPaymentPlan(
+                                List.of(31L, 32L),
+                                PaymentPlan.FULL,
+                                new BigDecimal("90000"),
+                                pkg,
+                                USER_ID);
+
+        assertThat(result).isEqualTo(inserted);
+        verify(bookingPaymentRepository).linkRoomsToGroupPayment(10L, List.of(31L, 32L));
+    }
+
+    @Test
     void createVipPaymentPlan_doesNotApplyFullPaymentDiscount() {
         // proposedPrice est un montant déjà négocié par l'admin, pas un tarif catalogue — la
         // réduction ne doit jamais s'y appliquer (voir applyFullPaymentDiscount).
@@ -300,6 +403,53 @@ class BookingPaymentServiceTest {
                 .thenReturn(inserted);
 
         bookingPaymentService().createVipPaymentPlan(5L, new BigDecimal("50000"), USER_ID);
+
+        verifyNoInteractions(appSettingService);
+    }
+
+    @Test
+    void createOfferPaymentPlan_doesNotApplyFullPaymentDiscount() {
+        // offerPrice est déjà le prix final de l'offre spéciale (voir RoomService.
+        // reserveOfferBed), pas un tarif catalogue — la réduction ne doit jamais s'y appliquer
+        // (voir applyFullPaymentDiscount), même raisonnement que createVipPaymentPlan.
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        null,
+                        100L,
+                        null,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("45000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        null,
+                        100L,
+                        null,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("45000")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("45000")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+
+        bookingPaymentService().createOfferPaymentPlan(100L, new BigDecimal("45000"), pkg, USER_ID);
 
         verifyNoInteractions(appSettingService);
     }
@@ -658,6 +808,11 @@ class BookingPaymentServiceTest {
         return pendingPayment(null, null, vipRequestId, plan);
     }
 
+    /** roomId/bedId/vipRequestId tous null : paiement groupé (voir migration V43). */
+    private BookingPayment groupPendingPayment(PaymentPlan plan) {
+        return pendingPayment(null, null, null, plan);
+    }
+
     private VipRequest vipRequest(long id) {
         return new VipRequest(
                 id,
@@ -959,6 +1114,52 @@ class BookingPaymentServiceTest {
         PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
 
         assertThat(result.status()).isEqualTo(PaymentStatus.PENDING);
+    }
+
+    @Test
+    void getStatusForUser_whenOwnedGroupPayment_returnsStatus() {
+        BookingPayment payment = groupPendingPayment(PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.findGroupRoomIds(10L)).thenReturn(List.of(31L, 32L));
+        when(roomRepository.findByIds(List.of(31L, 32L)))
+                .thenReturn(
+                        List.of(
+                                new Room(31L, 3, 1L, 3, 3, USER_ID, LocalDateTime.now()),
+                                new Room(32L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now())));
+
+        PaymentStatusResponse result = bookingPaymentService().getStatusForUser(USER_ID, 10L);
+
+        assertThat(result.status()).isEqualTo(PaymentStatus.PENDING);
+    }
+
+    @Test
+    void getStatusForUser_whenGroupPaymentBelongsToAnotherUser_throwsException() {
+        BookingPayment payment = groupPendingPayment(PaymentPlan.FULL);
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(bookingPaymentRepository.findGroupRoomIds(10L)).thenReturn(List.of(31L));
+        when(roomRepository.findByIds(List.of(31L)))
+                .thenReturn(
+                        List.of(
+                                new Room(
+                                        31L, 3, 1L, 3, 3, UUID.randomUUID(), LocalDateTime.now())));
+
+        assertThatThrownBy(() -> bookingPaymentService().getStatusForUser(USER_ID, 10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+    }
+
+    @Test
+    void findPaymentsByRoomIds_mergesDirectAndGroupPayments() {
+        BookingPayment directPayment = pendingPayment(30L, null, PaymentPlan.FULL);
+        BookingPayment groupPayment = groupPendingPayment(PaymentPlan.FULL);
+        when(bookingPaymentRepository.findByRoomIds(List.of(30L, 31L)))
+                .thenReturn(List.of(directPayment));
+        when(bookingPaymentRepository.findGroupPaymentsByRoomIds(List.of(30L, 31L)))
+                .thenReturn(Map.of(31L, groupPayment));
+
+        Map<Long, BookingPayment> result =
+                bookingPaymentService().findPaymentsByRoomIds(List.of(30L, 31L));
+
+        assertThat(result).containsEntry(30L, directPayment).containsEntry(31L, groupPayment);
     }
 
     @Test

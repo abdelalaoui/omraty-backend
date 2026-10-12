@@ -1,6 +1,7 @@
 package com.omraty.backend.service;
 
 import com.omraty.backend.entities.User;
+import com.omraty.backend.entities.enums.Gender;
 import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.exception.UserException;
 import com.omraty.backend.repository.AuthRepository;
@@ -32,9 +33,34 @@ public class UserService {
         this.notificationService = notificationService;
     }
 
-    public User updateIdentity(UUID userId, String nni, MultipartFile photo) {
+    /**
+     * Compte de l'utilisateur connecté (GET /users/me) : l'app le recharge au démarrage, la session
+     * (tokens) survivant au redémarrage mais pas les infos du compte. Un compte supprimé
+     * (anonymisé, voir deleteAccount) est traité comme introuvable.
+     */
+    public User getCurrentUser(UUID userId) {
+        return authRepository
+                .findById(userId)
+                .filter(user -> user.deletedAt() == null)
+                .orElseThrow(
+                        () -> new UserException.UserNotFoundException("Utilisateur introuvable"));
+    }
+
+    /**
+     * {@code gender} est collecté ici (en plus du NNI/photo) et non plus seulement à l'inscription
+     * : un compte créé à la volée par AuthService.requestOtp (numéro inconnu, voir migration V46)
+     * n'a pas encore de genre, et BeneficiaryInfoScreen côté app est le seul écran qui bloque
+     * l'accès à HomeScreen tant que le profil est incomplet (voir AuthGate) — pour un compte qui
+     * avait déjà un genre (inscription classique par mot de passe), l'app renvoie sa valeur
+     * actuelle, ce qui revient à une réécriture sans effet.
+     */
+    public User updateIdentity(UUID userId, String nni, MultipartFile photo, Gender gender) {
         if (nni == null || nni.isBlank()) {
             throw new UserException.InvalidIdentityRequestException("Le NNI est requis");
+        }
+        if (gender == null) {
+            throw new UserException.InvalidIdentityRequestException(
+                    "Le genre est requis (MALE ou FEMALE)");
         }
         validatePhoto(photo);
 
@@ -43,7 +69,7 @@ public class UserService {
         // identity_verified stays false: an admin must review the NNI/photo before marking the
         // account verified (see future admin verification endpoint).
         return authRepository
-                .updateIdentity(userId, nni, photoUrl, false)
+                .updateIdentity(userId, nni, photoUrl, false, gender.name())
                 .orElseThrow(
                         () ->
                                 new AuthException.InvalidTokenException(
@@ -53,6 +79,33 @@ public class UserService {
     /** Comptes ayant soumis un NNI/photo et en attente de revue par un admin. */
     public List<User> listPendingIdentityVerifications() {
         return authRepository.findPendingIdentityVerifications();
+    }
+
+    /**
+     * Correction par un admin du NNI et/ou de la photo d'identité d'un compte (ex. faute de frappe
+     * dans le NNI, photo illisible) : contrairement à {@link #updateIdentity}, nni et photo sont
+     * chacun optionnels (au moins un des deux requis) et identityVerified/gender ne sont pas
+     * modifiés — l'admin est l'autorité ici, pas une resoumission qui repasserait le compte en
+     * attente.
+     */
+    public User updateIdentityAsAdmin(UUID userId, String nni, MultipartFile photo) {
+        boolean hasPhoto = photo != null && !photo.isEmpty();
+        if ((nni == null || nni.isBlank()) && !hasPhoto) {
+            throw new UserException.InvalidIdentityRequestException(
+                    "Le NNI ou la photo doit être fourni");
+        }
+        if (nni != null && nni.isBlank()) {
+            throw new UserException.InvalidIdentityRequestException("Le NNI ne peut pas être vide");
+        }
+        String photoUrl = null;
+        if (hasPhoto) {
+            validatePhoto(photo);
+            photoUrl = fileStorageService.store(photo, IDENTITY_PHOTO_SUBDIR);
+        }
+        return authRepository
+                .updateIdentityFields(userId, nni, photoUrl)
+                .orElseThrow(
+                        () -> new UserException.UserNotFoundException("Utilisateur introuvable"));
     }
 
     /** Marque l'identité comme vérifiée après validation du NNI/photo par un admin. */
@@ -86,6 +139,19 @@ public class UserService {
                 "Votre demande de vérification d'identité a été rejetée. Merci de renvoyer votre"
                         + " NNI et votre photo.");
         return user;
+    }
+
+    /**
+     * Suppression de compte (App Review Guideline 5.1.1(v)) : anonymise le compte plutôt que de le
+     * supprimer physiquement — reservations/paiements référencent users.id en FK et doivent être
+     * conservés pour la comptabilité/le légal — puis révoque toutes les sessions actives.
+     */
+    public void deleteAccount(UUID userId) {
+        int updated = authRepository.anonymize(userId);
+        if (updated == 0) {
+            throw new UserException.UserNotFoundException("Utilisateur introuvable");
+        }
+        authRepository.revokeAllRefreshTokensForUser(userId);
     }
 
     private void requirePendingIdentity(UUID userId) {

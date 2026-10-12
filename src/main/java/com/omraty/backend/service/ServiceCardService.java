@@ -43,6 +43,11 @@ public class ServiceCardService {
         return serviceCardRepository.findActiveServiceCards();
     }
 
+    /** Toutes les cartes (visibles ou masquées), pour l'écran d'administration. */
+    public List<ServiceCard> getAllServiceCards() {
+        return serviceCardRepository.findAllServiceCards();
+    }
+
     /**
      * Ajoute une nouvelle carte de service. Seuls titleFr et buttonTextFr sont requis :
      * titleEn/titleAr et buttonTextEn/buttonTextAr sont optionnels (repli sur le _fr tant qu'ils ne
@@ -101,20 +106,28 @@ public class ServiceCardService {
     /**
      * Met à jour une carte existante. Tous les champs sont optionnels : seuls ceux fournis (non
      * null) sont modifiés — ex. basculer comingSoon (mode désactivé/popup) sans toucher au reste du
-     * contenu.
+     * contenu. Les 6 flags clearXxx (à true) remettent le champ traduit correspondant à null —
+     * incompatible avec la fourniture d'une valeur pour ce même champ (voir
+     * UpdateServiceCardRequest).
      */
     public ServiceCard updateServiceCard(
             long id,
             String type,
             String titleFr,
             String titleEn,
+            Boolean clearTitleEn,
             String titleAr,
+            Boolean clearTitleAr,
             String descriptionFr,
             String descriptionEn,
+            Boolean clearDescriptionEn,
             String descriptionAr,
+            Boolean clearDescriptionAr,
             String buttonTextFr,
             String buttonTextEn,
+            Boolean clearButtonTextEn,
             String buttonTextAr,
+            Boolean clearButtonTextAr,
             String icon,
             String imageUrl,
             Boolean comingSoon,
@@ -141,19 +154,35 @@ public class ServiceCardService {
         if (imageUrl != null) {
             validateImageUrl(imageUrl);
         }
+        validateNotValueAndClear(titleEn, clearTitleEn, "titleEn", "clearTitleEn");
+        validateNotValueAndClear(titleAr, clearTitleAr, "titleAr", "clearTitleAr");
+        validateNotValueAndClear(
+                descriptionEn, clearDescriptionEn, "descriptionEn", "clearDescriptionEn");
+        validateNotValueAndClear(
+                descriptionAr, clearDescriptionAr, "descriptionAr", "clearDescriptionAr");
+        validateNotValueAndClear(
+                buttonTextEn, clearButtonTextEn, "buttonTextEn", "clearButtonTextEn");
+        validateNotValueAndClear(
+                buttonTextAr, clearButtonTextAr, "buttonTextAr", "clearButtonTextAr");
         return serviceCardRepository
                 .update(
                         id,
                         type,
                         titleFr,
                         titleEn,
+                        Boolean.TRUE.equals(clearTitleEn),
                         titleAr,
+                        Boolean.TRUE.equals(clearTitleAr),
                         descriptionFr,
                         descriptionEn,
+                        Boolean.TRUE.equals(clearDescriptionEn),
                         descriptionAr,
+                        Boolean.TRUE.equals(clearDescriptionAr),
                         buttonTextFr,
                         buttonTextEn,
+                        Boolean.TRUE.equals(clearButtonTextEn),
                         buttonTextAr,
+                        Boolean.TRUE.equals(clearButtonTextAr),
                         icon,
                         imageUrl,
                         comingSoon,
@@ -179,6 +208,14 @@ public class ServiceCardService {
                         () ->
                                 new ServiceCardException.ServiceCardNotFoundException(
                                         "Carte de service introuvable (id=" + id + ")"));
+    }
+
+    /** Supprime définitivement une carte de service. */
+    public void deleteServiceCard(long id) {
+        if (!serviceCardRepository.deleteById(id)) {
+            throw new ServiceCardException.ServiceCardNotFoundException(
+                    "Carte de service introuvable (id=" + id + ")");
+        }
     }
 
     private void validateType(String type) {
@@ -246,6 +283,18 @@ public class ServiceCardService {
                             + " dépasse la longueur maximale autorisée ("
                             + maxLength
                             + ")");
+        }
+    }
+
+    private void validateNotValueAndClear(
+            String value, Boolean clear, String fieldName, String clearFieldName) {
+        if (Boolean.TRUE.equals(clear) && value != null) {
+            throw new ServiceCardException.InvalidServiceCardRequestException(
+                    "Impossible de fournir à la fois une valeur pour "
+                            + fieldName
+                            + " et "
+                            + clearFieldName
+                            + " = true");
         }
     }
 

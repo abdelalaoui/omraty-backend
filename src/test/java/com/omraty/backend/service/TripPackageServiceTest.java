@@ -346,4 +346,36 @@ class TripPackageServiceTest {
                         anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
                         any());
     }
+
+    @Test
+    void getAllPackages_returnsVisibleAndHiddenPackagesWithImages() {
+        TripPackage visible = tripPackage(1L, true);
+        TripPackage hidden = tripPackage(2L, false);
+        when(tripPackageRepository.findAll()).thenReturn(List.of(visible, hidden));
+        when(tripPackageImageRepository.findUrlsByPackageIds(List.of(1L, 2L)))
+                .thenReturn(Map.of(1L, List.of("https://example.com/1.jpg")));
+
+        List<TripPackageWithImages> result = tripPackageService().getAllPackages();
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).tripPackage()).isEqualTo(visible);
+        assertThat(result.get(0).imageUrls()).containsExactly("https://example.com/1.jpg");
+        assertThat(result.get(1).tripPackage()).isEqualTo(hidden);
+        assertThat(result.get(1).imageUrls()).isEmpty();
+    }
+
+    @Test
+    void deletePackage_whenNotFound_throwsException() {
+        when(tripPackageRepository.deleteById(1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> tripPackageService().deletePackage(1L))
+                .isInstanceOf(TripPackageException.TripPackageNotFoundException.class);
+    }
+
+    @Test
+    void deletePackage_whenFound_delegatesToRepository() {
+        when(tripPackageRepository.deleteById(1L)).thenReturn(true);
+
+        tripPackageService().deletePackage(1L);
+    }
 }

@@ -32,6 +32,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -90,6 +91,10 @@ public class BookingPaymentService {
     private final AppSettingService appSettingService;
 
     static final String FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY = "full_payment_discount_percentage";
+
+    // Voir migration V47, getActiveOfferPrice/resolveOfferPrice.
+    static final String BED_OFFER_ENABLED_KEY = "bed_offer_enabled";
+    static final String BED_OFFER_PRICE_KEY = "bed_offer_price";
 
     public BookingPaymentService(
             ServiceTierRepository serviceTierRepository,
@@ -157,6 +162,34 @@ public class BookingPaymentService {
     }
 
     /**
+     * Prix de l'offre spéciale "lit en chambre de 5" en cours (voir migration V47), si elle est
+     * active — vide sinon. Utilisé par BannerController pour n'exposer un ctaPrice sur une bannière
+     * {@code cta_type = BED_OFFER} que lorsque l'offre est réellement utilisable.
+     */
+    public Optional<BigDecimal> getActiveOfferPrice() {
+        boolean enabled =
+                Boolean.parseBoolean(appSettingService.getSetting(BED_OFFER_ENABLED_KEY).value());
+        return enabled
+                ? Optional.of(appSettingService.getDecimalValue(BED_OFFER_PRICE_KEY))
+                : Optional.empty();
+    }
+
+    /**
+     * Prix réellement facturé par {@link RoomService#reserveOfferBed} — contrairement à {@link
+     * #getActiveOfferPrice}, lève si l'offre n'est pas active (ex. désactivée par l'admin entre
+     * l'affichage de la bannière côté app et la réservation).
+     *
+     * @throws BookingPaymentException.PriceNotConfiguredException si l'offre n'est pas active.
+     */
+    public BigDecimal resolveOfferPrice() {
+        return getActiveOfferPrice()
+                .orElseThrow(
+                        () ->
+                                new BookingPaymentException.PriceNotConfiguredException(
+                                        "L'offre spéciale n'est pas active actuellement"));
+    }
+
+    /**
      * Crée le plan de paiement d'un achat de chambre (roomId renseigné) ou d'une réservation de lit
      * (bedId renseigné) — exactement l'un des deux, jamais les deux (voir migration V30). Le
      * paiement démarre au statut PENDING (voir PaymentStatus, migration V32), quel que soit le plan
@@ -204,6 +237,18 @@ public class BookingPaymentService {
     }
 
     /**
+     * Crée le paiement d'un lit réservé au prix de l'offre spéciale en cours (bedId renseigné, voir
+     * RoomService.reserveOfferBed, resolveOfferPrice) : toujours en plan FULL, sans jamais
+     * appliquer {@link #applyFullPaymentDiscount} — même raisonnement que {@link
+     * #createVipPaymentPlan} : offerPrice est déjà le prix final de l'offre, pas un tarif catalogue
+     * à réduire davantage.
+     */
+    public BookingPayment createOfferPaymentPlan(
+            long bedId, BigDecimal offerPrice, OmraPackage pkg, UUID userId) {
+        return createPaymentPlan(null, bedId, null, PaymentPlan.FULL, offerPrice, pkg, userId);
+    }
+
+    /**
      * Crée le paiement d'une offre VIP acceptée (vipRequestId renseigné, voir migration V36,
      * VipRequestService.accept) : même mécanisme que {@link #createPaymentPlan}, toujours en plan
      * FULL (une offre VIP n'a qu'un montant global, pas de tranches) avec proposedPrice comme
@@ -236,6 +281,29 @@ public class BookingPaymentService {
         BigDecimal amount = applyFullPaymentDiscount(totalAmount);
         return createPaymentPlan(
                 null, null, null, promoRoomId, promoBedId, PaymentPlan.FULL, amount, null, userId);
+    }
+
+    /**
+     * Crée un paiement couvrant plusieurs chambres d'un coup (voir migration V43,
+     * RoomService.purchaseRoomGroup — parcours famille/groupe, une seule transaction pour toutes
+     * les chambres au lieu d'un paiement par chambre). room_id/bed_id/vip_request_id restent tous
+     * NULL sur ce paiement (voir CHECK chk_booking_payment_at_most_one_target) — les chambres sont
+     * liées séparément via booking_payment_room une fois le paiement créé, pour rester dans la même
+     * transaction que RoomService.purchaseRoomGroup (appelant, @Transactional). Réutilise
+     * exactement le même mécanisme que {@link #createPaymentPlan} (tranches, passerelle, réduction)
+     * : seule la cible change.
+     */
+    public BookingPayment createGroupPaymentPlan(
+            List<Long> roomIds,
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId) {
+        BigDecimal amount =
+                plan == PaymentPlan.FULL ? applyFullPaymentDiscount(totalAmount) : totalAmount;
+        BookingPayment payment = createPaymentPlan(null, null, null, plan, amount, pkg, userId);
+        bookingPaymentRepository.linkRoomsToGroupPayment(payment.id(), roomIds);
+        return payment;
     }
 
     private BookingPayment createPaymentPlan(
@@ -530,6 +598,12 @@ public class BookingPaymentService {
         return fileStorageService.generatePresignedUrl(invoiceKey);
     }
 
+    /**
+     * roomId/bedId/vipRequestId/promoRoomId/promoBedId : au plus l'un des cinq renseigné (voir
+     * migrations V43, V52) — tous NULL pour un paiement groupé (voir {@link #createGroupPaymentPlan}), dont l'owner est porté
+     * par n'importe laquelle de ses chambres (même utilisateur pour toutes, voir
+     * RoomService.purchaseRoomGroup).
+     */
     private UUID resolveOwnerUserId(BookingPayment payment) {
         if (payment.roomId() != null) {
             return roomRepository.findByIds(List.of(payment.roomId())).stream()
@@ -555,16 +629,30 @@ public class BookingPaymentService {
                     .map(PromoRoom::userId)
                     .orElse(null);
         }
-        return promoBedRepository.findByIds(List.of(payment.promoBedId())).stream()
+        if (payment.promoBedId() != null) {
+            return promoBedRepository.findByIds(List.of(payment.promoBedId())).stream()
+                    .findFirst()
+                    .map(PromoBed::userId)
+                    .orElse(null);
+        }
+        List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
+        return roomRepository.findByIds(groupRoomIds).stream()
                 .findFirst()
-                .map(PromoBed::userId)
+                .map(Room::userId)
                 .orElse(null);
     }
 
-    /** Plans de paiement des chambres achetées (types 2/3), indexés par roomId. */
+    /**
+     * Plans de paiement des chambres achetées (types 2/3), indexés par roomId — fusionne les achats
+     * simples (booking_payment.room_id) et les achats groupés (booking_payment_room, voir migration
+     * V43, {@link #createGroupPaymentPlan}), où plusieurs chambres partagent le même paiement.
+     */
     public Map<Long, BookingPayment> findPaymentsByRoomIds(List<Long> roomIds) {
-        return bookingPaymentRepository.findByRoomIds(roomIds).stream()
-                .collect(Collectors.toMap(BookingPayment::roomId, payment -> payment));
+        Map<Long, BookingPayment> payments = new HashMap<>();
+        bookingPaymentRepository.findByRoomIds(roomIds).stream()
+                .forEach(payment -> payments.put(payment.roomId(), payment));
+        payments.putAll(bookingPaymentRepository.findGroupPaymentsByRoomIds(roomIds));
+        return payments;
     }
 
     /** Plans de paiement des lits réservés (type 5), indexés par bedId. */
@@ -613,6 +701,7 @@ public class BookingPaymentService {
                         .map(
                                 installment ->
                                         new UserInstallment(
+                                                installment.id(),
                                                 installment.sequence(),
                                                 installment.amount(),
                                                 installment.dueDate(),
