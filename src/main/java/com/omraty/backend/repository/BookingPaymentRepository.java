@@ -40,7 +40,10 @@ public class BookingPaymentRepository {
                             rs.getObject("declared_at", LocalDateTime.class),
                             (UUID) rs.getObject("confirmed_by_admin_id", UUID.class),
                             rs.getObject("confirmed_at", LocalDateTime.class),
-                            rs.getString("rejection_reason"));
+                            rs.getString("rejection_reason"),
+                            rs.getString("invoice_key"),
+                            rs.getString("invoice_number"),
+                            rs.getObject("invoice_generated_at", LocalDateTime.class));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -377,6 +380,24 @@ public class BookingPaymentRepository {
                         invoiceNumber,
                         paymentId);
         return updated > 0;
+    }
+
+    /**
+     * Régénération admin (voir InvoiceService.regenerateInvoice) : contrairement à {@link
+     * #markInvoiceGenerated}, aucune garde d'idempotence — écrase volontairement une facture déjà
+     * générée.
+     */
+    public Optional<BookingPayment> updateInvoice(
+            long paymentId, String invoiceKey, String invoiceNumber) {
+        return jdbcTemplate
+                .query(
+                        BookingPaymentTable.UPDATE_INVOICE,
+                        BOOKING_PAYMENT_ROW_MAPPER,
+                        invoiceKey,
+                        invoiceNumber,
+                        paymentId)
+                .stream()
+                .findFirst();
     }
 
     /**

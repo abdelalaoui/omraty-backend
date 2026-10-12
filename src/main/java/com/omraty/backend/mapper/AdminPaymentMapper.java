@@ -23,7 +23,10 @@ public final class AdminPaymentMapper {
                 item.amount(),
                 item.status(),
                 item.declaredAt(),
-                item.purchaseDescription());
+                item.purchaseDescription(),
+                item.hasInvoice(),
+                item.invoiceNumber(),
+                item.invoiceGeneratedAt());
     }
 
     public static List<AdminPaymentVerificationResponse> toResponseList(
@@ -37,6 +40,8 @@ public final class AdminPaymentMapper {
                 payment.status(),
                 payment.confirmedByAdminId(),
                 payment.confirmedAt(),
-                payment.rejectionReason());
+                payment.rejectionReason(),
+                payment.invoiceKey() != null,
+                payment.invoiceNumber());
     }
 }

@@ -19,6 +19,11 @@ import java.util.List;
  * PaymentMethod), null pour un achat via la passerelle Moov — permettent au client de revenir
  * copier son code. status reflète celui de booking_payment (voir PaymentStatus), notamment
  * PENDING_VERIFICATION une fois le paiement déclaré.
+ *
+ * <p>hasInvoice/invoiceNumber/invoiceGeneratedAt (voir InvoiceService, migration V39) : renseignés
+ * une fois l'achat intégralement payé — permettent d'afficher le bouton « Facture » sans appeler
+ * GET /users/me/purchases/{id}/invoice (ou son équivalent admin, voir
+ * BookingPaymentService.getInvoiceForAdmin) pour chaque ligne.
  */
 public record UserPurchasePayment(
         long id,
@@ -32,4 +37,7 @@ public record UserPurchasePayment(
         String paymentReference,
         String merchantNumber,
         PaymentStatus status,
-        LocalDateTime declaredAt) {}
+        LocalDateTime declaredAt,
+        boolean hasInvoice,
+        String invoiceNumber,
+        LocalDateTime invoiceGeneratedAt) {}

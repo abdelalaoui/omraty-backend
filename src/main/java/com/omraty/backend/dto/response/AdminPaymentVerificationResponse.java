@@ -11,6 +11,10 @@ import java.util.UUID;
  * indiquant la route à appeler pour confirmer/rejeter (POST /admin/payments/{bookingPaymentId}
  * /confirm|reject pour "payment-", PATCH /admin/installments/{installmentId}/mark-paid pour
  * "installment-", voir installmentId).
+ *
+ * <p>hasInvoice/invoiceNumber/invoiceGeneratedAt : toujours false/null pour une tranche (voir
+ * AdminPaymentVerificationItem) — pour un paiement, permettent d'afficher le bouton « Facture »
+ * sans appeler GET /admin/payments/{id}/invoice pour chaque ligne.
  */
 public record AdminPaymentVerificationResponse(
         String id,
@@ -24,4 +28,7 @@ public record AdminPaymentVerificationResponse(
         BigDecimal amount,
         PaymentStatus status,
         LocalDateTime declaredAt,
-        String purchaseDescription) {}
+        String purchaseDescription,
+        boolean hasInvoice,
+        String invoiceNumber,
+        LocalDateTime invoiceGeneratedAt) {}
