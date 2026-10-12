@@ -16,6 +16,9 @@ import java.util.List;
  * <p>paymentMethod/paymentReference/merchantNumber/declaredAt : renseignés uniquement pour un achat
  * payé via un moyen de paiement manuel (Moov, Bankily...), null pour un achat via la passerelle
  * Moov — permettent au client de revenir copier son code.
+ *
+ * <p>hasInvoice/invoiceNumber/invoiceGeneratedAt : renseignés une fois l'achat intégralement payé
+ * (voir InvoiceService) — permettent d'afficher le bouton « Facture » sans appel séparé.
  */
 public record PurchasePaymentResponse(
         long id,
@@ -29,4 +32,7 @@ public record PurchasePaymentResponse(
         String paymentReference,
         String merchantNumber,
         PaymentStatus status,
-        LocalDateTime declaredAt) {}
+        LocalDateTime declaredAt,
+        boolean hasInvoice,
+        String invoiceNumber,
+        LocalDateTime invoiceGeneratedAt) {}

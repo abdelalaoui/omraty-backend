@@ -1,5 +1,6 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.dto.response.AdminInvoiceResponse;
 import com.omraty.backend.dto.response.PaymentResponse;
 import com.omraty.backend.dto.response.PaymentStatusResponse;
 import com.omraty.backend.entities.Bed;
@@ -605,7 +606,10 @@ public class BookingPaymentService {
         }
         notifyPaymentOutcome(confirmed, PaymentStatus.CONFIRMED);
         invoiceService.generateIfFullyPaid(confirmed.id());
-        return confirmed;
+        // Relit l'état : generateIfFullyPaid peut avoir renseigné invoice_key/invoice_number à
+        // l'instant (voir carte "Facture panel admin") — la réponse de cette route doit permettre
+        // au panel d'afficher le lien vers la facture immédiatement, sans appel séparé.
+        return bookingPaymentRepository.findById(confirmed.id()).orElse(confirmed);
     }
 
     /**
@@ -717,7 +721,10 @@ public class BookingPaymentService {
                 payment.status(),
                 payment.declaredAt(),
                 payment.declaredAt() != null ? payment.declaredAt() : payment.createdAt(),
-                resolvePurchaseDescription(payment));
+                resolvePurchaseDescription(payment),
+                payment.invoiceKey() != null,
+                payment.invoiceNumber(),
+                payment.invoiceGeneratedAt());
     }
 
     /**
@@ -749,7 +756,10 @@ public class BookingPaymentService {
                                             : PaymentStatus.PENDING,
                                     installment.declaredAt(),
                                     queuedAt,
-                                    resolvePurchaseDescription(payment));
+                                    resolvePurchaseDescription(payment),
+                                    false,
+                                    null,
+                                    null);
                         });
     }
 
@@ -1162,7 +1172,10 @@ public class BookingPaymentService {
                     payment.paymentReference(),
                     merchantNumber,
                     payment.status(),
-                    payment.declaredAt());
+                    payment.declaredAt(),
+                    payment.invoiceKey() != null,
+                    payment.invoiceNumber(),
+                    payment.invoiceGeneratedAt());
         }
         BigDecimal paidAmount =
                 installments.stream()
@@ -1203,6 +1216,48 @@ public class BookingPaymentService {
                 payment.paymentReference(),
                 merchantNumber,
                 payment.status(),
-                payment.declaredAt());
+                payment.declaredAt(),
+                payment.invoiceKey() != null,
+                payment.invoiceNumber(),
+                payment.invoiceGeneratedAt());
+    }
+
+    /**
+     * Facture d'un paiement côté admin (GET /admin/payments/{id}/invoice, voir carte "Facture panel
+     * admin") : même mécanisme que {@link #getInvoiceDownloadUrl} (URL présignée de courte durée),
+     * mais sans vérification de propriétaire — l'admin voit toutes les factures.
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas.
+     * @throws BookingPaymentException.InvoiceNotAvailableException si l'achat n'est pas encore
+     *     intégralement payé (aucune facture générée).
+     */
+    public AdminInvoiceResponse getInvoiceForAdmin(long bookingPaymentId) {
+        BookingPayment payment = getPaymentOrThrow(bookingPaymentId);
+        if (payment.invoiceKey() == null) {
+            throw new BookingPaymentException.InvoiceNotAvailableException(
+                    "Facture pas encore disponible (id=" + bookingPaymentId + ")");
+        }
+        return new AdminInvoiceResponse(
+                payment.invoiceNumber(),
+                payment.invoiceGeneratedAt(),
+                fileStorageService.generatePresignedUrl(payment.invoiceKey()));
+    }
+
+    /**
+     * Régénère la facture d'un paiement (POST /admin/payments/{id}/invoice/regenerate, voir carte
+     * "Facture panel admin") : pour un échec de stockage lors de la 1ère génération, ou une info
+     * client corrigée depuis — voir InvoiceService.regenerateInvoice, qui conserve le numéro
+     * existant.
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas.
+     * @throws BookingPaymentException.InvoiceNotAvailableException si l'achat n'est pas encore
+     *     intégralement payé.
+     */
+    public AdminInvoiceResponse regenerateInvoiceForAdmin(long bookingPaymentId) {
+        BookingPayment payment = invoiceService.regenerateInvoice(bookingPaymentId);
+        return new AdminInvoiceResponse(
+                payment.invoiceNumber(),
+                payment.invoiceGeneratedAt(),
+                fileStorageService.generatePresignedUrl(payment.invoiceKey()));
     }
 }

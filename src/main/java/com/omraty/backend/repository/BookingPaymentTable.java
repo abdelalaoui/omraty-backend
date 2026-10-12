@@ -8,7 +8,7 @@ final class BookingPaymentTable {
             "id, room_id, bed_id, vip_request_id, plan, status, total_amount, moov_payment_code,"
                     + " moov_transaction_id, payer_phone, expires_at, created_at, payment_method,"
                     + " payment_reference, declared_at, confirmed_by_admin_id, confirmed_at,"
-                    + " rejection_reason";
+                    + " rejection_reason, invoice_key, invoice_number, invoice_generated_at";
 
     // status <> 'EXPIRED' : depuis la migration V35, une chambre/un lit expiré(e) peut être
     // réservé(e) de nouveau, donc plusieurs lignes peuvent exister pour un même room_id au fil du
@@ -135,7 +135,8 @@ final class BookingPaymentTable {
                     + " bp.moov_payment_code, bp.moov_transaction_id, bp.payer_phone,"
                     + " bp.expires_at, bp.created_at, bp.payment_method, bp.payment_reference,"
                     + " bp.declared_at, bp.confirmed_by_admin_id, bp.confirmed_at,"
-                    + " bp.rejection_reason FROM booking_payment_room bpr JOIN"
+                    + " bp.rejection_reason, bp.invoice_key, bp.invoice_number,"
+                    + " bp.invoice_generated_at FROM booking_payment_room bpr JOIN"
                     + " booking_payment bp ON bp.id = bpr.booking_payment_id WHERE bpr.room_id ="
                     + " ANY (?) AND bp.status <> 'EXPIRED'";
 
@@ -199,4 +200,14 @@ final class BookingPaymentTable {
                     + " AND (?::timestamp IS NULL OR created_at >= ?)"
                     + " AND (?::timestamp IS NULL OR created_at <= ?)"
                     + " ORDER BY COALESCE(declared_at, created_at) ASC";
+
+    // Régénération admin (voir InvoiceService.regenerateInvoice, carte "Facture panel admin") :
+    // contrairement à MARK_INVOICE_GENERATED, aucune garde d'idempotence — c'est précisément
+    // l'appel voulu pour écraser une facture déjà générée (échec de stockage, info client
+    // corrigée). invoice_number n'est PAS réinitialisé ici : InvoiceService décide côté Java de
+    // réutiliser le numéro existant ou d'en tirer un nouveau avant d'appeler cette requête.
+    static final String UPDATE_INVOICE =
+            "UPDATE booking_payment SET invoice_key = ?, invoice_number = ?, invoice_generated_at ="
+                    + " now() WHERE id = ? RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
 }

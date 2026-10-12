@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.omraty.backend.dto.response.AdminInvoiceResponse;
 import com.omraty.backend.dto.response.PaymentStatusResponse;
 import com.omraty.backend.entities.AppSetting;
 import com.omraty.backend.entities.Bed;
@@ -1188,7 +1189,12 @@ class BookingPaymentServiceTest {
     void confirmManually_full_confirmsNotifiesAndGeneratesInvoice() {
         BookingPayment payment = pendingPayment(30L, null, PaymentPlan.FULL);
         BookingPayment confirmed = withStatus(payment, PaymentStatus.CONFIRMED);
-        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        // 1er appel (getPaymentOrThrow) : paiement encore PENDING. 2e appel (relecture après
+        // invoiceService.generateIfFullyPaid, voir confirmManually) : reflète l'état confirmé,
+        // potentiellement enrichi de la facture juste générée.
+        when(bookingPaymentRepository.findById(10L))
+                .thenReturn(Optional.of(payment))
+                .thenReturn(Optional.of(confirmed));
         when(bookingPaymentRepository.confirmManually(10L, ADMIN_ID))
                 .thenReturn(Optional.of(confirmed));
         when(roomRepository.findByIds(List.of(30L)))
@@ -1329,6 +1335,100 @@ class BookingPaymentServiceTest {
 
         verify(bookingInstallmentRepository, never())
                 .findForAdminVerification(any(), any(), any(), any(), any());
+    }
+
+    private BookingPayment paymentWithInvoice(String invoiceKey, String invoiceNumber) {
+        return new BookingPayment(
+                10L,
+                30L,
+                null,
+                null,
+                PaymentPlan.FULL,
+                PaymentStatus.CONFIRMED,
+                new BigDecimal("90000"),
+                null,
+                null,
+                null,
+                null,
+                LocalDateTime.now(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                invoiceKey,
+                invoiceNumber,
+                invoiceKey == null ? null : LocalDateTime.now());
+    }
+
+    @Test
+    void getInvoiceForAdmin_whenPaymentNotFound_throwsException() {
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingPaymentService().getInvoiceForAdmin(10L))
+                .isInstanceOf(BookingPaymentException.PaymentNotFoundException.class);
+    }
+
+    @Test
+    void getInvoiceForAdmin_whenNoInvoiceYet_throwsException() {
+        when(bookingPaymentRepository.findById(10L))
+                .thenReturn(Optional.of(paymentWithInvoice(null, null)));
+
+        assertThatThrownBy(() -> bookingPaymentService().getInvoiceForAdmin(10L))
+                .isInstanceOf(BookingPaymentException.InvoiceNotAvailableException.class);
+        verifyNoInteractions(fileStorageService);
+    }
+
+    @Test
+    void getInvoiceForAdmin_whenInvoiceExists_returnsPresignedUrlWithoutOwnershipCheck() {
+        // Contrairement à getInvoiceDownloadUrl (route client) : pas de vérification de
+        // propriétaire, donc pas besoin de stuber roomRepository/resolveOwnerUserId ici.
+        BookingPayment payment =
+                paymentWithInvoice("invoices/OMR-2026-000042.pdf", "OMR-2026-000042");
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(payment));
+        when(fileStorageService.generatePresignedUrl("invoices/OMR-2026-000042.pdf"))
+                .thenReturn("https://storage.example.com/signed-url");
+
+        AdminInvoiceResponse result = bookingPaymentService().getInvoiceForAdmin(10L);
+
+        assertThat(result.invoiceNumber()).isEqualTo("OMR-2026-000042");
+        assertThat(result.downloadUrl()).isEqualTo("https://storage.example.com/signed-url");
+    }
+
+    @Test
+    void regenerateInvoiceForAdmin_delegatesToInvoiceServiceAndReturnsPresignedUrl() {
+        BookingPayment regenerated = paymentWithInvoice("invoices/new-key.pdf", "OMR-2026-000042");
+        when(invoiceService.regenerateInvoice(10L)).thenReturn(regenerated);
+        when(fileStorageService.generatePresignedUrl("invoices/new-key.pdf"))
+                .thenReturn("https://storage.example.com/signed-url-2");
+
+        AdminInvoiceResponse result = bookingPaymentService().regenerateInvoiceForAdmin(10L);
+
+        assertThat(result.invoiceNumber()).isEqualTo("OMR-2026-000042");
+        assertThat(result.downloadUrl()).isEqualTo("https://storage.example.com/signed-url-2");
+    }
+
+    @Test
+    void toPurchasePayment_full_whenInvoiceGenerated_exposesInvoiceInfo() {
+        BookingPayment payment =
+                paymentWithInvoice("invoices/OMR-2026-000042.pdf", "OMR-2026-000042");
+
+        UserPurchasePayment result = bookingPaymentService().toPurchasePayment(payment, List.of());
+
+        assertThat(result.hasInvoice()).isTrue();
+        assertThat(result.invoiceNumber()).isEqualTo("OMR-2026-000042");
+        assertThat(result.invoiceGeneratedAt()).isNotNull();
+    }
+
+    @Test
+    void toPurchasePayment_full_whenNoInvoiceYet_hasInvoiceIsFalse() {
+        BookingPayment payment = paymentWithInvoice(null, null);
+
+        UserPurchasePayment result = bookingPaymentService().toPurchasePayment(payment, List.of());
+
+        assertThat(result.hasInvoice()).isFalse();
+        assertThat(result.invoiceNumber()).isNull();
     }
 
     @Test

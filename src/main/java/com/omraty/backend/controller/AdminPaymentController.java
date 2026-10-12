@@ -1,6 +1,7 @@
 package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.request.RejectPaymentRequest;
+import com.omraty.backend.dto.response.AdminInvoiceResponse;
 import com.omraty.backend.dto.response.AdminPaymentConfirmationResponse;
 import com.omraty.backend.dto.response.AdminPaymentVerificationResponse;
 import com.omraty.backend.entities.BookingPayment;
@@ -78,5 +79,25 @@ public class AdminPaymentController {
             @PathVariable long id, @Valid @RequestBody RejectPaymentRequest request) {
         BookingPayment payment = bookingPaymentService.rejectManually(id, request.reason());
         return ResponseEntity.ok(AdminPaymentMapper.toConfirmationResponse(payment));
+    }
+
+    /**
+     * Contrairement à GET /users/me/purchases/{id}/invoice (route client), aucune vérification de
+     * propriétaire : l'admin voit la facture de n'importe quel paiement (voir carte "Facture panel
+     * admin"). 404 si le paiement n'existe pas, ou si aucune facture n'a encore été générée (achat
+     * pas encore intégralement payé).
+     */
+    @GetMapping("/{id}/invoice")
+    public ResponseEntity<AdminInvoiceResponse> getInvoice(@PathVariable long id) {
+        return ResponseEntity.ok(bookingPaymentService.getInvoiceForAdmin(id));
+    }
+
+    /**
+     * Pour un échec de stockage lors de la 1ère génération, ou une info client corrigée depuis —
+     * conserve le même numéro de facture (voir InvoiceService.regenerateInvoice).
+     */
+    @PostMapping("/{id}/invoice/regenerate")
+    public ResponseEntity<AdminInvoiceResponse> regenerateInvoice(@PathVariable long id) {
+        return ResponseEntity.ok(bookingPaymentService.regenerateInvoiceForAdmin(id));
     }
 }
