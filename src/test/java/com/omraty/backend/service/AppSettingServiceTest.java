@@ -65,4 +65,18 @@ class AppSettingServiceTest {
                                 "https://apps.apple.com/app/x",
                                 "https://play.google.com/store/apps/details?id=x"));
     }
+
+    @Test
+    void updateSetting_withBlankValueOnClearableKey_storesEmptyString() {
+        when(appSettingRepository.updateValue("app_opening_at", ""))
+                .thenReturn(Optional.of(setting("app_opening_at", "")));
+
+        assertThat(appSettingService().updateSetting("app_opening_at", "  ").value()).isEmpty();
+    }
+
+    @Test
+    void updateSetting_withBlankValueOnOtherKey_throwsException() {
+        assertThatThrownBy(() -> appSettingService().updateSetting("min_supported_version", ""))
+                .isInstanceOf(AppSettingException.InvalidAppSettingException.class);
+    }
 }

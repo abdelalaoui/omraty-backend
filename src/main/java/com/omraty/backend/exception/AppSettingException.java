@@ -11,4 +11,10 @@ public class AppSettingException extends RuntimeException {
             super(message);
         }
     }
+
+    public static class InvalidAppSettingException extends AppSettingException {
+        public InvalidAppSettingException(String message) {
+            super(message);
+        }
+    }
 }
