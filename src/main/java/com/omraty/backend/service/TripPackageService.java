@@ -63,6 +63,20 @@ public class TripPackageService {
                 .toList();
     }
 
+    /** Tous les packages du catalogue (visibles ou masqués), triés par id, pour l'admin. */
+    public List<TripPackageWithImages> getAllPackages() {
+        List<TripPackage> packages = tripPackageRepository.findAll();
+        Map<Long, List<String>> imagesByPackageId =
+                tripPackageImageRepository.findUrlsByPackageIds(
+                        packages.stream().map(TripPackage::id).toList());
+        return packages.stream()
+                .map(
+                        pkg ->
+                                new TripPackageWithImages(
+                                        pkg, imagesByPackageId.getOrDefault(pkg.id(), List.of())))
+                .toList();
+    }
+
     /** Détail d'un package visible du catalogue (les packages masqués ne sont pas exposés). */
     public TripPackageWithImages getVisiblePackageById(long id) {
         TripPackage pkg =
@@ -181,6 +195,14 @@ public class TripPackageService {
         }
         return new TripPackageWithImages(
                 updated, tripPackageImageRepository.findUrlsByPackageId(id));
+    }
+
+    public void deletePackage(long id) {
+        boolean deleted = tripPackageRepository.deleteById(id);
+        if (!deleted) {
+            throw new TripPackageException.TripPackageNotFoundException(
+                    "Package introuvable (id=" + id + ")");
+        }
     }
 
     private TripPackage getPackageOrThrow(long id) {

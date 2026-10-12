@@ -6,8 +6,11 @@ import com.omraty.backend.dto.response.AdminTripPackageResponse;
 import com.omraty.backend.mapper.TripPackageMapper;
 import com.omraty.backend.service.TripPackageService;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,6 +34,12 @@ public class AdminTripPackageController {
 
     public AdminTripPackageController(TripPackageService tripPackageService) {
         this.tripPackageService = tripPackageService;
+    }
+
+    @GetMapping
+    public ResponseEntity<List<AdminTripPackageResponse>> listPackages() {
+        return ResponseEntity.ok(
+                TripPackageMapper.toAdminResponseList(tripPackageService.getAllPackages()));
     }
 
     @PostMapping
@@ -71,5 +80,11 @@ public class AdminTripPackageController {
                                 request.groupSize(),
                                 request.visible(),
                                 request.imageUrls())));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deletePackage(@PathVariable long id) {
+        tripPackageService.deletePackage(id);
+        return ResponseEntity.noContent().build();
     }
 }

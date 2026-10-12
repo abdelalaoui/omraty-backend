@@ -25,6 +25,11 @@ final class BedTable {
     static final String SELECT_BEDS_BY_USER_ID =
             "SELECT " + BED_COLUMNS + " FROM bed WHERE user_id = ? ORDER BY created_at DESC";
 
+    // Lits actuellement réservés, tous utilisateurs confondus, pour GET /admin/bookings (voir
+    // RoomService.getAllPurchases) : un lit libéré repasse à user_id NULL (voir RELEASE_BED).
+    static final String SELECT_RESERVED_BEDS =
+            "SELECT " + BED_COLUMNS + " FROM bed WHERE user_id IS NOT NULL";
+
     static final String INSERT_BED =
             "INSERT INTO bed (number, reserved, room_id) VALUES (?, FALSE, ?)";
 

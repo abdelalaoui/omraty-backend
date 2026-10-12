@@ -20,6 +20,10 @@ public class BannerService {
     private static final int MAX_TITLE_LENGTH = 255;
     private static final int MAX_DESCRIPTION_LENGTH = 1000;
 
+    // Seule valeur reconnue pour l'instant (voir migration V48, Banner.ctaType) — d'autres
+    // pourront s'ajouter pour de futures offres sans nouvelle migration.
+    private static final Set<String> VALID_CTA_TYPES = Set.of("BED_OFFER");
+
     private final BannerRepository bannerRepository;
     private final FileStorageService fileStorageService;
     private final PublicUrlResolver publicUrlResolver;
@@ -52,28 +56,36 @@ public class BannerService {
             String title,
             String description,
             Integer displayOrder,
-            Boolean visible) {
+            Boolean visible,
+            String ctaType) {
         validateImage(image);
         validateText(title, MAX_TITLE_LENGTH, "Le titre");
         validateText(description, MAX_DESCRIPTION_LENGTH, "La description");
+        validateCtaType(ctaType);
         String storedKey = fileStorageService.store(image, BANNER_IMAGE_SUBDIR);
         String imageUrl = publicUrlResolver.toPublicUrl(storedKey);
         int order = displayOrder != null ? displayOrder : bannerRepository.nextDisplayOrder();
         boolean isVisible = visible == null || visible;
-        return bannerRepository.insert(imageUrl, title, description, order, isVisible);
+        return bannerRepository.insert(imageUrl, title, description, order, isVisible, ctaType);
     }
 
     /**
-     * Met à jour une bannière existante (titre, description, ordre, visibilité). Tous les champs
-     * sont optionnels : seuls ceux fournis (non null) sont modifiés. L'image se change via {@link
-     * #updateImage(long, MultipartFile)}.
+     * Met à jour une bannière existante (titre, description, ordre, visibilité, cta_type). Tous les
+     * champs sont optionnels : seuls ceux fournis (non null) sont modifiés. L'image se change via
+     * {@link #updateImage(long, MultipartFile)}.
      */
     public Banner updateBanner(
-            long id, String title, String description, Integer displayOrder, Boolean visible) {
+            long id,
+            String title,
+            String description,
+            Integer displayOrder,
+            Boolean visible,
+            String ctaType) {
         validateText(title, MAX_TITLE_LENGTH, "Le titre");
         validateText(description, MAX_DESCRIPTION_LENGTH, "La description");
+        validateCtaType(ctaType);
         return bannerRepository
-                .update(id, title, description, displayOrder, visible)
+                .update(id, title, description, displayOrder, visible, ctaType)
                 .orElseThrow(
                         () ->
                                 new BannerException.BannerNotFoundException(
@@ -121,6 +133,13 @@ public class BannerService {
         if (value != null && value.length() > maxLength) {
             throw new BannerException.InvalidBannerRequestException(
                     fieldLabel + " dépasse la longueur maximale autorisée (" + maxLength + ")");
+        }
+    }
+
+    private void validateCtaType(String ctaType) {
+        if (ctaType != null && !VALID_CTA_TYPES.contains(ctaType)) {
+            throw new BannerException.InvalidBannerRequestException(
+                    "Type de CTA inconnu (reçu : " + ctaType + ")");
         }
     }
 }

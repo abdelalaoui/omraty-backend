@@ -40,6 +40,34 @@ payment:
     # configurable en base sans redéploiement (voir migration V34, AppSettingService).
     pending-check-interval-ms: ${PAYMENT_PENDING_CHECK_INTERVAL_MS:60000}
 
+whatsapp:
+  otp:
+    # mock (par défaut, dev/test, voir MockWhatsAppOtpSender — logue le code sans l'envoyer) | meta
+    # (Meta WhatsApp Cloud API, voir MetaWhatsAppOtpSender, LocalOtpVerificationProvider) | twilio
+    # (Twilio Verify, voir TwilioVerifyOtpProvider — génère/stocke/vérifie le code lui-même). Même
+    # principe que payment.gateway.provider.
+    provider: ${WHATSAPP_OTP_PROVIDER:mock}
+    meta:
+      # developers.facebook.com > votre app > WhatsApp > Configuration de l'API.
+      access-token: ${WHATSAPP_ACCESS_TOKEN:}
+      phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+      # Nom + langue du template "Authentication" approuvé (WhatsApp Manager > Modèles de
+      # messages) — voir MetaWhatsAppOtpSender pour le format de payload attendu.
+      template-name: ${WHATSAPP_TEMPLATE_NAME:otp_code}
+      template-language: ${WHATSAPP_TEMPLATE_LANGUAGE:ar}
+      api-version: ${WHATSAPP_API_VERSION:v21.0}
+    twilio:
+      # console.twilio.com > Account > API keys & tokens (Account SID + Auth Token), et Verify >
+      # Services > le Verify Service rattaché au sender WhatsApp (ex. "Omraty WhatsApp").
+      account-sid: ${TWILIO_ACCOUNT_SID:}
+      auth-token: ${TWILIO_AUTH_TOKEN:}
+      verify-service-sid: ${TWILIO_VERIFY_SERVICE_SID:}
+  webhook:
+    # Requis par Meta pour finaliser la configuration production d'un numéro WhatsApp (voir
+    # WhatsAppWebhookController) — comparé tel quel au hub.verify_token envoyé par Meta au moment
+    # de la configuration du webhook dans WhatsApp Manager.
+    verify-token: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:}
+
 app:
   vip:
     offer-expiration-hours: ${VIP_OFFER_EXPIRATION_HOURS:24}

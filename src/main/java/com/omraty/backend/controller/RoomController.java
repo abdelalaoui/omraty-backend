@@ -1,8 +1,11 @@
 package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.request.OpenRoomRequest;
+import com.omraty.backend.dto.request.PurchaseRoomGroupRequest;
 import com.omraty.backend.dto.request.PurchaseRoomRequest;
 import com.omraty.backend.dto.request.ReserveBedRequest;
+import com.omraty.backend.dto.request.ReserveOfferBedRequest;
+import com.omraty.backend.dto.request.RoomGroupItemRequest;
 import com.omraty.backend.dto.response.PaymentResponse;
 import com.omraty.backend.dto.response.PurchaseResponse;
 import com.omraty.backend.dto.response.RoomBedsResponse;
@@ -11,6 +14,7 @@ import com.omraty.backend.mapper.PaymentMapper;
 import com.omraty.backend.mapper.PurchaseMapper;
 import com.omraty.backend.mapper.RoomMapper;
 import com.omraty.backend.service.RoomService;
+import com.omraty.backend.service.RoomService.RoomGroupItem;
 import com.omraty.backend.service.RoomWithBeds;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -84,6 +88,19 @@ public class RoomController {
     }
 
     /**
+     * Réserve un lit (chambre de 5) au prix de l'offre spéciale en cours (voir
+     * RoomService.reserveOfferBed) — toujours en paiement complet, jamais en tranches. Distinct de
+     * POST /rooms/5/beds/reserve (prix catalogue, plan au choix du client).
+     */
+    @PostMapping("/rooms/offer/beds/reserve")
+    public ResponseEntity<PaymentResponse> reserveOfferBed(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody ReserveOfferBedRequest request) {
+        BookingPayment payment = roomService.reserveOfferBed(request.packageId(), userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
+    }
+
+    /**
      * L'achat de la chambre est immédiat, mais la réponse ne confirme pas le paiement : elle
      * renvoie le code à afficher au client et sa date d'expiration (voir PaymentResponse,
      * BookingPaymentService.createPaymentPlan).
@@ -95,6 +112,28 @@ public class RoomController {
             @Valid @RequestBody PurchaseRoomRequest request) {
         BookingPayment payment =
                 roomService.purchaseRoom(type, request.packageId(), userId, request.plan());
+        return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
+    }
+
+    /**
+     * Achat de plusieurs chambres en un seul paiement (voir RoomService.purchaseRoomGroup,
+     * migration V43) — parcours famille/groupe, où le type/nombre de chambres nécessaires a déjà
+     * été choisi avant d'arriver ici (voir ReservationTypeScreen côté app). La réponse a exactement
+     * la même forme que POST /rooms/{type}/purchase : le reste du parcours de paiement (choix du
+     * moyen de paiement, suivi du statut) n'a pas besoin de savoir qu'il s'agit d'un achat groupé.
+     */
+    @PostMapping("/rooms/group/purchase")
+    public ResponseEntity<PaymentResponse> purchaseRoomGroup(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody PurchaseRoomGroupRequest request) {
+        List<RoomGroupItem> items =
+                request.items().stream()
+                        .map(
+                                (RoomGroupItemRequest item) ->
+                                        new RoomGroupItem(item.type(), item.quantity()))
+                        .toList();
+        BookingPayment payment =
+                roomService.purchaseRoomGroup(items, request.packageId(), userId, request.plan());
         return ResponseEntity.status(HttpStatus.CREATED).body(PaymentMapper.toResponse(payment));
     }
 

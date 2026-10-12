@@ -1,8 +1,10 @@
 package com.omraty.backend.mapper;
 
+import com.omraty.backend.dto.response.AdminPurchaseResponse;
 import com.omraty.backend.dto.response.InstallmentResponse;
 import com.omraty.backend.dto.response.PurchasePaymentResponse;
 import com.omraty.backend.dto.response.PurchaseResponse;
+import com.omraty.backend.service.AdminPurchase;
 import com.omraty.backend.service.UserInstallment;
 import com.omraty.backend.service.UserPurchase;
 import com.omraty.backend.service.UserPurchasePayment;
@@ -27,6 +29,26 @@ public final class PurchaseMapper {
         return purchases.stream().map(PurchaseMapper::toResponse).toList();
     }
 
+    public static AdminPurchaseResponse toAdminResponse(AdminPurchase adminPurchase) {
+        UserPurchase purchase = adminPurchase.purchase();
+        return new AdminPurchaseResponse(
+                adminPurchase.id(),
+                adminPurchase.userId(),
+                adminPurchase.userPhone(),
+                purchase.type(),
+                purchase.totalCapacity(),
+                purchase.packageId(),
+                purchase.packageLabel(),
+                purchase.createdAt(),
+                purchase.bedNumber(),
+                toPaymentResponse(purchase.payment()));
+    }
+
+    public static List<AdminPurchaseResponse> toAdminResponseList(
+            List<AdminPurchase> adminPurchases) {
+        return adminPurchases.stream().map(PurchaseMapper::toAdminResponse).toList();
+    }
+
     private static PurchasePaymentResponse toPaymentResponse(UserPurchasePayment payment) {
         if (payment == null) {
             return null;
@@ -45,6 +67,7 @@ public final class PurchaseMapper {
 
     private static InstallmentResponse toInstallmentResponse(UserInstallment installment) {
         return new InstallmentResponse(
+                installment.id(),
                 installment.sequence(),
                 installment.amount(),
                 installment.dueDate(),

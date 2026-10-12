@@ -68,6 +68,11 @@ public class RoomRepository {
         return jdbcTemplate.query(RoomTable.SELECT_ROOMS_BY_USER_ID, ROOM_ROW_MAPPER, userId);
     }
 
+    /** Chambres actuellement achetées, tous utilisateurs confondus (GET /admin/bookings). */
+    public List<Room> findAllPurchased() {
+        return jdbcTemplate.query(RoomTable.SELECT_PURCHASED_ROOMS, ROOM_ROW_MAPPER);
+    }
+
     /**
      * Total des places déjà réservées, toutes chambres et tous types confondus, pour ce package.
      */

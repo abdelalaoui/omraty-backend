@@ -48,4 +48,9 @@ public final class TripPackageMapper {
                 pkg.groupSize(),
                 pkg.visible());
     }
+
+    public static List<AdminTripPackageResponse> toAdminResponseList(
+            List<TripPackageWithImages> packagesWithImages) {
+        return packagesWithImages.stream().map(TripPackageMapper::toAdminResponse).toList();
+    }
 }

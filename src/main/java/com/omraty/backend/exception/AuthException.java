@@ -33,4 +33,18 @@ public class AuthException extends RuntimeException {
             super(message, cause);
         }
     }
+
+    /** Nouvelle demande de code trop rapprochée de la précédente (voir AuthService.requestOtp). */
+    public static class OtpRequestTooSoonException extends AuthException {
+        public OtpRequestTooSoonException(String message) {
+            super(message);
+        }
+    }
+
+    /** Échec de l'envoi du code par WhatsApp (voir WhatsAppOtpSender). */
+    public static class OtpSendFailedException extends AuthException {
+        public OtpSendFailedException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
 }

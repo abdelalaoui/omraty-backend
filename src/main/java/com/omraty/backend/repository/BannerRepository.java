@@ -20,6 +20,7 @@ public class BannerRepository {
                             rs.getString("description"),
                             rs.getBoolean("visible"),
                             rs.getInt("display_order"),
+                            rs.getString("cta_type"),
                             rs.getObject("updated_at", LocalDateTime.class));
 
     private final JdbcTemplate jdbcTemplate;
@@ -51,7 +52,12 @@ public class BannerRepository {
     }
 
     public Banner insert(
-            String imageUrl, String title, String description, int displayOrder, boolean visible) {
+            String imageUrl,
+            String title,
+            String description,
+            int displayOrder,
+            boolean visible,
+            String ctaType) {
         return jdbcTemplate
                 .query(
                         BannerTable.INSERT_BANNER,
@@ -60,7 +66,8 @@ public class BannerRepository {
                         title,
                         description,
                         displayOrder,
-                        visible)
+                        visible,
+                        ctaType)
                 .stream()
                 .findFirst()
                 .orElseThrow(
@@ -68,7 +75,12 @@ public class BannerRepository {
     }
 
     public Optional<Banner> update(
-            long id, String title, String description, Integer displayOrder, Boolean visible) {
+            long id,
+            String title,
+            String description,
+            Integer displayOrder,
+            Boolean visible,
+            String ctaType) {
         return jdbcTemplate
                 .query(
                         BannerTable.UPDATE_BANNER,
@@ -77,6 +89,7 @@ public class BannerRepository {
                         description,
                         displayOrder,
                         visible,
+                        ctaType,
                         id)
                 .stream()
                 .findFirst();

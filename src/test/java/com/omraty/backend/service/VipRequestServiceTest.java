@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.Hotel;
 import com.omraty.backend.entities.OmraPackage;
+import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.VipRequest;
 import com.omraty.backend.entities.enums.HotelCity;
 import com.omraty.backend.entities.enums.PaymentPlan;
@@ -16,6 +17,7 @@ import com.omraty.backend.entities.enums.VipRequestStatus;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.RoomException;
 import com.omraty.backend.exception.VipRequestException;
+import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.HotelRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
@@ -23,6 +25,8 @@ import com.omraty.backend.repository.VipRequestRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -43,6 +47,7 @@ class VipRequestServiceTest {
     @Mock private RoomRepository roomRepository;
     @Mock private BookingPaymentService bookingPaymentService;
     @Mock private NotificationService notificationService;
+    @Mock private AuthRepository authRepository;
 
     private VipRequestService vipRequestService() {
         return new VipRequestService(
@@ -52,6 +57,7 @@ class VipRequestServiceTest {
                 new PackageCapacityService(roomRepository),
                 bookingPaymentService,
                 notificationService,
+                authRepository,
                 OFFER_EXPIRATION_HOURS);
     }
 
@@ -398,5 +404,26 @@ class VipRequestServiceTest {
 
         assertThatThrownBy(() -> vipRequestService().accept(USER_ID, 1L))
                 .isInstanceOf(VipRequestException.VipRequestStateException.class);
+    }
+
+    @Test
+    void resolvePhones_returnsPhoneByUserId() {
+        User user =
+                new User(
+                        USER_ID, "+22890000000", null, null, null, null, false, null, "USER", null);
+        when(authRepository.findByIds(List.of(USER_ID))).thenReturn(List.of(user));
+
+        Map<UUID, String> phones =
+                vipRequestService()
+                        .resolvePhones(List.of(vipRequest(VipRequestStatus.PENDING, null)));
+
+        assertThat(phones).containsEntry(USER_ID, "+22890000000");
+    }
+
+    @Test
+    void resolvePhone_whenAccountNoLongerExists_returnsNull() {
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.empty());
+
+        assertThat(vipRequestService().resolvePhone(USER_ID)).isNull();
     }
 }
