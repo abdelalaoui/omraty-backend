@@ -55,6 +55,7 @@ public class RoomService {
     private final PackageCapacityService packageCapacityService;
     private final BookingPaymentService bookingPaymentService;
     private final AuthRepository authRepository;
+    private final PromoPackageService promoPackageService;
 
     public RoomService(
             RoomRepository roomRepository,
@@ -62,13 +63,15 @@ public class RoomService {
             PackageRepository packageRepository,
             PackageCapacityService packageCapacityService,
             BookingPaymentService bookingPaymentService,
-            AuthRepository authRepository) {
+            AuthRepository authRepository,
+            PromoPackageService promoPackageService) {
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
         this.packageRepository = packageRepository;
         this.packageCapacityService = packageCapacityService;
         this.bookingPaymentService = bookingPaymentService;
         this.authRepository = authRepository;
+        this.promoPackageService = promoPackageService;
     }
 
     /** État actuel des lits (disponibles/réservés), groupés par chambre, pour un package. */
@@ -121,6 +124,7 @@ public class RoomService {
      */
     @Transactional
     public BookingPayment reserveBed(int type, long packageId, UUID userId, PaymentPlan plan) {
+        promoPackageService.ensureNotPromo(packageId);
         validateSharedRoomType(type);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
@@ -148,23 +152,25 @@ public class RoomService {
     }
 
     /**
-     * Réserve un lit (chambre de 5) au prix de l'offre spéciale en cours (voir
-     * BookingPaymentService.resolveOfferPrice, réglages bed_offer_* de la migration V47) plutôt
-     * qu'au prix catalogue — toujours en paiement complet (plan FULL forcé), jamais en tranches,
-     * contrairement à {@link #reserveBed} qui laisse le client choisir, et sans jamais appliquer la
-     * réduction paiement-complet (voir BookingPaymentService.createOfferPaymentPlan) : le prix de
-     * l'offre est déjà le prix final. Même mécanique sinon : chambre ouverte réutilisée ou créée,
-     * lit choisi par le serveur.
+     * Réserve un lit (chambre de 5) d'un package promo à son prix propre (voir
+     * PromoPackageService.resolveBedPrice, migration V51) plutôt qu'au prix catalogue — toujours
+     * en paiement complet (plan FULL forcé), jamais en tranches, contrairement à {@link
+     * #reserveBed} qui laisse le client choisir, et sans jamais appliquer la réduction
+     * paiement-complet (voir BookingPaymentService.createOfferPaymentPlan) : le prix de l'offre est
+     * déjà le prix final. Même mécanique sinon : chambre ouverte réutilisée ou créée, lit choisi
+     * par le serveur.
      *
      * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
      * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
      *     l'offre n'est pas active.
+     * @throws com.omraty.backend.exception.PromoPackageException.PackageNotInOfferException si le
+     *     package n'est pas proposé dans l'offre.
      */
     @Transactional
     public BookingPayment reserveOfferBed(long packageId, UUID userId) {
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
-        BigDecimal price = bookingPaymentService.resolveOfferPrice();
+        BigDecimal price = promoPackageService.resolveBedPrice(packageId);
 
         Room room =
                 roomRepository
@@ -200,6 +206,7 @@ public class RoomService {
     @Transactional
     public BookingPayment purchaseRoom(int type, long packageId, UUID userId, PaymentPlan plan) {
         validateWholeRoomType(type);
+        promoPackageService.ensureNotPromo(packageId);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, type);
         BigDecimal price = bookingPaymentService.resolvePrice(type);
@@ -242,6 +249,7 @@ public class RoomService {
                         "La quantité doit être positive (type=" + item.type() + ")");
             }
         }
+        promoPackageService.ensureNotPromo(packageId);
         OmraPackage pkg = lockPackageOrThrow(packageId);
         int totalSeats = items.stream().mapToInt(item -> item.type() * item.quantity()).sum();
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, totalSeats);

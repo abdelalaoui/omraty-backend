@@ -71,6 +71,7 @@ public class SecurityConfig {
                                                 "/packages/*",
                                                 "/hotels",
                                                 "/reservation-groups",
+                                                "/promo-packages",
                                                 "/rooms/*/beds")
                                         .permitAll()
                                         .requestMatchers("/admin/**")
