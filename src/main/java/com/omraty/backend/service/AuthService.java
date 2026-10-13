@@ -5,10 +5,12 @@ import com.omraty.backend.entities.RefreshToken;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.repository.AuthRepository;
+import com.omraty.backend.whatsapp.OtpCodeStore;
 import com.omraty.backend.whatsapp.OtpVerificationProvider;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -27,8 +29,17 @@ public class AuthService {
      */
     static final String OTP_TEST_PHONE_NUMBERS_SETTING_KEY = "otp_test_phone_numbers";
 
+    /**
+     * Préfixes de numéros (séparés par des virgules, ex. "+2222" pour Chinguitel, voir migration
+     * V60) que Twilio ne parvient pas à joindre : pour eux, le code est généré par nous-mêmes (voir
+     * OtpCodeStore) et renvoyé directement à l'app au lieu d'être envoyé par SMS. Vide = tous les
+     * numéros passent par OtpVerificationProvider.
+     */
+    static final String OTP_LOCAL_PHONE_PREFIXES_SETTING_KEY = "otp_local_phone_prefixes";
+
     private final AuthRepository authRepository;
     private final OtpVerificationProvider otpVerificationProvider;
+    private final OtpCodeStore otpCodeStore;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
     private final AppSettingService appSettingService;
@@ -36,11 +47,13 @@ public class AuthService {
     public AuthService(
             AuthRepository authRepository,
             OtpVerificationProvider otpVerificationProvider,
+            OtpCodeStore otpCodeStore,
             JwtService jwtService,
             PasswordEncoder passwordEncoder,
             AppSettingService appSettingService) {
         this.authRepository = authRepository;
         this.otpVerificationProvider = otpVerificationProvider;
+        this.otpCodeStore = otpCodeStore;
         this.jwtService = jwtService;
         this.passwordEncoder = passwordEncoder;
         this.appSettingService = appSettingService;
@@ -77,16 +90,22 @@ public class AuthService {
      * demande ; AuthGate/BeneficiaryInfoScreen côté app collectent le genre (et le NNI) juste après
      * la 1ère connexion réussie. Pour les numéros listés dans OTP_TEST_PHONE_NUMBERS_SETTING_KEY
      * (voir migration V44), ne fait rien : le code est déjà connu (OTP_STATIC_CODE_SETTING_KEY),
-     * aucun envoi réel n'est nécessaire.
+     * aucun envoi réel n'est nécessaire. Pour les numéros dont le préfixe figure dans
+     * OTP_LOCAL_PHONE_PREFIXES_SETTING_KEY, le code est généré par nous-mêmes (voir OtpCodeStore)
+     * et renvoyé tel quel, pour que l'app le remplisse directement (aucun SMS) ; empty sinon.
      */
-    public void requestOtp(String phone) {
+    public Optional<String> requestOtp(String phone) {
         authRepository
                 .findByPhone(phone)
                 .orElseGet(() -> authRepository.createUserPhoneOnly(phone));
         if (isTestPhoneNumber(phone)) {
-            return;
+            return Optional.empty();
+        }
+        if (hasLocalOtpPrefix(phone)) {
+            return Optional.of(otpCodeStore.issueCode(phone));
         }
         otpVerificationProvider.requestCode(phone);
+        return Optional.empty();
     }
 
     /**
@@ -103,6 +122,8 @@ public class AuthService {
             if (!expectedCode.equals(code)) {
                 throw new AuthException.InvalidCredentialsException("Code invalide");
             }
+        } else if (hasLocalOtpPrefix(phone)) {
+            otpCodeStore.verifyCode(phone, code);
         } else {
             otpVerificationProvider.verifyCode(phone, code);
         }
@@ -126,6 +147,13 @@ public class AuthService {
         if (user.deletedAt() != null) {
             throw new AuthException.InvalidCredentialsException("Identifiants invalides");
         }
+    }
+
+    private boolean hasLocalOtpPrefix(String phone) {
+        String raw = appSettingService.getSetting(OTP_LOCAL_PHONE_PREFIXES_SETTING_KEY).value();
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .anyMatch(prefix -> !prefix.isEmpty() && phone.startsWith(prefix));
     }
 
     private boolean isTestPhoneNumber(String phone) {
