@@ -479,7 +479,7 @@ class RoomServiceTest {
     }
 
     @Test
-    void getAllPurchases_returnsEveryUsersBookingsWithIdAndOwnerPhone() {
+    void getAllPurchases_returnsEveryUsersBookingsWithIdAndOwnerPhoneAndNni() {
         UUID otherUserId = UUID.randomUUID();
         LocalDateTime older = LocalDateTime.of(2026, 1, 1, 10, 0);
         LocalDateTime newer = LocalDateTime.of(2026, 2, 1, 10, 0);
@@ -502,7 +502,7 @@ class RoomServiceTest {
                                         "+22211111111",
                                         null,
                                         null,
-                                        null,
+                                        "1234567890",
                                         null,
                                         false,
                                         older,
@@ -526,9 +526,11 @@ class RoomServiceTest {
         assertThat(purchases.get(0).id()).isEqualTo("bed-100");
         assertThat(purchases.get(0).userId()).isEqualTo(otherUserId);
         assertThat(purchases.get(0).userPhone()).isEqualTo("+22222222222");
+        assertThat(purchases.get(0).userNni()).isNull();
         assertThat(purchases.get(0).purchase().bedNumber()).isEqualTo(4);
         assertThat(purchases.get(1).id()).isEqualTo("room-30");
         assertThat(purchases.get(1).userPhone()).isEqualTo("+22211111111");
+        assertThat(purchases.get(1).userNni()).isEqualTo("1234567890");
         assertThat(purchases.get(1).purchase().packageLabel()).isEqualTo("Omra Ramadan");
     }
 

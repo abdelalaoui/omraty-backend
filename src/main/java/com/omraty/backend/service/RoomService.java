@@ -665,26 +665,32 @@ public class RoomService {
     /**
      * Toutes les réservations en cours, tous utilisateurs confondus (GET /admin/bookings) : même
      * construction que {@link #getPurchasesForUser}, avec en plus l'identifiant de la réservation
-     * et le téléphone de son propriétaire. Les réservations libérées (expiration du paiement, voir
-     * {@link #releaseReservation}) n'ont plus de user_id et n'apparaissent donc pas ici.
+     * et le téléphone et le NNI de son propriétaire. Les réservations libérées (expiration du
+     * paiement, voir {@link #releaseReservation}) n'ont plus de user_id et n'apparaissent donc pas
+     * ici.
      */
     public List<AdminPurchase> getAllPurchases() {
         List<OwnedPurchase> purchases =
                 buildPurchases(roomRepository.findAllPurchased(), bedRepository.findAllReserved());
-        Map<UUID, String> phonesByUserId =
+        // Valeur = User entier (et non phone/nni) : Collectors.toMap refuse les valeurs null, or
+        // nni l'est tant que le client ne l'a pas renseigné.
+        Map<UUID, User> usersById =
                 authRepository
                         .findByIds(
                                 purchases.stream().map(OwnedPurchase::userId).distinct().toList())
                         .stream()
-                        .collect(Collectors.toMap(User::id, User::phone));
+                        .collect(Collectors.toMap(User::id, user -> user));
         return purchases.stream()
                 .map(
-                        owned ->
-                                new AdminPurchase(
-                                        owned.id(),
-                                        owned.userId(),
-                                        phonesByUserId.get(owned.userId()),
-                                        owned.purchase()))
+                        owned -> {
+                            User owner = usersById.get(owned.userId());
+                            return new AdminPurchase(
+                                    owned.id(),
+                                    owned.userId(),
+                                    owner == null ? null : owner.phone(),
+                                    owner == null ? null : owner.nni(),
+                                    owned.purchase());
+                        })
                 .toList();
     }
 
