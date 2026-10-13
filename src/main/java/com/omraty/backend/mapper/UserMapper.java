@@ -1,5 +1,6 @@
 package com.omraty.backend.mapper;
 
+import com.omraty.backend.dto.response.AdminUserResponse;
 import com.omraty.backend.dto.response.AuthResponse;
 import com.omraty.backend.dto.response.UserResponse;
 import com.omraty.backend.entities.User;
@@ -17,6 +18,16 @@ public final class UserMapper {
                 user.nni(),
                 user.idPhotoUrl(),
                 user.identityVerified());
+    }
+
+    public static AdminUserResponse toAdminResponse(User user) {
+        return new AdminUserResponse(
+                user.id(),
+                user.phone(),
+                user.gender(),
+                user.nni(),
+                user.identityVerified(),
+                user.createdAt());
     }
 
     public static AuthResponse toAuthResponse(AuthResult result) {

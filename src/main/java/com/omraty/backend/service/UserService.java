@@ -82,6 +82,14 @@ public class UserService {
     }
 
     /**
+     * Comptes clients pour l'admin (GET /admin/users) : hors comptes admin et comptes anonymisés,
+     * les plus récents d'abord. verified null = tous, true/false = filtrés sur identityVerified.
+     */
+    public List<User> listCustomers(Boolean verified) {
+        return authRepository.findActiveCustomers(verified);
+    }
+
+    /**
      * Correction par un admin du NNI et/ou de la photo d'identité d'un compte (ex. faute de frappe
      * dans le NNI, photo illisible) : contrairement à {@link #updateIdentity}, nni et photo sont
      * chacun optionnels (au moins un des deux requis) et identityVerified/gender ne sont pas
