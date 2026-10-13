@@ -119,6 +119,15 @@ public class AuthRepository {
                 UsersTable.SELECT_PENDING_IDENTITY_VERIFICATIONS, USER_ROW_MAPPER);
     }
 
+    /** verified null = tous les clients, sinon filtrés sur identity_verified. */
+    public List<User> findActiveCustomers(Boolean verified) {
+        if (verified == null) {
+            return jdbcTemplate.query(UsersTable.SELECT_ACTIVE_CUSTOMERS, USER_ROW_MAPPER);
+        }
+        return jdbcTemplate.query(
+                UsersTable.SELECT_ACTIVE_CUSTOMERS_BY_IDENTITY_VERIFIED, USER_ROW_MAPPER, verified);
+    }
+
     public Optional<User> approveIdentity(UUID userId) {
         return jdbcTemplate.query(UsersTable.APPROVE_IDENTITY, USER_ROW_MAPPER, userId).stream()
                 .findFirst();

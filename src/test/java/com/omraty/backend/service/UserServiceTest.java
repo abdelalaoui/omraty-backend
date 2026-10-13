@@ -206,6 +206,22 @@ class UserServiceTest {
     }
 
     @Test
+    void listCustomers_passesVerifiedFilterToRepository() {
+        List<User> verified = List.of(user);
+        when(authRepository.findActiveCustomers(true)).thenReturn(verified);
+
+        assertThat(userService.listCustomers(true)).isEqualTo(verified);
+    }
+
+    @Test
+    void listCustomers_withoutFilter_returnsAllCustomers() {
+        List<User> all = List.of(user, pendingUser());
+        when(authRepository.findActiveCustomers(null)).thenReturn(all);
+
+        assertThat(userService.listCustomers(null)).isEqualTo(all);
+    }
+
+    @Test
     void approveIdentity_whenNoPendingRequest_throwsException() {
         when(authRepository.findById(user.id())).thenReturn(Optional.of(user));
 

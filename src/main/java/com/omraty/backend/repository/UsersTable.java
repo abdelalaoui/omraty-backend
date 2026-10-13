@@ -54,6 +54,20 @@ final class UsersTable {
                     + " FROM users WHERE nni IS NOT NULL AND identity_verified = FALSE ORDER BY"
                     + " created_at";
 
+    // Liste admin des comptes (voir AdminUserController) : clients uniquement (pas les comptes
+    // admin), hors comptes anonymisés (voir migration V45), les plus récents d'abord.
+    static final String SELECT_ACTIVE_CUSTOMERS =
+            "SELECT "
+                    + USER_COLUMNS
+                    + " FROM users WHERE deleted_at IS NULL AND role = 'USER' ORDER BY created_at"
+                    + " DESC";
+
+    static final String SELECT_ACTIVE_CUSTOMERS_BY_IDENTITY_VERIFIED =
+            "SELECT "
+                    + USER_COLUMNS
+                    + " FROM users WHERE deleted_at IS NULL AND role = 'USER' AND identity_verified"
+                    + " = ? ORDER BY created_at DESC";
+
     static final String APPROVE_IDENTITY =
             "UPDATE users SET identity_verified = TRUE WHERE id = ? RETURNING " + USER_COLUMNS;
 
