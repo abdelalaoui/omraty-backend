@@ -6,6 +6,7 @@ import com.omraty.backend.dto.request.OtpRequestRequest;
 import com.omraty.backend.dto.request.RefreshTokenRequest;
 import com.omraty.backend.dto.request.RegisterRequest;
 import com.omraty.backend.dto.response.AuthResponse;
+import com.omraty.backend.dto.response.OtpRequestResponse;
 import com.omraty.backend.dto.response.UserResponse;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.exception.AuthException;
@@ -49,9 +50,14 @@ public class AuthController {
     }
 
     @PostMapping("/otp-request")
-    public ResponseEntity<Void> otpRequest(@Valid @RequestBody OtpRequestRequest request) {
-        authService.requestOtp(request.phone());
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<OtpRequestResponse> otpRequest(
+            @Valid @RequestBody OtpRequestRequest request) {
+        // 204 sans corps pour un code envoyé par SMS (comportement inchangé pour l'app) ; 200 avec
+        // le code pour les numéros que Twilio ne joint pas (voir AuthService.requestOtp).
+        return authService
+                .requestOtp(request.phone())
+                .map(code -> ResponseEntity.ok(new OtpRequestResponse(code)))
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @PostMapping("/otp-login")

@@ -19,6 +19,7 @@ import com.omraty.backend.entities.RefreshToken;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.repository.AuthRepository;
+import com.omraty.backend.whatsapp.OtpCodeStore;
 import com.omraty.backend.whatsapp.OtpVerificationProvider;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -41,6 +42,7 @@ class AuthServiceTest {
 
     private static final String PHONE = "+212600000000";
     private static final String TEST_PHONE = "+22242661765";
+    private static final String CHINGUITEL_PHONE = "+22222314542";
     private static final String RAW_PASSWORD = "MonMotDePasse123!";
     private static final String PASSWORD_HASH = "hashed-password";
     private static final String GENDER = "MALE";
@@ -48,6 +50,7 @@ class AuthServiceTest {
 
     @Mock private AuthRepository authRepository;
     @Mock private OtpVerificationProvider otpVerificationProvider;
+    @Mock private OtpCodeStore otpCodeStore;
     @Mock private JwtService jwtService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private AppSettingService appSettingService;
@@ -61,6 +64,7 @@ class AuthServiceTest {
                 new AuthService(
                         authRepository,
                         otpVerificationProvider,
+                        otpCodeStore,
                         jwtService,
                         passwordEncoder,
                         appSettingService);
@@ -83,6 +87,13 @@ class AuthServiceTest {
                 .thenReturn(
                         new AppSetting(
                                 AuthService.OTP_TEST_PHONE_NUMBERS_SETTING_KEY, TEST_PHONE, null));
+        lenient()
+                .when(
+                        appSettingService.getSetting(
+                                AuthService.OTP_LOCAL_PHONE_PREFIXES_SETTING_KEY))
+                .thenReturn(
+                        new AppSetting(
+                                AuthService.OTP_LOCAL_PHONE_PREFIXES_SETTING_KEY, "+2222", null));
     }
 
     private void stubTokenIssuance(String accessToken, String refreshToken) {
@@ -273,6 +284,30 @@ class AuthServiceTest {
         verify(otpVerificationProvider).verifyCode(PHONE, "123456");
     }
 
+    @Test
+    void loginWithOtp_localPrefixPhone_verifiesLocalCodeWithoutCallingProvider() {
+        when(authRepository.findByPhone(CHINGUITEL_PHONE)).thenReturn(Optional.of(user));
+        stubTokenIssuance("access-token", "refresh-token");
+
+        AuthResult result = authService.loginWithOtp(CHINGUITEL_PHONE, "482913");
+
+        assertThat(result.accessToken()).isEqualTo("access-token");
+        verify(otpCodeStore).verifyCode(CHINGUITEL_PHONE, "482913");
+        verifyNoInteractions(otpVerificationProvider);
+    }
+
+    @Test
+    void loginWithOtp_localPrefixPhoneWrongCode_throwsException() {
+        doThrow(new AuthException.InvalidCredentialsException("Code invalide"))
+                .when(otpCodeStore)
+                .verifyCode(CHINGUITEL_PHONE, "000000");
+
+        assertThatThrownBy(() -> authService.loginWithOtp(CHINGUITEL_PHONE, "000000"))
+                .isInstanceOf(AuthException.InvalidCredentialsException.class);
+
+        verifyNoInteractions(otpVerificationProvider);
+    }
+
     // --- requestOtp ---
 
     @Test
@@ -290,7 +325,7 @@ class AuthServiceTest {
     void requestOtp_testPhone_doesNotCallProvider() {
         when(authRepository.findByPhone(TEST_PHONE)).thenReturn(Optional.of(user));
 
-        authService.requestOtp(TEST_PHONE);
+        assertThat(authService.requestOtp(TEST_PHONE)).isEmpty();
 
         verifyNoInteractions(otpVerificationProvider);
     }
@@ -299,9 +334,33 @@ class AuthServiceTest {
     void requestOtp_realPhone_delegatesToProvider() {
         when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(user));
 
-        authService.requestOtp(PHONE);
+        assertThat(authService.requestOtp(PHONE)).isEmpty();
 
         verify(otpVerificationProvider).requestCode(PHONE);
+        verifyNoInteractions(otpCodeStore);
+    }
+
+    @Test
+    void requestOtp_localPrefixPhone_returnsLocalCodeWithoutCallingProvider() {
+        when(authRepository.findByPhone(CHINGUITEL_PHONE)).thenReturn(Optional.of(user));
+        when(otpCodeStore.issueCode(CHINGUITEL_PHONE)).thenReturn("482913");
+
+        assertThat(authService.requestOtp(CHINGUITEL_PHONE)).contains("482913");
+
+        verifyNoInteractions(otpVerificationProvider);
+    }
+
+    @Test
+    void requestOtp_emptyLocalPrefixesSetting_delegatesToProvider() {
+        when(appSettingService.getSetting(AuthService.OTP_LOCAL_PHONE_PREFIXES_SETTING_KEY))
+                .thenReturn(
+                        new AppSetting(AuthService.OTP_LOCAL_PHONE_PREFIXES_SETTING_KEY, "", null));
+        when(authRepository.findByPhone(CHINGUITEL_PHONE)).thenReturn(Optional.of(user));
+
+        assertThat(authService.requestOtp(CHINGUITEL_PHONE)).isEmpty();
+
+        verify(otpVerificationProvider).requestCode(CHINGUITEL_PHONE);
+        verifyNoInteractions(otpCodeStore);
     }
 
     @Test

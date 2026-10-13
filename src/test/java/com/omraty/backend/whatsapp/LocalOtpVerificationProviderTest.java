@@ -35,7 +35,9 @@ class LocalOtpVerificationProviderTest {
 
     @BeforeEach
     void setUp() {
-        provider = new LocalOtpVerificationProvider(otpCodeRepository, whatsAppOtpSender);
+        provider =
+                new LocalOtpVerificationProvider(
+                        new OtpCodeStore(otpCodeRepository), whatsAppOtpSender);
     }
 
     private OtpCode activeOtpCode(String code, int attempts) {
@@ -95,8 +97,7 @@ class LocalOtpVerificationProviderTest {
 
     @Test
     void verifyCode_whenMaxAttemptsExceeded_throwsExceptionWithoutCheckingCode() {
-        OtpCode maxedOut =
-                activeOtpCode("123456", LocalOtpVerificationProvider.OTP_CODE_MAX_ATTEMPTS);
+        OtpCode maxedOut = activeOtpCode("123456", OtpCodeStore.OTP_CODE_MAX_ATTEMPTS);
         when(otpCodeRepository.findLatest(PHONE)).thenReturn(Optional.of(maxedOut));
 
         assertThatThrownBy(() -> provider.verifyCode(PHONE, "123456"))
@@ -144,9 +145,7 @@ class LocalOtpVerificationProviderTest {
     @Test
     void requestCode_afterCooldownElapsed_generatesAndSendsNewCode() {
         LocalDateTime pastCooldown =
-                LocalDateTime.now()
-                        .minusSeconds(
-                                LocalOtpVerificationProvider.OTP_REQUEST_COOLDOWN_SECONDS + 5);
+                LocalDateTime.now().minusSeconds(OtpCodeStore.OTP_REQUEST_COOLDOWN_SECONDS + 5);
         OtpCode oldRequest =
                 new OtpCode(
                         1L,
