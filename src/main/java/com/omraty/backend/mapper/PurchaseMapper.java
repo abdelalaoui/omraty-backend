@@ -35,6 +35,7 @@ public final class PurchaseMapper {
                 adminPurchase.id(),
                 adminPurchase.userId(),
                 adminPurchase.userPhone(),
+                adminPurchase.userNni(),
                 purchase.type(),
                 purchase.totalCapacity(),
                 purchase.packageId(),
