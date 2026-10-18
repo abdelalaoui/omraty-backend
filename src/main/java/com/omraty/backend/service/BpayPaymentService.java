@@ -438,8 +438,14 @@ public class BpayPaymentService {
         return amount.setScale(2, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
     }
 
+    /**
+     * Bankily renvoie souvent juste "error" (constaté sur l'environnement de test pour un passcode
+     * ou un montant faux) : inutile pour le client, on affiche alors notre propre message.
+     */
     private static String orDefault(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
+        return value == null || value.isBlank() || value.trim().equalsIgnoreCase("error")
+                ? fallback
+                : value;
     }
 
     /** Messages propres à l'app ; les refus Bankily gardent leur errorMessage d'origine. */

@@ -149,6 +149,25 @@ class HttpBpayClientTest {
     }
 
     @Test
+    void pay_expiredTokenReportedInBody_reauthenticatesAndRetries() {
+        // Réponse réelle de l'environnement de test Bankily avec un token expiré.
+        AtomicInteger calls = new AtomicInteger();
+        paymentHandler =
+                request ->
+                        calls.incrementAndGet() == 1
+                                ? "{\"transactionId\":null,\"errorCode\":1,"
+                                        + "\"errorMessage\":\"EXCEPTION WHEN CALLING : 401 : [no body]\"}"
+                                : "{\"errorCode\":\"0\",\"transactionId\":\"T3\"}";
+
+        BpayPaymentResult result =
+                client(Duration.ofSeconds(2)).pay("48110011", "2580", "120", "fr", "OP1");
+
+        assertThat(result.outcome()).isEqualTo(BpayPaymentResult.Outcome.SUCCESS);
+        assertThat(calls.get()).isEqualTo(2);
+        assertThat(authBodies).hasSize(2);
+    }
+
+    @Test
     void pay_slowResponse_returnsTimeout() {
         paymentDelayMs = 1500;
         paymentHandler = request -> "{\"errorCode\":\"0\",\"transactionId\":\"T1\"}";
