@@ -17,18 +17,39 @@ public final class PaymentMethodMapper {
      */
     public static List<PaymentMethodResponse> toResponseList(
             List<PaymentMethod> paymentMethods, String acceptLanguage) {
+        return toResponseList(paymentMethods, acceptLanguage, null);
+    }
+
+    /**
+     * bpayMethodCode : code du moyen qui passe par B-PAY (payment.bpay.method-code, voir
+     * BpayPaymentService) — son integration vaut BPAY, celle des autres MANUAL.
+     */
+    public static List<PaymentMethodResponse> toResponseList(
+            List<PaymentMethod> paymentMethods, String acceptLanguage, String bpayMethodCode) {
         String language = resolveLanguage(acceptLanguage);
-        return paymentMethods.stream().map(method -> toResponse(method, language)).toList();
+        return paymentMethods.stream()
+                .map(method -> toResponse(method, language, bpayMethodCode))
+                .toList();
     }
 
     public static PaymentMethodResponse toResponse(PaymentMethod paymentMethod, String language) {
+        return toResponse(paymentMethod, language, null);
+    }
+
+    public static PaymentMethodResponse toResponse(
+            PaymentMethod paymentMethod, String language, String bpayMethodCode) {
+        boolean bpay =
+                bpayMethodCode != null && bpayMethodCode.equalsIgnoreCase(paymentMethod.code());
         return new PaymentMethodResponse(
                 paymentMethod.code(),
                 nameFor(paymentMethod, language),
                 paymentMethod.logoUrl(),
                 paymentMethod.merchantNumber(),
                 paymentMethod.merchantName(),
-                instructionsFor(paymentMethod, language));
+                instructionsFor(paymentMethod, language),
+                bpay
+                        ? PaymentMethodResponse.INTEGRATION_BPAY
+                        : PaymentMethodResponse.INTEGRATION_MANUAL);
     }
 
     // nameEn/nameAr peuvent ne pas encore être traduits : repli sur nameFr (seul requis, voir

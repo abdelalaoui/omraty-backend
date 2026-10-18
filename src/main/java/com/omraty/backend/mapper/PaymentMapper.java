@@ -4,6 +4,7 @@ import com.omraty.backend.dto.response.PaymentResponse;
 import com.omraty.backend.dto.response.PaymentStatusResponse;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.PaymentMethod;
+import java.math.BigDecimal;
 
 public final class PaymentMapper {
 
@@ -16,7 +17,7 @@ public final class PaymentMapper {
      * PaymentMethodMapper) sont alors renvoyés en plus du code.
      */
     public static PaymentResponse toResponse(
-            BookingPayment payment, PaymentMethod method, String language) {
+            BookingPayment payment, PaymentMethod method, String language, BigDecimal amountDue) {
         String code = resolveCode(payment);
         String instructions =
                 method != null ? PaymentMethodMapper.instructionsFor(method, language) : null;
@@ -28,7 +29,8 @@ public final class PaymentMapper {
                 code,
                 method != null ? method.merchantNumber() : null,
                 method != null ? method.merchantName() : null,
-                instructions);
+                instructions,
+                amountDue);
     }
 
     /** Pour GET /payments/{id} (voir BookingPaymentService.getStatusForUser). */

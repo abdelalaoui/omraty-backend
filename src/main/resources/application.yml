@@ -39,6 +39,27 @@ payment:
     # PendingPaymentCheckTask). Le seuil d'âge à partir duquel un paiement est vérifié est lui
     # configurable en base sans redéploiement (voir migration V34, AppSettingService).
     pending-check-interval-ms: ${PAYMENT_PENDING_CHECK_INTERVAL_MS:60000}
+  # B-PAY (API Bankily, voir BpayPaymentService, HttpBpayClient). mock (par défaut, voir
+  # MockBpayClient — le passcode choisit le scénario) | live (vraie API). base-url : environnement
+  # de test Bankily jusqu'à la validation de la mise en production, qui fournit l'URL et les
+  # identifiants de prod (seules ces variables changent).
+  bpay:
+    provider: ${BPAY_PROVIDER:mock}
+    base-url: ${BPAY_BASE_URL:https://ebankily-tst.appspot.com}
+    username: ${BPAY_USERNAME:}
+    password: ${BPAY_PASSWORD:}
+    client-id: ${BPAY_CLIENT_ID:ebankily}
+    # Code du moyen de paiement (table payment_method) qui passe par B-PAY au lieu du transfert
+    # manuel + « J'ai payé ».
+    method-code: ${BPAY_METHOD_CODE:BANKILY}
+    # Au-delà, le résultat est considéré inconnu et vérifié via /checkTransaction.
+    payment-timeout-ms: ${BPAY_PAYMENT_TIMEOUT_MS:30000}
+    check-timeout-ms: ${BPAY_CHECK_TIMEOUT_MS:15000}
+    # Vérification périodique des paiements sans résultat (délai dépassé, statut TA).
+    check-interval-ms: ${BPAY_CHECK_INTERVAL_MS:60000}
+    check-min-age-seconds: ${BPAY_CHECK_MIN_AGE_SECONDS:60}
+    max-checks: ${BPAY_MAX_CHECKS:60}
+    unknown-operation-fail-after-minutes: ${BPAY_UNKNOWN_OPERATION_FAIL_AFTER_MINUTES:10}
 
 whatsapp:
   otp:

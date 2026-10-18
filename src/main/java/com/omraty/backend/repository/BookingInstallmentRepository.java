@@ -160,6 +160,28 @@ public class BookingInstallmentRepository {
                 .findFirst();
     }
 
+    /** Voir BookingInstallmentTable.MARK_PAID_IF_UNPAID. */
+    public Optional<BookingInstallment> markPaidIfUnpaid(long id) {
+        return jdbcTemplate
+                .query(
+                        BookingInstallmentTable.MARK_PAID_IF_UNPAID,
+                        BOOKING_INSTALLMENT_ROW_MAPPER,
+                        id)
+                .stream()
+                .findFirst();
+    }
+
+    /** Voir BookingInstallmentTable.UNDECLARE_INSTALLMENT. */
+    public Optional<BookingInstallment> undeclare(long id) {
+        return jdbcTemplate
+                .query(
+                        BookingInstallmentTable.UNDECLARE_INSTALLMENT,
+                        BOOKING_INSTALLMENT_ROW_MAPPER,
+                        id)
+                .stream()
+                .findFirst();
+    }
+
     /** Réconciliation manuelle admin (filet de sécurité), voir AdminInstallmentController. */
     public Optional<BookingInstallment> markPaidManually(long id, UUID adminId) {
         return jdbcTemplate

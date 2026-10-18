@@ -720,6 +720,122 @@ public class BookingPaymentService {
     }
 
     /**
+     * Paiement d'un client propriétaire, pour un paiement B-PAY (voir BpayPaymentService) — même
+     * vérification que {@link #getStatusForUser}.
+     *
+     * @throws BookingPaymentException.PaymentNotFoundException si le paiement n'existe pas ou
+     *     n'appartient pas à userId.
+     */
+    public BookingPayment getOwnedPaymentOrThrow(UUID userId, long paymentId) {
+        return bookingPaymentRepository
+                .findById(paymentId)
+                .filter(candidate -> userId.equals(resolveOwnerUserId(candidate)))
+                .orElseThrow(
+                        () ->
+                                new BookingPaymentException.PaymentNotFoundException(
+                                        "Paiement introuvable (id=" + paymentId + ")"));
+    }
+
+    /**
+     * Montant représenté par paymentReference (voir BookingPayment) : le total en FULL, la 1ère
+     * tranche en INSTALLMENTS — c'est ce que le client paie via B-PAY à la création.
+     */
+    public BigDecimal amountDueNow(BookingPayment payment) {
+        if (payment.plan() != PaymentPlan.INSTALLMENTS) {
+            return payment.totalAmount();
+        }
+        return bookingInstallmentRepository
+                .findByPaymentIdAndSequence(payment.id(), FIRST_INSTALLMENT_SEQUENCE)
+                .map(BookingInstallment::amount)
+                .orElseThrow(
+                        () ->
+                                new IllegalStateException(
+                                        "1ère tranche introuvable (paymentId="
+                                                + payment.id()
+                                                + ")"));
+    }
+
+    /**
+     * Début d'une tentative B-PAY sur le paiement dû à la création : même passage PENDING ->
+     * PENDING_VERIFICATION que « J'ai payé » (voir {@link #declare}). Sert de verrou : une seule
+     * tentative à la fois (double appui, deux appareils), et le paiement n'expire plus pendant que
+     * Bankily traite la demande (voir PaymentExpirationService, qui ne cible que PENDING). Si le
+     * résultat reste inconnu (délai dépassé, statut TA), le paiement apparaît dans la file de
+     * vérification admin comme un paiement déclaré.
+     *
+     * @return vide si le paiement n'est plus PENDING (déjà en cours, confirmé, expiré...).
+     */
+    public Optional<BookingPayment> lockForBpay(long paymentId) {
+        return bookingPaymentRepository.declare(paymentId);
+    }
+
+    /**
+     * Équivalent de {@link #lockForBpay} pour une tranche 2/3 (voir {@link #declareInstallment}).
+     */
+    public Optional<BookingInstallment> lockInstallmentForBpay(long installmentId) {
+        return bookingInstallmentRepository.declare(installmentId);
+    }
+
+    /**
+     * Paiement B-PAY réussi sur le paiement dû à la création : même effet qu'une confirmation admin
+     * (voir {@link #confirmManually}), sans admin (confirmed_by_admin_id reste null). Sans effet si
+     * un admin l'a déjà confirmé entre-temps.
+     */
+    @Transactional
+    public void confirmFromBpay(long paymentId) {
+        Optional<BookingPayment> confirmed =
+                bookingPaymentRepository.confirmManually(paymentId, null);
+        if (confirmed.isEmpty()) {
+            log.info("Paiement B-PAY réussi mais paiement {} déjà confirmé/tranché", paymentId);
+            return;
+        }
+        if (confirmed.get().plan() == PaymentPlan.INSTALLMENTS) {
+            markFirstInstallmentPaid(paymentId);
+        }
+        notifyPaymentOutcome(confirmed.get(), PaymentStatus.CONFIRMED);
+        invoiceService.generateIfFullyPaid(paymentId);
+    }
+
+    /** Paiement B-PAY réussi sur une tranche 2/3 (voir {@link #markInstallmentPaidManually}). */
+    @Transactional
+    public void confirmInstallmentFromBpay(long installmentId) {
+        Optional<BookingInstallment> paid =
+                bookingInstallmentRepository.markPaidIfUnpaid(installmentId);
+        if (paid.isEmpty()) {
+            log.info("Paiement B-PAY réussi mais tranche {} déjà payée", installmentId);
+            return;
+        }
+        long paymentId = paid.get().bookingPaymentId();
+        bookingPaymentRepository
+                .findById(paymentId)
+                .ifPresent(payment -> notifyPaymentOutcome(payment, PaymentStatus.CONFIRMED));
+        invoiceService.generateIfFullyPaid(paymentId);
+    }
+
+    /**
+     * Paiement B-PAY refusé : annule {@link #lockForBpay} pour que le client puisse réessayer.
+     * notifyUser : seulement quand l'échec est appris plus tard par le job de vérification (voir
+     * BpayPendingCheckService) — dans l'app, le client voit déjà l'erreur à l'écran.
+     */
+    public void releaseBpayLock(long paymentId, boolean notifyUser) {
+        Optional<BookingPayment> released = bookingPaymentRepository.releaseBpayLock(paymentId);
+        if (notifyUser) {
+            released.ifPresent(payment -> notifyPaymentOutcome(payment, PaymentStatus.FAILED));
+        }
+    }
+
+    /** Équivalent de {@link #releaseBpayLock} pour une tranche 2/3. */
+    public void releaseInstallmentBpayLock(long installmentId, boolean notifyUser) {
+        Optional<BookingInstallment> released =
+                bookingInstallmentRepository.undeclare(installmentId);
+        if (notifyUser && released.isPresent()) {
+            bookingPaymentRepository
+                    .findById(released.get().bookingPaymentId())
+                    .ifPresent(payment -> notifyPaymentOutcome(payment, PaymentStatus.FAILED));
+        }
+    }
+
+    /**
      * Rejet manuel admin d'un paiement (POST /admin/payments/{id}/reject, voir carte "Backend pour
      * le panel admin") : le paiement redevient PENDING (le client peut re-essayer avec le même
      * code, voir {@link #declare}) et le client est notifié avec le motif (montant incorrect, aucun
@@ -1091,7 +1207,10 @@ public class BookingPaymentService {
         PaymentMethod method =
                 paymentMethodService.findByCode(payment.paymentMethod()).orElse(null);
         return PaymentMapper.toResponse(
-                payment, method, PaymentMethodMapper.resolveLanguage(acceptLanguage));
+                payment,
+                method,
+                PaymentMethodMapper.resolveLanguage(acceptLanguage),
+                amountDueNow(payment));
     }
 
     /**

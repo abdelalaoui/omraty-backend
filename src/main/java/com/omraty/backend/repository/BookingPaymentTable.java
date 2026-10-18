@@ -161,6 +161,14 @@ final class BookingPaymentTable {
                     + " id = ? AND status = 'PENDING' AND payment_reference IS NOT NULL RETURNING "
                     + BOOKING_PAYMENT_COLUMNS;
 
+    // Échec d'un paiement B-PAY (voir BookingPaymentService#releaseBpayLock) : annule le passage en
+    // PENDING_VERIFICATION fait par DECLARE_PAYMENT au début de la tentative, pour que le client
+    // puisse réessayer. Ne touche jamais un paiement entre-temps confirmé/rejeté par un admin.
+    static final String RELEASE_BPAY_LOCK =
+            "UPDATE booking_payment SET status = 'PENDING', declared_at = NULL WHERE id = ? AND"
+                    + " status = 'PENDING_VERIFICATION' RETURNING "
+                    + BOOKING_PAYMENT_COLUMNS;
+
     // Pour la boucle de régénération en cas de collision (voir
     // BookingPaymentService#generateUniquePaymentReference) : l'unicité est vérifiée sur les deux
     // tables (booking_payment et booking_installment), le code de paiement étant un espace de noms

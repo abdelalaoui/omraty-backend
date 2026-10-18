@@ -350,6 +350,14 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler({
+        BpayException.NotBpayPaymentException.class,
+        BpayException.PaymentNotPayableException.class
+    })
+    public ResponseEntity<ErrorResponse> handleBpayConflict(BpayException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Erreur inattendue", e);

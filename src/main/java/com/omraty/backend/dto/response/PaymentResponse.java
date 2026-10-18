@@ -13,6 +13,10 @@ import java.time.LocalDateTime;
  * la même valeur sous le nom attendu par l'app actuelle. amount/merchantNumber/merchantName
  * /instructions sont renseignés uniquement pour un moyen de paiement manuel choisi à la création
  * (voir migrations V50/V51, PaymentMethod) — null pour le flux passerelle Moov.
+ *
+ * <p>amountDue : montant à régler maintenant (total en FULL, 1ère tranche en INSTALLMENTS, voir
+ * BookingPaymentService#amountDueNow) — c'est le montant exact que le client saisit dans Bankily
+ * pour un paiement B-PAY, Bankily refusant tout autre montant.
  */
 public record PaymentResponse(
         long bookingPaymentId,
@@ -22,4 +26,5 @@ public record PaymentResponse(
         String paymentReference,
         String merchantNumber,
         String merchantName,
-        String instructions) {}
+        String instructions,
+        BigDecimal amountDue) {}

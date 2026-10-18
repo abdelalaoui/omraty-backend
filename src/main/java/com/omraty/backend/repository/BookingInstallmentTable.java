@@ -62,6 +62,20 @@ final class BookingInstallmentTable {
     static final String EXISTS_BY_PAYMENT_REFERENCE =
             "SELECT EXISTS (SELECT 1 FROM booking_installment WHERE payment_reference = ?)";
 
+    // Paiement B-PAY d'une tranche (voir BookingPaymentService#confirmInstallmentFromBpay) :
+    // paid_at IS NULL évite d'écraser une tranche déjà marquée payée par un admin.
+    static final String MARK_PAID_IF_UNPAID =
+            "UPDATE booking_installment SET paid_at = now() WHERE id = ? AND paid_at IS NULL"
+                    + " RETURNING "
+                    + BOOKING_INSTALLMENT_COLUMNS;
+
+    // Échec d'un paiement B-PAY d'une tranche : annule DECLARE_INSTALLMENT fait au début de la
+    // tentative, pour que le client puisse réessayer.
+    static final String UNDECLARE_INSTALLMENT =
+            "UPDATE booking_installment SET declared_at = NULL WHERE id = ? AND paid_at IS NULL"
+                    + " RETURNING "
+                    + BOOKING_INSTALLMENT_COLUMNS;
+
     static final String MARK_PAID =
             "UPDATE booking_installment SET paid_at = now() WHERE id = ? RETURNING "
                     + BOOKING_INSTALLMENT_COLUMNS;
