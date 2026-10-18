@@ -72,8 +72,8 @@ public class HttpBpayClient implements BpayClient {
             @Value("${payment.bpay.username:}") String username,
             @Value("${payment.bpay.password:}") String password,
             @Value("${payment.bpay.client-id:ebankily}") String clientId,
-            @Value("${payment.bpay.payment-timeout-ms:30000}") long paymentTimeoutMs,
-            @Value("${payment.bpay.check-timeout-ms:15000}") long checkTimeoutMs) {
+            @Value("${payment.bpay.payment-timeout-ms:45000}") long paymentTimeoutMs,
+            @Value("${payment.bpay.check-timeout-ms:20000}") long checkTimeoutMs) {
         this(
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(),
                 objectMapper,
@@ -138,21 +138,17 @@ public class HttpBpayClient implements BpayClient {
             if (response == null) {
                 return BpayPaymentResult.timeout();
             }
-            if (response == INVALID_TOKEN && attempt == 0) {
+            if (isTokenRejected(response) && attempt == 0) {
                 invalidateAccessToken();
                 continue;
             }
-            String errorCode = text(response, "errorCode");
+            String errorCode = response == INVALID_TOKEN ? null : text(response, "errorCode");
             if (errorCode == null) {
                 log.error("B-PAY /payment : réponse sans errorCode (operationId={})", operationId);
                 return BpayPaymentResult.timeout();
             }
             if ("0".equals(errorCode)) {
                 return BpayPaymentResult.success(text(response, "transactionId"));
-            }
-            if (INVALID_TOKEN_ERROR_CODE.equals(errorCode) && attempt == 0) {
-                invalidateAccessToken();
-                continue;
             }
             return BpayPaymentResult.error(errorCode, text(response, "errorMessage"));
         }
@@ -178,12 +174,11 @@ public class HttpBpayClient implements BpayClient {
             if (response == null) {
                 return BpayCheckResult.timeout();
             }
-            String errorCode = response == INVALID_TOKEN ? null : text(response, "errorCode");
-            if ((response == INVALID_TOKEN || INVALID_TOKEN_ERROR_CODE.equals(errorCode))
-                    && attempt == 0) {
+            if (isTokenRejected(response) && attempt == 0) {
                 invalidateAccessToken();
                 continue;
             }
+            String errorCode = response == INVALID_TOKEN ? null : text(response, "errorCode");
             if (errorCode == null) {
                 return BpayCheckResult.timeout();
             }
@@ -202,6 +197,23 @@ public class HttpBpayClient implements BpayClient {
             return BpayCheckResult.of(BpayCheckResult.Outcome.AMBIGUOUS, transactionId);
         }
         return BpayCheckResult.timeout();
+    }
+
+    /**
+     * Token refusé : HTTP 401, errorCode 2 (documenté), ou — constaté sur l'environnement de test
+     * avec un token expiré — errorCode 1 et errorMessage "EXCEPTION WHEN CALLING : 401 : [no
+     * body]". Dans les trois cas Bankily n'a rien exécuté.
+     */
+    private static boolean isTokenRejected(JsonNode response) {
+        if (response == INVALID_TOKEN) {
+            return true;
+        }
+        String errorCode = text(response, "errorCode");
+        if (INVALID_TOKEN_ERROR_CODE.equals(errorCode)) {
+            return true;
+        }
+        String message = text(response, "errorMessage");
+        return "1".equals(errorCode) && message != null && message.contains(": 401");
     }
 
     /**

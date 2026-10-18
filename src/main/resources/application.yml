@@ -53,8 +53,8 @@ payment:
     # manuel + « J'ai payé ».
     method-code: ${BPAY_METHOD_CODE:BANKILY}
     # Au-delà, le résultat est considéré inconnu et vérifié via /checkTransaction.
-    payment-timeout-ms: ${BPAY_PAYMENT_TIMEOUT_MS:30000}
-    check-timeout-ms: ${BPAY_CHECK_TIMEOUT_MS:15000}
+    payment-timeout-ms: ${BPAY_PAYMENT_TIMEOUT_MS:45000}
+    check-timeout-ms: ${BPAY_CHECK_TIMEOUT_MS:20000}
     # Vérification périodique des paiements sans résultat (délai dépassé, statut TA).
     check-interval-ms: ${BPAY_CHECK_INTERVAL_MS:60000}
     check-min-age-seconds: ${BPAY_CHECK_MIN_AGE_SECONDS:60}

@@ -158,6 +158,19 @@ class BpayPaymentServiceTest {
     }
 
     @Test
+    void pay_genericBankilyError_isReplacedByHelpfulMessage() {
+        givenPayablePayment();
+        givenResolvable();
+        when(bpayClient.pay(any(), any(), any(), any(), any()))
+                .thenReturn(BpayPaymentResult.error("1", "error"));
+
+        BpayPaymentResponse response = service().pay(USER_ID, PAYMENT_ID, null, REQUEST, "fr");
+
+        assertThat(response.result()).isEqualTo("FAILED");
+        assertThat(response.message()).startsWith("Le paiement n'a pas abouti");
+    }
+
+    @Test
     void pay_authenticationFailure_returnsUnavailableMessage() {
         givenPayablePayment();
         givenResolvable();
