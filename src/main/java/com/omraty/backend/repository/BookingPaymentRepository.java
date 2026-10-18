@@ -261,6 +261,14 @@ public class BookingPaymentRepository {
      * Pour la boucle de régénération en cas de collision (voir
      * BookingPaymentService#generateUniquePaymentReference).
      */
+    /** Voir BookingPaymentTable.RELEASE_BPAY_LOCK. */
+    public Optional<BookingPayment> releaseBpayLock(long paymentId) {
+        return jdbcTemplate
+                .query(BookingPaymentTable.RELEASE_BPAY_LOCK, BOOKING_PAYMENT_ROW_MAPPER, paymentId)
+                .stream()
+                .findFirst();
+    }
+
     public boolean existsByPaymentReference(String paymentReference) {
         Boolean result =
                 jdbcTemplate.queryForObject(

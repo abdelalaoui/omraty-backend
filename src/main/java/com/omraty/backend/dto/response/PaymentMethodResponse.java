@@ -11,4 +11,12 @@ public record PaymentMethodResponse(
         String logoUrl,
         String merchantNumber,
         String merchantName,
-        String instructions) {}
+        String instructions,
+        String integration) {
+
+    /** Transfert manuel + « J'ai payé », vérifié par un admin. */
+    public static final String INTEGRATION_MANUAL = "MANUAL";
+
+    /** Paiement B-PAY (Bankily) : numéro + passcode saisis dans l'app, confirmé automatiquement. */
+    public static final String INTEGRATION_BPAY = "BPAY";
+}
