@@ -21,6 +21,7 @@ public class PackagePromoRepository {
                             rs.getObject("start_date", LocalDate.class),
                             rs.getObject("end_date", LocalDate.class),
                             rs.getBigDecimal("bed_price"),
+                            rs.getBigDecimal("private_room_price"),
                             rs.getBoolean("visible"),
                             rs.getInt("display_order"),
                             rs.getString("price_text"));
@@ -78,6 +79,14 @@ public class PackagePromoRepository {
     public void upsertBedPrice(long packageId, BigDecimal price) {
         jdbcTemplate.update(
                 PackagePromoTable.UPSERT_PRICE, packageId, PackagePromoTable.BED_TYPE, price);
+    }
+
+    public void upsertPrivateRoomPrice(long packageId, BigDecimal price) {
+        jdbcTemplate.update(
+                PackagePromoTable.UPSERT_PRICE,
+                packageId,
+                PackagePromoTable.PRIVATE_ROOM_TYPE,
+                price);
     }
 
     /**

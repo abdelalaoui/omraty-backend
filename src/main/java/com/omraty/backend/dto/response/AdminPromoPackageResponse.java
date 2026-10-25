@@ -11,6 +11,7 @@ public record AdminPromoPackageResponse(
         LocalDate endDate,
         int groupSize,
         BigDecimal bedPrice,
+        BigDecimal privateRoomPrice,
         boolean visible,
         int displayOrder,
         String priceText) {}

@@ -297,11 +297,12 @@ public class InvoiceService {
     }
 
     private PurchaseDescription describeRoom(Room room) {
-        String label =
-                "Achat chambre "
-                        + room.totalCapacity()
-                        + " places — "
-                        + resolvePackageLabel(room.packageId());
+        // Type 1 : chambre privée de l'offre (voir migration V63).
+        String roomLabel =
+                room.totalCapacity() == 1
+                        ? "Achat chambre privée (1 personne)"
+                        : "Achat chambre " + room.totalCapacity() + " places";
+        String label = roomLabel + " — " + resolvePackageLabel(room.packageId());
         return new PurchaseDescription(room.userId(), label);
     }
 

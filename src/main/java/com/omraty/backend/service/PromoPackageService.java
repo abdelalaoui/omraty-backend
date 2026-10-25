@@ -91,6 +91,35 @@ public class PromoPackageService {
     }
 
     /**
+     * Prix réellement facturé pour la chambre privée d'1 place de ce package via l'offre (voir
+     * RoomService.reserveOfferPrivateRoom, migration V63).
+     *
+     * @throws BookingPaymentException.PriceNotConfiguredException si l'offre est coupée ou si
+     *     l'admin n'a pas saisi de prix de chambre privée pour ce package.
+     * @throws PromoPackageException.PackageNotInOfferException si le package n'est pas proposé dans
+     *     l'offre (pas en promo ou masqué).
+     */
+    public BigDecimal resolvePrivateRoomPrice(long packageId) {
+        if (!isOfferEnabled()) {
+            throw new BookingPaymentException.PriceNotConfiguredException(
+                    "L'offre spéciale n'est pas active actuellement");
+        }
+        PromoPackage promo =
+                packagePromoRepository
+                        .findByPackageId(packageId)
+                        .filter(PromoPackage::visible)
+                        .orElseThrow(
+                                () ->
+                                        new PromoPackageException.PackageNotInOfferException(
+                                                "Ce package ne fait pas partie de l'offre"));
+        if (promo.privateRoomPrice() == null) {
+            throw new BookingPaymentException.PriceNotConfiguredException(
+                    "La chambre privée n'est pas proposée pour ce package");
+        }
+        return promo.privateRoomPrice();
+    }
+
+    /**
      * Les packages promo ne se réservent que depuis la bannière (prix propre, paiement complet) :
      * refuse les routes de réservation du parcours Omra normal.
      */
@@ -112,13 +141,27 @@ public class PromoPackageService {
      * visible/displayOrder optionnels (valeur existante, ou visible et en tête à l'ajout).
      * priceText (prix en lettres, arabe) : null = inchangé, "" = effacé.
      */
-    @Transactional
     public PromoPackage upsertPromoPackage(
             long packageId,
             BigDecimal bedPrice,
             Boolean visible,
             Integer displayOrder,
             String priceText) {
+        return upsertPromoPackage(packageId, bedPrice, visible, displayOrder, priceText, null);
+    }
+
+    /**
+     * Comme {@link #upsertPromoPackage(long, BigDecimal, Boolean, Integer, String)}, avec en plus
+     * le prix de la chambre privée d'1 place (voir migration V63) : optionnel, null = inchangé.
+     */
+    @Transactional
+    public PromoPackage upsertPromoPackage(
+            long packageId,
+            BigDecimal bedPrice,
+            Boolean visible,
+            Integer displayOrder,
+            String priceText,
+            BigDecimal privateRoomPrice) {
         packageRepository
                 .findById(packageId)
                 .orElseThrow(
@@ -134,6 +177,10 @@ public class PromoPackageService {
             throw new PromoPackageException.InvalidPromoPackageRequestException(
                     "Le prix du lit doit être supérieur à 0");
         }
+        if (privateRoomPrice != null && privateRoomPrice.signum() <= 0) {
+            throw new PromoPackageException.InvalidPromoPackageRequestException(
+                    "Le prix de la chambre privée doit être supérieur à 0");
+        }
         if (priceText != null && priceText.trim().length() > MAX_PRICE_TEXT_LENGTH) {
             throw new PromoPackageException.InvalidPromoPackageRequestException(
                     "Le prix en lettres ne doit pas dépasser "
@@ -144,6 +191,9 @@ public class PromoPackageService {
                 packageId, visible, displayOrder, priceText == null ? null : priceText.trim());
         if (bedPrice != null) {
             packagePromoRepository.upsertBedPrice(packageId, bedPrice);
+        }
+        if (privateRoomPrice != null) {
+            packagePromoRepository.upsertPrivateRoomPrice(packageId, privateRoomPrice);
         }
         return packagePromoRepository.findByPackageId(packageId).orElseThrow();
     }

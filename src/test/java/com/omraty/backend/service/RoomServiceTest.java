@@ -334,6 +334,43 @@ class RoomServiceTest {
     }
 
     @Test
+    void reserveOfferPrivateRoom_createsFullOneSeatRoomAtPrivatePriceWithOfferPayment() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(10);
+        when(promoPackageService.resolvePrivateRoomPrice(1L)).thenReturn(new BigDecimal("80000"));
+        Room privateRoom = new Room(30L, 1, 1L, 1, 1, USER_ID, LocalDateTime.now());
+        when(roomRepository.insert(1, 1L, 1, 1, USER_ID)).thenReturn(privateRoom);
+        when(bookingPaymentService.createOfferRoomPaymentPlan(
+                        30L, new BigDecimal("80000"), pkg, USER_ID, "MOOV"))
+                .thenReturn(PAYMENT_STUB);
+        when(bookingPaymentService.attachAcceptedTerms(PAYMENT_STUB, null, null, null))
+                .thenReturn(PAYMENT_STUB);
+
+        BookingPayment result =
+                roomService().reserveOfferPrivateRoom(1L, USER_ID, "MOOV", null, null, null);
+
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+        verify(bedRepository, never()).insertBedsForRoom(anyLong(), anyInt());
+    }
+
+    @Test
+    void reserveOfferPrivateRoom_whenGroupSizeReached_throwsExceptionWithoutCreatingARoom() {
+        when(packageRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 10, null, null)));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(10);
+
+        assertThatThrownBy(
+                        () ->
+                                roomService()
+                                        .reserveOfferPrivateRoom(
+                                                1L, USER_ID, null, null, null, null))
+                .isInstanceOf(RoomException.GroupSizeExceededException.class);
+
+        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
+    }
+
+    @Test
     void openSharedRoom_withInvalidType_throwsException() {
         assertThatThrownBy(() -> roomService().openSharedRoom(2, 1L))
                 .isInstanceOf(RoomException.InvalidRoomTypeException.class);

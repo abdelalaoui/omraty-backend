@@ -40,6 +40,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class RoomService {
 
     private static final int SHARED_ROOM_TYPE = 5;
+
+    /** Chambre privée d'1 place, uniquement via l'offre (voir {@link #reserveOfferPrivateRoom}). */
+    private static final int PRIVATE_ROOM_TYPE = 1;
+
     private static final Set<Integer> WHOLE_ROOM_TYPES = Set.of(2, 3);
 
     /**
@@ -397,6 +401,39 @@ public class RoomService {
                         pkg,
                         userId,
                         paymentMethodCode);
+        return bookingPaymentService.attachAcceptedTerms(
+                payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
+    }
+
+    /**
+     * Achète la chambre privée d'1 place de l'offre spéciale (voir migration V63) — option « لنفسي
+     * → غرفة خاصة » de l'app, pour un client qui veut être seul, sans compagnon. Chambre créée déjà
+     * pleine comme un achat de chambre 2/3 (pas de lits), au prix saisi par l'admin pour ce package
+     * promo (voir PromoPackageService.resolvePrivateRoomPrice), toujours en paiement complet comme
+     * {@link #reserveOfferBed}. Un paiement expiré la libère comme une chambre entière (voir {@link
+     * #releaseReservation}).
+     *
+     * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
+     * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
+     *     l'offre est coupée ou sans prix de chambre privée pour ce package.
+     */
+    @Transactional
+    public BookingPayment reserveOfferPrivateRoom(
+            long packageId,
+            UUID userId,
+            String paymentMethodCode,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        OmraPackage pkg = lockPackageOrThrow(packageId);
+        packageCapacityService.ensureCapacityAvailable(pkg, packageId, PRIVATE_ROOM_TYPE);
+        BigDecimal price = promoPackageService.resolvePrivateRoomPrice(packageId);
+        Room room =
+                roomRepository.insert(
+                        PRIVATE_ROOM_TYPE, packageId, PRIVATE_ROOM_TYPE, PRIVATE_ROOM_TYPE, userId);
+        BookingPayment payment =
+                bookingPaymentService.createOfferRoomPaymentPlan(
+                        room.id(), price, pkg, userId, paymentMethodCode);
         return bookingPaymentService.attachAcceptedTerms(
                 payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
     }

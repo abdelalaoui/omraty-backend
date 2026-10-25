@@ -7,14 +7,21 @@ final class PackagePromoTable {
     /** Prix du lit en chambre de 5 : seul type proposé en promo pour l'instant (voir V57). */
     static final int BED_TYPE = 5;
 
+    /** Prix de la chambre privée d'1 place (voir migration V63), optionnel. */
+    static final int PRIVATE_ROOM_TYPE = 1;
+
     private static final String PROMO_PACKAGE_SELECT =
             "SELECT p.id AS package_id, p.label, p.group_size, p.start_date, p.end_date,"
-                    + " pr.price AS bed_price, pp.visible, pp.display_order, pp.price_text"
+                    + " pr.price AS bed_price, prp.price AS private_room_price, pp.visible,"
+                    + " pp.display_order, pp.price_text"
                     + " FROM package_promo pp"
                     + " JOIN package p ON p.id = pp.package_id"
                     + " LEFT JOIN package_promo_price pr ON pr.package_id = pp.package_id"
                     + " AND pr.type = "
-                    + BED_TYPE;
+                    + BED_TYPE
+                    + " LEFT JOIN package_promo_price prp ON prp.package_id = pp.package_id"
+                    + " AND prp.type = "
+                    + PRIVATE_ROOM_TYPE;
 
     private static final String ORDER =
             " ORDER BY pp.display_order ASC, p.start_date ASC, p.id ASC";

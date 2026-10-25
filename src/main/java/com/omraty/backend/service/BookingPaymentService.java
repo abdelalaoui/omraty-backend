@@ -411,6 +411,22 @@ public class BookingPaymentService {
     }
 
     /**
+     * Crée le paiement de la chambre privée d'1 place de l'offre spéciale (roomId renseigné, voir
+     * RoomService.reserveOfferPrivateRoom, migration V63) : mêmes règles que {@link
+     * #createOfferPaymentPlan(long, BigDecimal, OmraPackage, UUID, String)} — plan FULL, sans
+     * {@link #applyFullPaymentDiscount}, offerPrice étant déjà le prix final de l'offre.
+     */
+    public BookingPayment createOfferRoomPaymentPlan(
+            long roomId,
+            BigDecimal offerPrice,
+            OmraPackage pkg,
+            UUID userId,
+            String paymentMethodCode) {
+        return createPaymentPlan(
+                roomId, null, null, PaymentPlan.FULL, offerPrice, pkg, userId, paymentMethodCode);
+    }
+
+    /**
      * Crée un seul paiement couvrant plusieurs lits de l'offre spéciale (voir migration V62,
      * RoomService.reserveOfferBeds — parcours "famille" de la bannière BED_OFFER). Mêmes règles que
      * {@link #createOfferPaymentPlan(long, BigDecimal, OmraPackage, UUID, String)} (plan FULL, pas
@@ -1042,9 +1058,10 @@ public class BookingPaymentService {
                     .findFirst()
                     .map(
                             room ->
-                                    "Chambre "
-                                            + room.totalCapacity()
-                                            + " places - "
+                                    (room.totalCapacity() == 1
+                                                    ? "Chambre privée (1 personne)"
+                                                    : "Chambre " + room.totalCapacity() + " places")
+                                            + " - "
                                             + packageLabel(room.packageId()))
                     .orElse(null);
         }
