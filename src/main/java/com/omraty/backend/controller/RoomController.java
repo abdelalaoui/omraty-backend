@@ -105,7 +105,8 @@ public class RoomController {
     /**
      * Réserve un lit (chambre de 5) au prix de l'offre spéciale en cours (voir
      * RoomService.reserveOfferBed) — toujours en paiement complet, jamais en tranches. Distinct de
-     * POST /rooms/5/beds/reserve (prix catalogue, plan au choix du client).
+     * POST /rooms/5/beds/reserve (prix catalogue, plan au choix du client). bedCount > 1 :
+     * plusieurs lits pour un seul paiement (voir RoomService.reserveOfferBeds).
      */
     @PostMapping("/rooms/offer/beds/reserve")
     public ResponseEntity<PaymentResponse> reserveOfferBed(
@@ -114,13 +115,22 @@ public class RoomController {
             @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
                     String acceptLanguage) {
         BookingPayment payment =
-                roomService.reserveOfferBed(
-                        request.packageId(),
-                        userId,
-                        request.paymentMethod(),
-                        request.acceptedTermsVersion(),
-                        request.acceptedTermIds(),
-                        acceptLanguage);
+                request.bedCount() != null && request.bedCount() > 1
+                        ? roomService.reserveOfferBeds(
+                                request.packageId(),
+                                userId,
+                                request.bedCount(),
+                                request.paymentMethod(),
+                                request.acceptedTermsVersion(),
+                                request.acceptedTermIds(),
+                                acceptLanguage)
+                        : roomService.reserveOfferBed(
+                                request.packageId(),
+                                userId,
+                                request.paymentMethod(),
+                                request.acceptedTermsVersion(),
+                                request.acceptedTermIds(),
+                                acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }

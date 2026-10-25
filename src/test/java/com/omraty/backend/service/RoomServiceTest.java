@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -237,6 +238,99 @@ class RoomServiceTest {
         verify(bedRepository).insertBedsForRoom(20L, 5);
         verify(bedRepository).markReserved(200L, USER_ID);
         verify(roomRepository).incrementReservedCount(20L);
+    }
+
+    @Test
+    void reserveOfferBeds_withMoreThanOneRoomOfBeds_isRefusedBeforeLockingThePackage() {
+        assertThatThrownBy(
+                        () ->
+                                roomService()
+                                        .reserveOfferBeds(1L, USER_ID, 6, null, null, null, null))
+                .isInstanceOf(RoomException.InvalidRoomTypeException.class);
+
+        verify(packageRepository, never()).findByIdForUpdate(anyLong());
+    }
+
+    @Test
+    void reserveOfferBeds_whenGroupSizeWouldBeExceeded_throwsExceptionWithoutReservingABed() {
+        when(packageRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 10, null, null)));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(8);
+
+        assertThatThrownBy(
+                        () ->
+                                roomService()
+                                        .reserveOfferBeds(1L, USER_ID, 3, null, null, null, null))
+                .isInstanceOf(RoomException.GroupSizeExceededException.class);
+
+        verify(bedRepository, never()).markReserved(anyLong(), any());
+    }
+
+    @Test
+    void reserveOfferBeds_withEnoughFreeBedsInOpenRoom_reservesAllThereWithOnePayment() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(2);
+        when(promoPackageService.resolveBedPrice(1L)).thenReturn(new BigDecimal("45000"));
+        Room openRoom = new Room(10L, 5, 1L, 5, 2, null, LocalDateTime.now());
+        when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
+        when(bedRepository.findFirstUnreservedBedForUpdate(10L))
+                .thenReturn(Optional.of(new Bed(103L, 3, false, 10L, null, null)))
+                .thenReturn(Optional.of(new Bed(104L, 4, false, 10L, null, null)));
+        when(bedRepository.markReserved(103L, USER_ID))
+                .thenReturn(new Bed(103L, 3, true, 10L, USER_ID, LocalDateTime.now()));
+        when(bedRepository.markReserved(104L, USER_ID))
+                .thenReturn(new Bed(104L, 4, true, 10L, USER_ID, LocalDateTime.now()));
+        when(bookingPaymentService.createOfferBedGroupPaymentPlan(
+                        List.of(103L, 104L), new BigDecimal("90000"), pkg, USER_ID, "MOOV"))
+                .thenReturn(PAYMENT_STUB);
+        when(bookingPaymentService.attachAcceptedTerms(PAYMENT_STUB, null, null, null))
+                .thenReturn(PAYMENT_STUB);
+
+        BookingPayment result =
+                roomService().reserveOfferBeds(1L, USER_ID, 2, "MOOV", null, null, null);
+
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
+    }
+
+    @Test
+    void reserveOfferBeds_whenOpenRoomCannotFitTheFamily_opensNewRoomInsteadOfSplittingIt() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(4);
+        when(promoPackageService.resolveBedPrice(1L)).thenReturn(new BigDecimal("45000"));
+        Room openRoom = new Room(10L, 5, 1L, 5, 4, null, LocalDateTime.now());
+        when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
+        Room newRoom = new Room(20L, 5, 1L, 5, 0, null, LocalDateTime.now());
+        when(roomRepository.insert(5, 1L, 5, 0, null)).thenReturn(newRoom);
+        when(bedRepository.findFirstUnreservedBedForUpdate(20L))
+                .thenReturn(Optional.of(new Bed(201L, 1, false, 20L, null, null)))
+                .thenReturn(Optional.of(new Bed(202L, 2, false, 20L, null, null)));
+        when(bedRepository.markReserved(201L, USER_ID))
+                .thenReturn(new Bed(201L, 1, true, 20L, USER_ID, LocalDateTime.now()));
+        when(bedRepository.markReserved(202L, USER_ID))
+                .thenReturn(new Bed(202L, 2, true, 20L, USER_ID, LocalDateTime.now()));
+        when(bookingPaymentService.createOfferBedGroupPaymentPlan(
+                        List.of(201L, 202L), new BigDecimal("90000"), pkg, USER_ID, null))
+                .thenReturn(PAYMENT_STUB);
+        when(bookingPaymentService.attachAcceptedTerms(PAYMENT_STUB, null, null, null))
+                .thenReturn(PAYMENT_STUB);
+
+        roomService().reserveOfferBeds(1L, USER_ID, 2, null, null, null, null);
+
+        verify(bedRepository).insertBedsForRoom(20L, 5);
+        verify(bedRepository, never()).findFirstUnreservedBedForUpdate(10L);
+    }
+
+    @Test
+    void releaseGroupBedReservation_releasesEachBedAndReopensItsRoom() {
+        when(bedRepository.release(401L)).thenReturn(new Bed(401L, 1, false, 10L, null, null));
+        when(bedRepository.release(402L)).thenReturn(new Bed(402L, 2, false, 10L, null, null));
+
+        roomService().releaseGroupBedReservation(List.of(401L, 402L));
+
+        verify(roomRepository, times(2)).decrementReservedCount(10L);
     }
 
     @Test

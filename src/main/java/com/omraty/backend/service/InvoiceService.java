@@ -252,8 +252,28 @@ public class InvoiceService {
         }
         // roomId/bedId/vipRequestId tous NULL : paiement groupé (voir migration V43,
         // BookingPaymentService.createGroupPaymentPlan) — ses chambres vivent dans
-        // booking_payment_room.
+        // booking_payment_room — ou groupe de lits de l'offre spéciale (voir migration V62),
+        // dans booking_payment_bed.
+        List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
+        if (!groupBedIds.isEmpty()) {
+            return describeGroupBeds(groupBedIds);
+        }
         return describeGroupRooms(payment.id());
+    }
+
+    private PurchaseDescription describeGroupBeds(List<Long> bedIds) {
+        List<Bed> beds = bedRepository.findByIds(bedIds);
+        if (beds.isEmpty()) {
+            return null;
+        }
+        Optional<Room> room =
+                roomRepository.findByIds(List.of(beds.get(0).roomId())).stream().findFirst();
+        String label =
+                "Réservation de "
+                        + beds.size()
+                        + " lits (chambres 5 places) — "
+                        + room.map(r -> resolvePackageLabel(r.packageId())).orElse("");
+        return new PurchaseDescription(beds.get(0).userId(), label);
     }
 
     private PurchaseDescription describeGroupRooms(long paymentId) {

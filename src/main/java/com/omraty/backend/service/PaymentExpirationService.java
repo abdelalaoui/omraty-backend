@@ -94,8 +94,12 @@ public class PaymentExpirationService {
                                 roomService.releaseReservation(
                                         payment.roomId(), payment.bedId(), payment.vipRequestId());
                             } else {
+                                // Groupe de chambres (V43) ou de lits (V62) : l'une des deux
+                                // listes est toujours vide.
                                 roomService.releaseGroupReservation(
                                         bookingPaymentRepository.findGroupRoomIds(payment.id()));
+                                roomService.releaseGroupBedReservation(
+                                        bookingPaymentRepository.findGroupBedIds(payment.id()));
                             }
                             return true;
                         })

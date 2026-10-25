@@ -515,4 +515,50 @@ public class BookingPaymentRepository {
                             return result;
                         });
     }
+
+    /**
+     * Lie chaque lit à ce paiement groupé (voir migration V62,
+     * BookingPaymentService.createOfferBedGroupPaymentPlan) — même principe que {@link
+     * #linkRoomsToGroupPayment}.
+     */
+    public void linkBedsToGroupPayment(long paymentId, List<Long> bedIds) {
+        for (Long bedId : bedIds) {
+            jdbcTemplate.update(BookingPaymentTable.INSERT_BOOKING_PAYMENT_BED, paymentId, bedId);
+        }
+    }
+
+    /**
+     * Lits d'un paiement groupé (voir migration V62) — vide pour un groupe de chambres (voir {@link
+     * #findGroupRoomIds}).
+     */
+    public List<Long> findGroupBedIds(long paymentId) {
+        return jdbcTemplate.queryForList(
+                BookingPaymentTable.SELECT_GROUP_BED_IDS_BY_PAYMENT_ID, Long.class, paymentId);
+    }
+
+    /**
+     * Paiements groupés couvrant certains de ces lits, indexés par bedId — équivalent de {@link
+     * #findGroupPaymentsByRoomIds} côté lits (même remarque sur le cast ResultSetExtractor).
+     */
+    public Map<Long, BookingPayment> findGroupPaymentsByBedIds(List<Long> bedIds) {
+        if (bedIds.isEmpty()) {
+            return Map.of();
+        }
+        return jdbcTemplate.query(
+                BookingPaymentTable.SELECT_GROUP_BOOKING_PAYMENTS_BY_BED_IDS,
+                (PreparedStatement ps) -> {
+                    Array array =
+                            ps.getConnection().createArrayOf("bigint", bedIds.toArray(new Long[0]));
+                    ps.setArray(1, array);
+                },
+                (ResultSetExtractor<Map<Long, BookingPayment>>)
+                        rs -> {
+                            Map<Long, BookingPayment> result = new HashMap<>();
+                            while (rs.next()) {
+                                long groupBedId = rs.getLong("group_bed_id");
+                                result.put(groupBedId, BOOKING_PAYMENT_ROW_MAPPER.mapRow(rs, 0));
+                            }
+                            return result;
+                        });
+    }
 }
