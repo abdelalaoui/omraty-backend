@@ -54,6 +54,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -87,6 +88,10 @@ public class BookingPaymentService {
     // V52) — distinct du délai côté passerelle Moov (renvoyé par PaymentGatewayClient).
     static final String MANUAL_PAYMENT_EXPIRATION_MINUTES_KEY = "manual_payment_expiration_minutes";
 
+    // Délai de paiement d'un moyen en ligne (B-PAY Bankily, voir migration V67) : la place est
+    // libérée si le paiement n'a pas abouti dans ce délai, comme pour le flux Moov (15 min).
+    static final String ONLINE_PAYMENT_EXPIRATION_MINUTES_KEY = "online_payment_expiration_minutes";
+
     /**
      * Valeurs du champ status du webhook considérées comme un paiement réussi (voir {@link
      * #confirmFromGateway}). Liste volontairement large, comparée sans tenir compte de la casse :
@@ -113,6 +118,8 @@ public class BookingPaymentService {
     private final PackageRepository packageRepository;
     private final BookingTermService bookingTermService;
     private final ObjectMapper objectMapper;
+    private final FamilyMemberService familyMemberService;
+    private final String bpayMethodCode;
 
     static final String FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY = "full_payment_discount_percentage";
 
@@ -133,7 +140,9 @@ public class BookingPaymentService {
             PaymentReferenceGenerator paymentReferenceGenerator,
             PackageRepository packageRepository,
             BookingTermService bookingTermService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            FamilyMemberService familyMemberService,
+            @Value("${payment.bpay.method-code:BANKILY}") String bpayMethodCode) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
@@ -151,6 +160,8 @@ public class BookingPaymentService {
         this.packageRepository = packageRepository;
         this.bookingTermService = bookingTermService;
         this.objectMapper = objectMapper;
+        this.familyMemberService = familyMemberService;
+        this.bpayMethodCode = bpayMethodCode;
     }
 
     /**
@@ -534,11 +545,13 @@ public class BookingPaymentService {
             createManualInstallments(
                     payment.id(), method.code(), totalAmount, LocalDate.now(), packageEndDate);
         }
+        // B-PAY (paiement en ligne) : délai court ; virement/dépôt manuel : délai plus long.
+        String expirationKey =
+                method.code().equalsIgnoreCase(bpayMethodCode)
+                        ? ONLINE_PAYMENT_EXPIRATION_MINUTES_KEY
+                        : MANUAL_PAYMENT_EXPIRATION_MINUTES_KEY;
         LocalDateTime expiresAt =
-                LocalDateTime.now()
-                        .plusMinutes(
-                                appSettingService.getIntValue(
-                                        MANUAL_PAYMENT_EXPIRATION_MINUTES_KEY));
+                LocalDateTime.now().plusMinutes(appSettingService.getIntValue(expirationKey));
         String reference = generateUniquePaymentReference();
         return bookingPaymentRepository.attachManualPayment(
                 payment.id(), method.code(), reference, expiresAt);
@@ -785,6 +798,7 @@ public class BookingPaymentService {
             markFirstInstallmentPaid(confirmed.id());
         }
         notifyPaymentOutcome(confirmed, PaymentStatus.CONFIRMED);
+        familyMemberService.activateForPayment(confirmed.id());
         invoiceService.generateIfFullyPaid(confirmed.id());
         // Relit l'état : generateIfFullyPaid peut avoir renseigné invoice_key/invoice_number à
         // l'instant (voir carte "Facture panel admin") — la réponse de cette route doit permettre
@@ -866,6 +880,7 @@ public class BookingPaymentService {
             markFirstInstallmentPaid(paymentId);
         }
         notifyPaymentOutcome(confirmed.get(), PaymentStatus.CONFIRMED);
+        familyMemberService.activateForPayment(paymentId);
         invoiceService.generateIfFullyPaid(paymentId);
     }
 
@@ -1189,6 +1204,13 @@ public class BookingPaymentService {
             markFirstInstallmentPaid(payment.id());
         }
         notifyPaymentOutcome(payment, newStatus);
+        // Membres de famille envoyés avec cette réservation (voir migration V67) : activés si le
+        // paiement est confirmé, supprimés s'il a échoué.
+        if (newStatus == PaymentStatus.CONFIRMED) {
+            familyMemberService.activateForPayment(payment.id());
+        } else {
+            familyMemberService.discardForPayment(payment.id());
+        }
         if (newStatus == PaymentStatus.CONFIRMED) {
             // Plan FULL : intégralement payé dès cette confirmation. Plan INSTALLMENTS : ne le sera
             // qu'une fois les 2 tranches restantes marquées payées (voir markInstallmentPaid) —

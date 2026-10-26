@@ -4,6 +4,8 @@ import com.omraty.backend.exception.UserException;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -11,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -28,6 +31,8 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 @Service
 @ConditionalOnProperty(prefix = "app.upload", name = "provider", havingValue = "s3")
 public class S3FileStorageService implements FileStorageService {
+
+    private static final Logger log = LoggerFactory.getLogger(S3FileStorageService.class);
 
     private static final Duration PRESIGNED_URL_DURATION = Duration.ofHours(1);
 
@@ -69,6 +74,15 @@ public class S3FileStorageService implements FileStorageService {
                 PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType).build(),
                 RequestBody.fromBytes(content));
         return key;
+    }
+
+    @Override
+    public void delete(String key) {
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+        } catch (RuntimeException e) {
+            log.warn("Échec de la suppression du fichier S3 {}", key, e);
+        }
     }
 
     @Override

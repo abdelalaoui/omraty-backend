@@ -32,6 +32,7 @@ class FamilyMemberServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID OTHER_USER_ID = UUID.randomUUID();
+    private static final long PAYMENT_ID = 70L;
 
     @Mock private FamilyMemberRepository familyMemberRepository;
     @Mock private AuthRepository authRepository;
@@ -68,121 +69,148 @@ class FamilyMemberServiceTest {
                 null);
     }
 
-    private static FamilyMember member(long id, UUID userId, String nni, boolean verified) {
-        return new FamilyMember(id, userId, nni, "identity/" + id + ".jpg", verified, null);
+    private static FamilyMember member(
+            long id, UUID userId, String nni, boolean verified, Long pendingPaymentId) {
+        return new FamilyMember(
+                id, userId, nni, "identity/" + id + ".jpg", verified, null, pendingPaymentId);
     }
 
     @Test
-    void addMembers_storesEachNewMemberWithItsPhoto() {
+    void addMembersForPayment_storesEachNewMemberPendingThatPayment() {
         when(authRepository.findById(USER_ID)).thenReturn(Optional.of(owner("1111111111")));
         when(familyMemberRepository.findByNni(anyString())).thenReturn(Optional.empty());
         when(fileStorageService.store(any(), eq("identity"))).thenReturn("identity/a.jpg");
-        FamilyMember first = member(1L, USER_ID, "2222222222", false);
-        FamilyMember second = member(2L, USER_ID, "3333333333", false);
-        when(familyMemberRepository.insert(USER_ID, "2222222222", "identity/a.jpg"))
+        FamilyMember first = member(1L, USER_ID, "2222222222", false, PAYMENT_ID);
+        FamilyMember second = member(2L, USER_ID, "3333333333", false, PAYMENT_ID);
+        when(familyMemberRepository.insert(USER_ID, "2222222222", "identity/a.jpg", PAYMENT_ID))
                 .thenReturn(first);
-        when(familyMemberRepository.insert(USER_ID, "3333333333", "identity/a.jpg"))
+        when(familyMemberRepository.insert(USER_ID, "3333333333", "identity/a.jpg", PAYMENT_ID))
                 .thenReturn(second);
 
         List<FamilyMember> result =
-                familyMemberService.addMembers(
-                        USER_ID, List.of("2222222222", " 3333333333 "), List.of(photo(), photo()));
+                familyMemberService.addMembersForPayment(
+                        USER_ID,
+                        PAYMENT_ID,
+                        List.of("2222222222", " 3333333333 "),
+                        List.of(photo(), photo()));
 
         assertThat(result).containsExactly(first, second);
     }
 
     @Test
-    void addMembers_withNniOfAnotherFamily_isRefusedBeforeStoringAnything() {
+    void addMembersForPayment_withMemberPendingAnotherAttempt_attachesItToThisPayment() {
         when(authRepository.findById(USER_ID)).thenReturn(Optional.of(owner("1111111111")));
-        when(familyMemberRepository.findByNni("2222222222"))
-                .thenReturn(Optional.of(member(5L, OTHER_USER_ID, "2222222222", true)));
+        FamilyMember pending = member(3L, USER_ID, "2222222222", false, 60L);
+        when(familyMemberRepository.findByNni("2222222222")).thenReturn(Optional.of(pending));
+        FamilyMember reattached = member(3L, USER_ID, "2222222222", false, PAYMENT_ID);
+        when(familyMemberRepository.attachToPendingPayment(3L, PAYMENT_ID))
+                .thenReturn(Optional.of(reattached));
 
-        assertThatThrownBy(
-                        () ->
-                                familyMemberService.addMembers(
-                                        USER_ID, List.of("2222222222"), List.of(photo())))
-                .isInstanceOf(UserException.NniAlreadyUsedException.class);
+        List<FamilyMember> result =
+                familyMemberService.addMembersForPayment(
+                        USER_ID, PAYMENT_ID, List.of("2222222222"), List.of(photo()));
+
+        assertThat(result).containsExactly(reattached);
         verify(fileStorageService, never()).store(any(), any());
     }
 
     @Test
-    void addMembers_withNniOfAnotherAccount_isRefused() {
+    void addMembersForPayment_withActiveMemberOfThisFamily_reusesItAsIs() {
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(owner("1111111111")));
+        FamilyMember active = member(3L, USER_ID, "2222222222", true, null);
+        when(familyMemberRepository.findByNni("2222222222")).thenReturn(Optional.of(active));
+
+        List<FamilyMember> result =
+                familyMemberService.addMembersForPayment(
+                        USER_ID, PAYMENT_ID, List.of("2222222222"), List.of(photo()));
+
+        assertThat(result).containsExactly(active);
+        verify(familyMemberRepository, never()).attachToPendingPayment(3L, PAYMENT_ID);
+        verify(familyMemberRepository, never()).insert(any(), any(), any(), any());
+    }
+
+    @Test
+    void validateNnis_withNniOfAnotherFamily_isRefused() {
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(owner("1111111111")));
+        when(familyMemberRepository.findByNni("2222222222"))
+                .thenReturn(Optional.of(member(5L, OTHER_USER_ID, "2222222222", true, null)));
+
+        assertThatThrownBy(() -> familyMemberService.validateNnis(USER_ID, List.of("2222222222")))
+                .isInstanceOf(UserException.NniAlreadyUsedException.class);
+    }
+
+    @Test
+    void validateNnis_withNniOfAnotherAccount_isRefused() {
         when(authRepository.findById(USER_ID)).thenReturn(Optional.of(owner("1111111111")));
         when(familyMemberRepository.findByNni("2222222222")).thenReturn(Optional.empty());
         when(authRepository.existsOtherActiveUserWithNni("2222222222", USER_ID)).thenReturn(true);
 
-        assertThatThrownBy(
-                        () ->
-                                familyMemberService.addMembers(
-                                        USER_ID, List.of("2222222222"), List.of(photo())))
+        assertThatThrownBy(() -> familyMemberService.validateNnis(USER_ID, List.of("2222222222")))
                 .isInstanceOf(UserException.NniAlreadyUsedException.class);
     }
 
     @Test
-    void addMembers_withOwnNni_isRefused() {
+    void validateNnis_withOwnNni_isRefused() {
         when(authRepository.findById(USER_ID)).thenReturn(Optional.of(owner("1111111111")));
 
-        assertThatThrownBy(
-                        () ->
-                                familyMemberService.addMembers(
-                                        USER_ID, List.of("1111111111"), List.of(photo())))
+        assertThatThrownBy(() -> familyMemberService.validateNnis(USER_ID, List.of("1111111111")))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
     }
 
     @Test
-    void addMembers_withSameNniTwice_isRefused() {
+    void validateNnis_withSameNniTwice_isRefused() {
         when(authRepository.findById(USER_ID)).thenReturn(Optional.of(owner("1111111111")));
         when(familyMemberRepository.findByNni("2222222222")).thenReturn(Optional.empty());
 
         assertThatThrownBy(
                         () ->
-                                familyMemberService.addMembers(
-                                        USER_ID,
-                                        List.of("2222222222", "2222222222"),
-                                        List.of(photo(), photo())))
+                                familyMemberService.validateNnis(
+                                        USER_ID, List.of("2222222222", "2222222222")))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
     }
 
     @Test
-    void addMembers_withNniNotTenDigits_isRefused() {
+    void validateNnis_withNniNotTenDigits_isRefused() {
         when(authRepository.findById(USER_ID)).thenReturn(Optional.of(owner("1111111111")));
 
-        assertThatThrownBy(
-                        () ->
-                                familyMemberService.addMembers(
-                                        USER_ID, List.of("12345"), List.of(photo())))
+        assertThatThrownBy(() -> familyMemberService.validateNnis(USER_ID, List.of("12345")))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
     }
 
     @Test
-    void addMembers_withMemberAlreadyInThisFamily_reusesItWithoutNewPhoto() {
-        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(owner("1111111111")));
-        FamilyMember known = member(3L, USER_ID, "2222222222", true);
-        when(familyMemberRepository.findByNni("2222222222")).thenReturn(Optional.of(known));
+    void discardForPayment_deletesPendingMembersAndTheirPhotos() {
+        when(familyMemberRepository.findByPendingPayment(PAYMENT_ID))
+                .thenReturn(List.of(member(9L, USER_ID, "2222222222", false, PAYMENT_ID)));
 
-        List<FamilyMember> result =
-                familyMemberService.addMembers(USER_ID, List.of("2222222222"), List.of(photo()));
+        familyMemberService.discardForPayment(PAYMENT_ID);
 
-        assertThat(result).containsExactly(known);
-        verify(fileStorageService, never()).store(any(), any());
-        verify(familyMemberRepository, never()).insert(any(), any(), any());
+        verify(familyMemberRepository).deleteById(9L);
+        verify(fileStorageService).delete("identity/9.jpg");
     }
 
     @Test
-    void reject_deletesTheMemberAndNotifiesTheOwner() {
+    void activateForPayment_activatesItsMembers() {
+        familyMemberService.activateForPayment(PAYMENT_ID);
+
+        verify(familyMemberRepository).activateForPayment(PAYMENT_ID);
+    }
+
+    @Test
+    void reject_deletesTheMemberItsPhotoAndNotifiesTheOwner() {
         when(familyMemberRepository.findById(4L))
-                .thenReturn(Optional.of(member(4L, USER_ID, "2222222222", false)));
+                .thenReturn(Optional.of(member(4L, USER_ID, "2222222222", false, null)));
 
         familyMemberService.reject(4L);
 
         verify(familyMemberRepository).deleteById(4L);
+        verify(fileStorageService).delete("identity/4.jpg");
         verify(notificationService).create(eq(USER_ID), anyString(), anyString());
     }
 
     @Test
     void approve_whenAlreadyVerified_isRefused() {
         when(familyMemberRepository.findById(4L))
-                .thenReturn(Optional.of(member(4L, USER_ID, "2222222222", true)));
+                .thenReturn(Optional.of(member(4L, USER_ID, "2222222222", true, null)));
 
         assertThatThrownBy(() -> familyMemberService.approve(4L))
                 .isInstanceOf(UserException.IdentityNotPendingException.class);

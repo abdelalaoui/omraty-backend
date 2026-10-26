@@ -80,6 +80,7 @@ class BookingPaymentServiceTest {
     @Mock private PaymentMethodService paymentMethodService;
     @Mock private PaymentReferenceGenerator paymentReferenceGenerator;
     @Mock private PackageRepository packageRepository;
+    @Mock private FamilyMemberService familyMemberService;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
@@ -99,7 +100,9 @@ class BookingPaymentServiceTest {
                 paymentReferenceGenerator,
                 packageRepository,
                 bookingTermService,
-                objectMapper);
+                objectMapper,
+                familyMemberService,
+                "BANKILY");
     }
 
     private User user(String phone) {
@@ -994,6 +997,73 @@ class BookingPaymentServiceTest {
         verify(paymentReferenceGenerator, times(2)).generate();
         verify(bookingPaymentRepository, never())
                 .attachManualPayment(eq(10L), eq("MOOV"), eq("OM00001"), any());
+    }
+
+    @Test
+    void createOfferRoomPaymentPlan_withBpay_expiresAfterTheOnlineDelayNotTheManualOne() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        BookingPayment inserted =
+                new BookingPayment(
+                        11L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("80000"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("80000")))
+                .thenReturn(inserted);
+        PaymentMethod moov = moovMethod();
+        PaymentMethod bankily =
+                new PaymentMethod(
+                        2L,
+                        "BANKILY",
+                        "Bankily",
+                        null,
+                        null,
+                        moov.merchantNumber(),
+                        moov.merchantName(),
+                        moov.instructionsFr(),
+                        null,
+                        null,
+                        null,
+                        true,
+                        2,
+                        LocalDateTime.now(),
+                        LocalDateTime.now());
+        when(paymentMethodService.getEnabledOrThrow("BANKILY")).thenReturn(bankily);
+        when(appSettingService.getIntValue(
+                        BookingPaymentService.ONLINE_PAYMENT_EXPIRATION_MINUTES_KEY))
+                .thenReturn(15);
+        when(paymentReferenceGenerator.generate()).thenReturn("OM00009");
+        when(bookingPaymentRepository.existsByPaymentReference("OM00009")).thenReturn(false);
+        when(bookingInstallmentRepository.existsByPaymentReference("OM00009")).thenReturn(false);
+        when(bookingPaymentRepository.attachManualPayment(
+                        eq(11L), eq("BANKILY"), eq("OM00009"), any()))
+                .thenReturn(inserted);
+        LocalDateTime before = LocalDateTime.now();
+
+        bookingPaymentService()
+                .createOfferRoomPaymentPlan(30L, new BigDecimal("80000"), pkg, USER_ID, "BANKILY");
+
+        ArgumentCaptor<LocalDateTime> expiresAt = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(bookingPaymentRepository)
+                .attachManualPayment(eq(11L), eq("BANKILY"), eq("OM00009"), expiresAt.capture());
+        assertThat(expiresAt.getValue())
+                .isBetween(before.plusMinutes(15), LocalDateTime.now().plusMinutes(15));
+        verify(appSettingService, never())
+                .getIntValue(BookingPaymentService.MANUAL_PAYMENT_EXPIRATION_MINUTES_KEY);
     }
 
     @Test

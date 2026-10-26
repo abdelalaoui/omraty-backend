@@ -18,10 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Membres de la famille d'un utilisateur (parcours « للعائلة » de l'offre, voir migration V65) :
- * NNI et photo de pièce d'identité de chaque membre, vérifiés par un admin comme ceux de
+ * Membres de la famille d'un utilisateur (parcours « للعائلة » de l'offre, voir migrations V65/V67)
+ * : NNI et photo de pièce d'identité de chaque membre, vérifiés par un admin comme ceux de
  * l'utilisateur (voir UserService), et réunis avec eux dans la liste des participants à la tombola
- * (vue draw_participant).
+ * (vue draw_participant). Les membres sont envoyés avec la réservation de la famille et restent en
+ * attente de son paiement : activés à sa confirmation, supprimés (avec leurs photos) s'il expire ou
+ * échoue — aucune demande non payée ne reste en base.
  */
 @Service
 public class FamilyMemberService {
@@ -48,19 +50,114 @@ public class FamilyMemberService {
     }
 
     /**
-     * Enregistre les membres saisis d'un coup (nnis[i] avec photos[i]), tout ou rien : chaque NNI
-     * est vérifié avant tout stockage. Un NNI déjà enregistré comme membre de ce même compte (ex.
-     * nouvelle réservation pour la même famille) est réutilisé tel quel, sans nouvelle photo ; déjà
-     * pris par une autre personne (compte ou membre d'une autre famille) -> refus.
+     * Vérifie les NNI saisis sans rien enregistrer (POST /users/me/family-members/validate), pour
+     * signaler les erreurs avant le choix de l'hébergement et le paiement.
+     */
+    public void validateNnis(UUID userId, List<String> nnis) {
+        checkNnis(userId, nnis);
+    }
+
+    /**
+     * Enregistre les membres envoyés avec la réservation de paymentId (nnis[i] avec photos[i]),
+     * tout ou rien, en attente de ce paiement. Un NNI déjà enregistré comme membre de ce compte est
+     * réutilisé sans nouvelle photo (rattaché à ce paiement s'il était encore en attente d'un
+     * autre) ; déjà pris par une autre personne (compte ou membre d'une autre famille) -> refus.
      *
      * @return les membres dans l'ordre de la saisie.
      */
     @Transactional
-    public List<FamilyMember> addMembers(
-            UUID userId, List<String> nnis, List<MultipartFile> photos) {
-        if (nnis == null || nnis.isEmpty() || photos == null || nnis.size() != photos.size()) {
+    public List<FamilyMember> addMembersForPayment(
+            UUID userId, long paymentId, List<String> nnis, List<MultipartFile> photos) {
+        if (photos == null || nnis == null || nnis.size() != photos.size()) {
             throw new UserException.InvalidIdentityRequestException(
                     "Un NNI et une photo sont requis pour chaque membre");
+        }
+        List<CheckedNni> checked = checkNnis(userId, nnis);
+        for (int i = 0; i < checked.size(); i++) {
+            if (checked.get(i).existing().isEmpty()) {
+                UserService.validateIdentityPhoto(photos.get(i));
+            }
+        }
+        List<FamilyMember> result = new ArrayList<>();
+        for (int i = 0; i < checked.size(); i++) {
+            CheckedNni nni = checked.get(i);
+            Optional<FamilyMember> alreadyMine = nni.existing();
+            if (alreadyMine.isPresent()) {
+                FamilyMember member = alreadyMine.get();
+                result.add(
+                        member.pendingPaymentId() == null
+                                ? member
+                                : familyMemberRepository
+                                        .attachToPendingPayment(member.id(), paymentId)
+                                        .orElseThrow());
+                continue;
+            }
+            String photoUrl = fileStorageService.store(photos.get(i), IDENTITY_PHOTO_SUBDIR);
+            result.add(familyMemberRepository.insert(userId, nni.value(), photoUrl, paymentId));
+        }
+        return result;
+    }
+
+    /** Paiement de la réservation confirmé : ses membres deviennent actifs. */
+    public void activateForPayment(long paymentId) {
+        familyMemberRepository.activateForPayment(paymentId);
+    }
+
+    /**
+     * Paiement de la réservation expiré ou échoué : ses membres encore en attente sont supprimés,
+     * avec leur photo (voir PaymentExpirationService).
+     */
+    public void discardForPayment(long paymentId) {
+        for (FamilyMember member : familyMemberRepository.findByPendingPayment(paymentId)) {
+            familyMemberRepository.deleteById(member.id());
+            fileStorageService.delete(member.idPhotoUrl());
+        }
+    }
+
+    /** Membres actifs (payés) du compte. */
+    public List<FamilyMember> listForUser(UUID userId) {
+        return familyMemberRepository.findActiveByUserId(userId);
+    }
+
+    /** Membres actifs en attente de vérification par un admin. */
+    public List<FamilyMember> listPending() {
+        return familyMemberRepository.findPendingVerification();
+    }
+
+    /** Marque le NNI/la photo du membre comme vérifiés, et prévient le titulaire du compte. */
+    public FamilyMember approve(long memberId) {
+        FamilyMember member = requirePending(memberId);
+        FamilyMember approved = familyMemberRepository.approve(memberId).orElseThrow();
+        notificationService.create(
+                member.userId(),
+                "Identité d'un membre vérifiée",
+                "L'identité du membre de votre famille (NNI " + member.nni() + ") a été vérifiée.");
+        return approved;
+    }
+
+    /**
+     * Rejette le membre : il est supprimé (comme un NNI/photo rejeté est effacé du compte, voir
+     * UserService.rejectIdentity) et le titulaire est invité à le saisir de nouveau.
+     */
+    public void reject(long memberId) {
+        FamilyMember member = requirePending(memberId);
+        familyMemberRepository.deleteById(memberId);
+        fileStorageService.delete(member.idPhotoUrl());
+        notificationService.create(
+                member.userId(),
+                "Vérification d'un membre rejetée",
+                "L'identité du membre de votre famille (NNI "
+                        + member.nni()
+                        + ") a été rejetée. Merci de renvoyer son NNI et sa photo.");
+    }
+
+    /** NNI validé, avec le membre de ce compte qui l'a déjà, le cas échéant. */
+    private record CheckedNni(String value, Optional<FamilyMember> existing) {}
+
+    private List<CheckedNni> checkNnis(UUID userId, List<String> nnis) {
+        if (nnis == null || nnis.isEmpty()) {
+            throw new UserException.InvalidIdentityRequestException(
+                    "Au moins un membre est requis");
         }
         User owner =
                 authRepository
@@ -69,9 +166,7 @@ public class FamilyMemberService {
                                 () ->
                                         new UserException.UserNotFoundException(
                                                 "Utilisateur introuvable"));
-
-        List<String> cleaned = new ArrayList<>();
-        List<Optional<FamilyMember>> existing = new ArrayList<>();
+        List<CheckedNni> checked = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (int i = 0; i < nnis.size(); i++) {
             String nni = nnis.get(i) == null ? "" : nnis.get(i).trim();
@@ -93,59 +188,9 @@ public class FamilyMemberService {
                 throw new UserException.NniAlreadyUsedException(
                         "Le NNI " + nni + " est déjà enregistré pour une autre personne");
             }
-            if (sameNni.isEmpty()) {
-                UserService.validateIdentityPhoto(photos.get(i));
-            }
-            cleaned.add(nni);
-            existing.add(sameNni);
+            checked.add(new CheckedNni(nni, sameNni));
         }
-
-        List<FamilyMember> result = new ArrayList<>();
-        for (int i = 0; i < cleaned.size(); i++) {
-            Optional<FamilyMember> alreadyMine = existing.get(i);
-            if (alreadyMine.isPresent()) {
-                result.add(alreadyMine.get());
-                continue;
-            }
-            String photoUrl = fileStorageService.store(photos.get(i), IDENTITY_PHOTO_SUBDIR);
-            result.add(familyMemberRepository.insert(userId, cleaned.get(i), photoUrl));
-        }
-        return result;
-    }
-
-    public List<FamilyMember> listForUser(UUID userId) {
-        return familyMemberRepository.findByUserId(userId);
-    }
-
-    /** Membres en attente de vérification par un admin. */
-    public List<FamilyMember> listPending() {
-        return familyMemberRepository.findPending();
-    }
-
-    /** Marque le NNI/la photo du membre comme vérifiés, et prévient le titulaire du compte. */
-    public FamilyMember approve(long memberId) {
-        FamilyMember member = requirePending(memberId);
-        FamilyMember approved = familyMemberRepository.approve(memberId).orElseThrow();
-        notificationService.create(
-                member.userId(),
-                "Identité d'un membre vérifiée",
-                "L'identité du membre de votre famille (NNI " + member.nni() + ") a été vérifiée.");
-        return approved;
-    }
-
-    /**
-     * Rejette le membre : il est supprimé (comme un NNI/photo rejeté est effacé du compte, voir
-     * UserService.rejectIdentity) et le titulaire est invité à le saisir de nouveau.
-     */
-    public void reject(long memberId) {
-        FamilyMember member = requirePending(memberId);
-        familyMemberRepository.deleteById(memberId);
-        notificationService.create(
-                member.userId(),
-                "Vérification d'un membre rejetée",
-                "L'identité du membre de votre famille (NNI "
-                        + member.nni()
-                        + ") a été rejetée. Merci de renvoyer son NNI et sa photo.");
+        return checked;
     }
 
     private FamilyMember requirePending(long memberId) {

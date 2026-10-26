@@ -23,4 +23,11 @@ public interface FileStorageService {
      * {@link #store}.
      */
     String generatePresignedUrl(String key);
+
+    /**
+     * Supprime un fichier stocké ({@code key} : valeur renvoyée par {@link #store}), au mieux : un
+     * échec est journalisé sans être propagé (ex. photos des membres d'une réservation annulée,
+     * voir FamilyMemberService.discardForPayment).
+     */
+    void delete(String key);
 }

@@ -1,24 +1,23 @@
 package com.omraty.backend.controller;
 
+import com.omraty.backend.dto.request.ValidateFamilyMembersRequest;
 import com.omraty.backend.dto.response.FamilyMemberResponse;
-import com.omraty.backend.entities.FamilyMember;
 import com.omraty.backend.service.FamilyMemberService;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Membres de la famille de l'utilisateur connecté (parcours « للعائلة » de l'offre, voir
- * FamilyMemberService).
+ * FamilyMemberService). Ils sont enregistrés avec la réservation de la famille (POST
+ * /rooms/offer/family/reserve), pas ici.
  */
 @RestController
 @RequestMapping("/users/me/family-members")
@@ -30,32 +29,31 @@ public class FamilyMemberController {
         this.familyMemberService = familyMemberService;
     }
 
+    /** Membres actifs (réservation payée). */
     @GetMapping
     public ResponseEntity<List<FamilyMemberResponse>> listMembers(
             @AuthenticationPrincipal UUID userId) {
-        return ResponseEntity.ok(toResponses(familyMemberService.listForUser(userId)));
+        return ResponseEntity.ok(
+                familyMemberService.listForUser(userId).stream()
+                        .map(
+                                member ->
+                                        new FamilyMemberResponse(
+                                                member.id(),
+                                                member.nni(),
+                                                member.identityVerified()))
+                        .toList());
     }
 
     /**
-     * Ajout de plusieurs membres d'un coup (multipart) : un champ « nni » et un champ « photo » par
-     * membre, dans le même ordre. Tout ou rien : un NNI invalide ou déjà pris par une autre
-     * personne refuse toute la saisie.
+     * Vérifie les NNI saisis sans rien enregistrer (10 chiffres, pas de doublon, pas son propre
+     * NNI, pas déjà pris par une autre personne) : 204 si tout est bon, sinon 400/409 avec le
+     * message.
      */
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<List<FamilyMemberResponse>> addMembers(
+    @PostMapping("/validate")
+    public ResponseEntity<Void> validateMembers(
             @AuthenticationPrincipal UUID userId,
-            @RequestParam("nni") List<String> nnis,
-            @RequestParam("photo") List<MultipartFile> photos) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(toResponses(familyMemberService.addMembers(userId, nnis, photos)));
-    }
-
-    private static List<FamilyMemberResponse> toResponses(List<FamilyMember> members) {
-        return members.stream()
-                .map(
-                        member ->
-                                new FamilyMemberResponse(
-                                        member.id(), member.nni(), member.identityVerified()))
-                .toList();
+            @Valid @RequestBody ValidateFamilyMembersRequest request) {
+        familyMemberService.validateNnis(userId, request.nnis());
+        return ResponseEntity.noContent().build();
     }
 }

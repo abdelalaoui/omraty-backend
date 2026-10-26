@@ -26,9 +26,11 @@ class PaymentExpirationServiceTest {
 
     @Mock private BookingPaymentRepository bookingPaymentRepository;
     @Mock private RoomService roomService;
+    @Mock private FamilyMemberService familyMemberService;
 
     private PaymentExpirationService paymentExpirationService() {
-        return new PaymentExpirationService(bookingPaymentRepository, roomService);
+        return new PaymentExpirationService(
+                bookingPaymentRepository, roomService, familyMemberService);
     }
 
     private BookingPayment overduePayment(long id, Long roomId, Long bedId, Long vipRequestId) {
@@ -131,6 +133,20 @@ class PaymentExpirationServiceTest {
         assertThat(expiredCount).isEqualTo(1);
         verify(roomService).releaseGroupBedReservation(List.of(401L, 402L));
         verify(roomService, never()).releaseReservation(any(), any(), any());
+    }
+
+    @Test
+    void expireOverduePayments_discardsTheFamilyMembersSentWithTheReservation() {
+        BookingPayment payment = overduePayment(8L, null, null, null);
+        when(bookingPaymentRepository.findPendingExpiredBefore(any())).thenReturn(List.of(payment));
+        when(bookingPaymentRepository.markExpiredIfPending(8L))
+                .thenReturn(Optional.of(withStatus(payment, PaymentStatus.EXPIRED)));
+        when(bookingPaymentRepository.findGroupRoomIds(8L)).thenReturn(List.of(41L));
+        when(bookingPaymentRepository.findGroupBedIds(8L)).thenReturn(List.of(501L));
+
+        paymentExpirationService().expireOverduePayments();
+
+        verify(familyMemberService).discardForPayment(8L);
     }
 
     @Test
