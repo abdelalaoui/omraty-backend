@@ -247,4 +247,25 @@ class OfferFormulaServiceTest {
                                         Map.of(2L, new BigDecimal("1000"))))
                 .isInstanceOf(OfferFormulaException.InvalidOfferFormulaRequestException.class);
     }
+
+    @Test
+    void resolveFamilyFormula_acceptsThePrivateRoomForACompositionWithItsPrice() {
+        when(offerFormulaRepository.findById(10L))
+                .thenReturn(Optional.of(alone(10L, OfferFormulaAction.PRIVATE_ROOM, 1)));
+        when(offerFormulaRepository.findPricesByPackage(1L))
+                .thenReturn(Map.of(10L, new BigDecimal("80000")));
+
+        PricedOfferFormula priced = offerFormulaService.resolveFamilyFormula(1L, 10L);
+
+        assertThat(priced.price()).isEqualByComparingTo("80000");
+    }
+
+    @Test
+    void resolveFamilyFormula_refusesASharedBedCardOfTheAloneMode() {
+        when(offerFormulaRepository.findById(12L))
+                .thenReturn(Optional.of(alone(12L, OfferFormulaAction.SHARED_BED, 5)));
+
+        assertThatThrownBy(() -> offerFormulaService.resolveFamilyFormula(1L, 12L))
+                .isInstanceOf(OfferFormulaException.InvalidOfferFormulaRequestException.class);
+    }
 }

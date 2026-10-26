@@ -765,10 +765,10 @@ public class RoomService {
     public record FamilyItem(long formulaId, int quantity) {}
 
     /**
-     * Réserve la composition choisie par une famille dans « خدماتنا » (parcours « للعائلة » de
-     * l'offre) : pour chaque carte « chambre famille », quantity chambres entières (2 ou 3 places)
-     * ou quantity lits (chambre de 5), le tout avec un seul paiement complet au total des prix des
-     * cartes pour ce départ (voir migration V66, BookingPaymentService.
+     * Réserve la composition choisie dans « خدماتنا » (parcours « للعائلة » et « أكثر من ذلك » de
+     * l'offre) : pour chaque carte, quantity chambres entières (1, 2 ou 3 places — chambre privée
+     * ou de famille) ou quantity lits (chambre de 5), le tout avec un seul paiement complet au
+     * total des prix des cartes pour ce départ (voir migration V66, BookingPaymentService.
      * createOfferFamilyGroupPaymentPlan). La capacité du package est vérifiée en une fois pour
      * toutes les places ; les lits sont gardés ensemble (voir {@link #reserveBedsTogether}). Que la
      * composition loge toute la famille est vérifié par l'app, qui seule connaît sa taille.
