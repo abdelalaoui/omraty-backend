@@ -1,11 +1,18 @@
 package com.omraty.backend.repository;
 
 import com.omraty.backend.entities.FamilyMember;
+import java.sql.Array;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
@@ -104,5 +111,56 @@ public class FamilyMemberRepository {
 
     public int deleteByUserId(UUID userId) {
         return jdbcTemplate.update(FamilyMemberTable.DELETE_BY_USER_ID, userId);
+    }
+
+    /** Relie durablement ces membres à la réservation de paymentId (voir migration V68). */
+    public void linkToPayment(long paymentId, List<Long> memberIds) {
+        for (Long memberId : memberIds) {
+            jdbcTemplate.update(FamilyMemberTable.LINK_TO_PAYMENT, paymentId, memberId);
+        }
+    }
+
+    /** includesOwner : le titulaire du compte voyage aussi (« للعائلة »). */
+    public void saveParty(long paymentId, boolean includesOwner) {
+        jdbcTemplate.update(FamilyMemberTable.UPSERT_PARTY, paymentId, includesOwner);
+    }
+
+    /** NNI des membres de chaque réservation, dans l'ordre de leur saisie. */
+    public Map<Long, List<String>> findMemberNnisByPaymentIds(List<Long> paymentIds) {
+        Map<Long, List<String>> result = new HashMap<>();
+        if (paymentIds.isEmpty()) {
+            return result;
+        }
+        jdbcTemplate.query(
+                FamilyMemberTable.SELECT_MEMBER_NNIS_BY_PAYMENT_IDS,
+                (PreparedStatement ps) -> ps.setArray(1, bigintArray(ps, paymentIds)),
+                (RowCallbackHandler)
+                        rs ->
+                                result.computeIfAbsent(
+                                                rs.getLong("booking_payment_id"),
+                                                id -> new ArrayList<>())
+                                        .add(rs.getString("nni")));
+        return result;
+    }
+
+    /** Type de chaque réservation de l'offre : le titulaire voyage-t-il aussi ? */
+    public Map<Long, Boolean> findPartiesByPaymentIds(List<Long> paymentIds) {
+        Map<Long, Boolean> result = new HashMap<>();
+        if (paymentIds.isEmpty()) {
+            return result;
+        }
+        jdbcTemplate.query(
+                FamilyMemberTable.SELECT_PARTIES_BY_PAYMENT_IDS,
+                (PreparedStatement ps) -> ps.setArray(1, bigintArray(ps, paymentIds)),
+                (RowCallbackHandler)
+                        rs ->
+                                result.put(
+                                        rs.getLong("booking_payment_id"),
+                                        rs.getBoolean("includes_owner")));
+        return result;
+    }
+
+    private static Array bigintArray(PreparedStatement ps, List<Long> ids) throws SQLException {
+        return ps.getConnection().createArrayOf("bigint", ids.toArray(new Long[0]));
     }
 }

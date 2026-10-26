@@ -18,6 +18,7 @@ import com.omraty.backend.service.OfferFormulaService.PricedOfferFormula;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -775,7 +776,9 @@ public class RoomService {
      *
      * <p>memberNnis/memberPhotos : NNI et photo de chaque membre (hors l'utilisateur), vérifiés
      * avant toute réservation puis enregistrés en attente de ce paiement — activés à sa
-     * confirmation, supprimés s'il expire (voir FamilyMemberService, migration V67).
+     * confirmation, supprimés s'il expire (voir FamilyMemberService, migration V67). includesOwner
+     * : le titulaire voyage aussi (« للعائلة »), pas pour « أكثر من ذلك » — voir « مشترياتي »
+     * (migration V68).
      *
      * @throws RoomException.InvalidRoomTypeException si la composition est vide, contient une
      *     quantité non positive ou deux fois la même carte.
@@ -788,6 +791,7 @@ public class RoomService {
             List<FamilyItem> items,
             List<String> memberNnis,
             List<MultipartFile> memberPhotos,
+            boolean includesOwner,
             String paymentMethodCode,
             String acceptedTermsVersion,
             List<Long> acceptedTermIds,
@@ -850,6 +854,7 @@ public class RoomService {
             familyMemberService.addMembersForPayment(
                     userId, payment.id(), memberNnis, memberPhotos);
         }
+        familyMemberService.recordParty(payment.id(), includesOwner);
         return bookingPaymentService.attachAcceptedTerms(
                 payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
     }
@@ -971,6 +976,8 @@ public class RoomService {
                         .toList();
         Map<Long, List<BookingInstallment>> installmentsByPaymentId =
                 bookingPaymentService.findInstallmentsByPaymentIds(paymentIds);
+        Map<Long, List<String>> travelerNnisByPaymentId =
+                findTravelerNnis(purchasedRooms, reservedBeds, paymentsByRoomId, paymentsByBedId);
 
         Stream<OwnedPurchase> fromPurchasedRooms =
                 purchasedRooms.stream()
@@ -988,7 +995,10 @@ public class RoomService {
                                                         null,
                                                         resolvePayment(
                                                                 paymentsByRoomId.get(room.id()),
-                                                                installmentsByPaymentId))));
+                                                                installmentsByPaymentId),
+                                                        travelerNnis(
+                                                                paymentsByRoomId.get(room.id()),
+                                                                travelerNnisByPaymentId))));
         Stream<OwnedPurchase> fromReservedBeds =
                 reservedBeds.stream()
                         .map(
@@ -1006,13 +1016,68 @@ public class RoomService {
                                                     bed.number(),
                                                     resolvePayment(
                                                             paymentsByBedId.get(bed.id()),
-                                                            installmentsByPaymentId)));
+                                                            installmentsByPaymentId),
+                                                    travelerNnis(
+                                                            paymentsByBedId.get(bed.id()),
+                                                            travelerNnisByPaymentId)));
                                 });
         return Stream.concat(fromPurchasedRooms, fromReservedBeds)
                 .sorted(
                         Comparator.comparing((OwnedPurchase owned) -> owned.purchase().createdAt())
                                 .reversed())
                 .toList();
+    }
+
+    /**
+     * NNI des personnes de chaque réservation de l'offre (voir migration V68,
+     * FamilyMemberService.findTravelerNnis), le titulaire en premier s'il voyage aussi : son NNI
+     * est celui du compte qui possède la chambre ou le lit.
+     */
+    private Map<Long, List<String>> findTravelerNnis(
+            List<Room> purchasedRooms,
+            List<Bed> reservedBeds,
+            Map<Long, BookingPayment> paymentsByRoomId,
+            Map<Long, BookingPayment> paymentsByBedId) {
+        Map<Long, UUID> ownerByPaymentId = new HashMap<>();
+        for (Room room : purchasedRooms) {
+            BookingPayment payment = paymentsByRoomId.get(room.id());
+            if (payment != null && room.userId() != null) {
+                ownerByPaymentId.putIfAbsent(payment.id(), room.userId());
+            }
+        }
+        for (Bed bed : reservedBeds) {
+            BookingPayment payment = paymentsByBedId.get(bed.id());
+            if (payment != null && bed.userId() != null) {
+                ownerByPaymentId.putIfAbsent(payment.id(), bed.userId());
+            }
+        }
+        if (ownerByPaymentId.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> nniByUserId = new HashMap<>();
+        for (User owner :
+                authRepository.findByIds(ownerByPaymentId.values().stream().distinct().toList())) {
+            if (owner.nni() != null) {
+                nniByUserId.put(owner.id(), owner.nni());
+            }
+        }
+        Map<Long, String> ownerNniByPaymentId = new HashMap<>();
+        ownerByPaymentId.forEach(
+                (paymentId, userId) -> {
+                    String nni = nniByUserId.get(userId);
+                    if (nni != null) {
+                        ownerNniByPaymentId.put(paymentId, nni);
+                    }
+                });
+        return familyMemberService.findTravelerNnis(
+                List.copyOf(ownerByPaymentId.keySet()), ownerNniByPaymentId);
+    }
+
+    private static List<String> travelerNnis(
+            BookingPayment payment, Map<Long, List<String>> travelerNnisByPaymentId) {
+        return payment == null
+                ? List.of()
+                : travelerNnisByPaymentId.getOrDefault(payment.id(), List.of());
     }
 
     private UserPurchasePayment resolvePayment(

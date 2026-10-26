@@ -1,6 +1,7 @@
 package com.omraty.backend.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Une réservation de l'utilisateur connecté (GET /users/me/purchases) : soit une chambre entière
@@ -8,7 +9,9 @@ import java.time.LocalDateTime;
  * bedNumber renseigné). packageLabel vient d'une jointure sur le package (voir
  * RoomService.getPurchasesForUser). payment est null pour une réservation antérieure à la migration
  * V25 (booking_payment n'existait pas encore) — on ne devine rien pour ces anciennes lignes, même
- * logique que pour bedNumber/userId historiquement (voir V23).
+ * logique que pour bedNumber/userId historiquement (voir V23). travelerNnis : NNI des personnes
+ * d'une réservation de l'offre (le titulaire en premier s'il voyage aussi, voir migration V68),
+ * vide sinon.
  */
 public record UserPurchase(
         int type,
@@ -17,4 +20,5 @@ public record UserPurchase(
         String packageLabel,
         LocalDateTime createdAt,
         Integer bedNumber,
-        UserPurchasePayment payment) {}
+        UserPurchasePayment payment,
+        List<String> travelerNnis) {}

@@ -22,7 +22,8 @@ public final class PurchaseMapper {
                 purchase.packageLabel(),
                 purchase.createdAt(),
                 purchase.bedNumber(),
-                toPaymentResponse(purchase.payment()));
+                toPaymentResponse(purchase.payment()),
+                purchase.travelerNnis());
     }
 
     public static List<PurchaseResponse> toResponseList(List<UserPurchase> purchases) {

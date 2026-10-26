@@ -7,8 +7,10 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.FamilyMemberRepository;
 import com.omraty.backend.storage.FileStorageService;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -94,6 +96,45 @@ public class FamilyMemberService {
             }
             String photoUrl = fileStorageService.store(photos.get(i), IDENTITY_PHOTO_SUBDIR);
             result.add(familyMemberRepository.insert(userId, nni.value(), photoUrl, paymentId));
+        }
+        // Lien durable avec la réservation, pour « مشترياتي » (voir migration V68).
+        familyMemberRepository.linkToPayment(
+                paymentId, result.stream().map(FamilyMember::id).toList());
+        return result;
+    }
+
+    /**
+     * Type de la réservation de paymentId (voir migration V68) : includesOwner = le titulaire
+     * voyage aussi (« للعائلة »), non pour « أكثر من ذلك ».
+     */
+    public void recordParty(long paymentId, boolean includesOwner) {
+        familyMemberRepository.saveParty(paymentId, includesOwner);
+    }
+
+    /**
+     * NNI des personnes de chaque réservation de l'offre, pour « مشترياتي » : celui du titulaire en
+     * premier s'il voyage aussi (ownerNniByPaymentId), puis ceux des membres. Les réservations sans
+     * personnes enregistrées (lit seul, chambre privée, achats antérieurs) sont absentes.
+     */
+    public Map<Long, List<String>> findTravelerNnis(
+            List<Long> paymentIds, Map<Long, String> ownerNniByPaymentId) {
+        Map<Long, List<String>> memberNnis =
+                familyMemberRepository.findMemberNnisByPaymentIds(paymentIds);
+        Map<Long, Boolean> parties = familyMemberRepository.findPartiesByPaymentIds(paymentIds);
+        Map<Long, List<String>> result = new HashMap<>();
+        for (Long paymentId : paymentIds) {
+            List<String> members = memberNnis.getOrDefault(paymentId, List.of());
+            boolean includesOwner = Boolean.TRUE.equals(parties.get(paymentId));
+            String ownerNni = ownerNniByPaymentId.get(paymentId);
+            if (members.isEmpty() && !includesOwner) {
+                continue;
+            }
+            List<String> travelers = new ArrayList<>();
+            if (includesOwner && ownerNni != null) {
+                travelers.add(ownerNni);
+            }
+            travelers.addAll(members);
+            result.put(paymentId, travelers);
         }
         return result;
     }

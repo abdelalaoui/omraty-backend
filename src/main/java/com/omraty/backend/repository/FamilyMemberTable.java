@@ -49,4 +49,23 @@ final class FamilyMemberTable {
     static final String DELETE_BY_ID = "DELETE FROM family_member WHERE id = ?";
 
     static final String DELETE_BY_USER_ID = "DELETE FROM family_member WHERE user_id = ?";
+
+    // Personnes d'une réservation, lien durable (voir migration V68).
+    static final String LINK_TO_PAYMENT =
+            "INSERT INTO booking_payment_member (booking_payment_id, family_member_id) VALUES (?,"
+                    + " ?) ON CONFLICT DO NOTHING";
+
+    static final String UPSERT_PARTY =
+            "INSERT INTO booking_payment_party (booking_payment_id, includes_owner) VALUES (?, ?)"
+                    + " ON CONFLICT (booking_payment_id) DO UPDATE SET includes_owner ="
+                    + " EXCLUDED.includes_owner";
+
+    static final String SELECT_MEMBER_NNIS_BY_PAYMENT_IDS =
+            "SELECT bpm.booking_payment_id, fm.nni FROM booking_payment_member bpm JOIN"
+                    + " family_member fm ON fm.id = bpm.family_member_id WHERE"
+                    + " bpm.booking_payment_id = ANY (?) ORDER BY bpm.booking_payment_id, fm.id";
+
+    static final String SELECT_PARTIES_BY_PAYMENT_IDS =
+            "SELECT booking_payment_id, includes_owner FROM booking_payment_party WHERE"
+                    + " booking_payment_id = ANY (?)";
 }

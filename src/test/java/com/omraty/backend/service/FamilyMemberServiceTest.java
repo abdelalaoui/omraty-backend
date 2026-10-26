@@ -17,6 +17,7 @@ import com.omraty.backend.repository.FamilyMemberRepository;
 import com.omraty.backend.storage.FileStorageService;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -95,6 +96,7 @@ class FamilyMemberServiceTest {
                         List.of(photo(), photo()));
 
         assertThat(result).containsExactly(first, second);
+        verify(familyMemberRepository).linkToPayment(PAYMENT_ID, List.of(1L, 2L));
     }
 
     @Test
@@ -214,5 +216,28 @@ class FamilyMemberServiceTest {
 
         assertThatThrownBy(() -> familyMemberService.approve(4L))
                 .isInstanceOf(UserException.IdentityNotPendingException.class);
+    }
+
+    @Test
+    void findTravelerNnis_putsTheOwnerFirstForAFamilyAndOnlyTheAddedPeopleOtherwise() {
+        when(familyMemberRepository.findMemberNnisByPaymentIds(List.of(70L, 71L, 72L)))
+                .thenReturn(
+                        Map.of(
+                                70L, List.of("2222222222", "3333333333"),
+                                71L, List.of("4444444444")));
+        when(familyMemberRepository.findPartiesByPaymentIds(List.of(70L, 71L, 72L)))
+                .thenReturn(Map.of(70L, true, 71L, false));
+
+        Map<Long, List<String>> result =
+                familyMemberService.findTravelerNnis(
+                        List.of(70L, 71L, 72L),
+                        Map.of(70L, "1111111111", 71L, "1111111111", 72L, "1111111111"));
+
+        // 70 : famille (titulaire en premier) ; 71 : « أكثر من ذلك » ; 72 : achat sans personnes.
+        assertThat(result)
+                .containsExactlyInAnyOrderEntriesOf(
+                        Map.of(
+                                70L, List.of("1111111111", "2222222222", "3333333333"),
+                                71L, List.of("4444444444")));
     }
 }

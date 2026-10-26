@@ -16,7 +16,9 @@ public record ReserveOfferFamilyRequest(
         @NotEmpty(message = "Choisissez au moins une chambre ou un lit") @Valid List<Item> items,
         String paymentMethod,
         String acceptedTermsVersion,
-        List<Long> acceptedTermIds) {
+        List<Long> acceptedTermIds,
+        // Le titulaire voyage aussi (« للعائلة ») ; false pour « أكثر من ذلك ». Absent : true.
+        Boolean includesOwner) {
 
     public record Item(
             @NotNull(message = "La carte de l'offre est requise") Long formulaId,

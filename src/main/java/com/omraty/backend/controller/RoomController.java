@@ -192,6 +192,7 @@ public class RoomController {
                                 .toList(),
                         memberNnis,
                         memberPhotos,
+                        !Boolean.FALSE.equals(request.includesOwner()),
                         request.paymentMethod(),
                         request.acceptedTermsVersion(),
                         request.acceptedTermIds(),
