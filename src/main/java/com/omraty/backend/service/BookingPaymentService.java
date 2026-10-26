@@ -454,6 +454,35 @@ public class BookingPaymentService {
         return payment;
     }
 
+    /**
+     * Crée un seul paiement pour la composition d'une famille (voir RoomService.reserveOfferFamily)
+     * : chambres entières (liées via booking_payment_room, migration V43) et lits (liés via
+     * booking_payment_bed, migration V62) sur le même paiement. Mêmes règles que {@link
+     * #createOfferBedGroupPaymentPlan} : plan FULL, pas de réduction, totalAmount est déjà la somme
+     * des prix des cartes.
+     */
+    public BookingPayment createOfferFamilyGroupPaymentPlan(
+            List<Long> roomIds,
+            List<Long> bedIds,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId,
+            String paymentMethodCode) {
+        BookingPayment payment =
+                createPaymentPlan(
+                        null,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        totalAmount,
+                        pkg,
+                        userId,
+                        paymentMethodCode);
+        bookingPaymentRepository.linkRoomsToGroupPayment(payment.id(), roomIds);
+        bookingPaymentRepository.linkBedsToGroupPayment(payment.id(), bedIds);
+        return payment;
+    }
+
     private BookingPayment createPaymentPlan(
             Long roomId,
             Long bedId,
@@ -1087,12 +1116,17 @@ public class BookingPaymentService {
                     .map(vip -> "Offre VIP - " + packageLabel(vip.packageId()))
                     .orElse(null);
         }
-        List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
-        if (!groupBedIds.isEmpty()) {
-            return "Achat groupé (" + groupBedIds.size() + " lit(s), offre spéciale)";
-        }
+        // Groupe de chambres (V43), de lits (V62), ou les deux pour la composition d'une famille.
         List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
-        return "Achat groupé (" + groupRoomIds.size() + " chambre(s))";
+        List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
+        List<String> parts = new ArrayList<>();
+        if (!groupRoomIds.isEmpty()) {
+            parts.add(groupRoomIds.size() + " chambre(s)");
+        }
+        if (!groupBedIds.isEmpty()) {
+            parts.add(groupBedIds.size() + " lit(s)");
+        }
+        return "Achat groupé (" + String.join(" + ", parts) + ")";
     }
 
     private String packageLabel(long packageId) {

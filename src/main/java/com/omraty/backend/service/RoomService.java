@@ -14,6 +14,7 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
+import com.omraty.backend.service.OfferFormulaService.PricedOfferFormula;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -400,15 +401,7 @@ public class RoomService {
                 offerFormulaService.resolvePrice(
                         packageId, formulaId, OfferFormulaAction.FAMILY_ROOM, SHARED_ROOM_TYPE);
 
-        Room room =
-                roomRepository
-                        .findOpenRoomForUpdate(packageId, SHARED_ROOM_TYPE)
-                        .filter(open -> open.totalCapacity() - open.reservedCount() >= bedCount)
-                        .orElseGet(() -> openNewSharedRoom(packageId, SHARED_ROOM_TYPE));
-        List<Long> bedIds = new ArrayList<>();
-        for (int i = 0; i < bedCount; i++) {
-            bedIds.add(reserveFreeBedInRoom(room, userId));
-        }
+        List<Long> bedIds = reserveBedsTogether(packageId, userId, bedCount);
 
         BookingPayment payment =
                 bookingPaymentService.createOfferBedGroupPaymentPlan(
@@ -736,6 +729,109 @@ public class RoomService {
                 bedRepository.release(bed.id());
             }
         }
+    }
+
+    /**
+     * Réserve count lits en chambres de 5 pour un même groupe, en le gardant ensemble autant que
+     * possible : par paquets de 5 au plus, chacun dans une chambre ouverte qui a assez de lits
+     * libres pour tout le paquet, sinon dans une nouvelle chambre (la chambre précédente reste
+     * ouverte pour les suivants).
+     */
+    private List<Long> reserveBedsTogether(long packageId, UUID userId, int count) {
+        List<Long> bedIds = new ArrayList<>();
+        int remaining = count;
+        while (remaining > 0) {
+            int batch = Math.min(remaining, SHARED_ROOM_TYPE);
+            Room room =
+                    roomRepository
+                            .findOpenRoomForUpdate(packageId, SHARED_ROOM_TYPE)
+                            .filter(open -> open.totalCapacity() - open.reservedCount() >= batch)
+                            .orElseGet(() -> openNewSharedRoom(packageId, SHARED_ROOM_TYPE));
+            for (int i = 0; i < batch; i++) {
+                bedIds.add(reserveFreeBedInRoom(room, userId));
+            }
+            remaining -= batch;
+        }
+        return bedIds;
+    }
+
+    /**
+     * Un élément de la composition d'une famille : une carte « chambre famille » et sa quantité.
+     */
+    public record FamilyItem(long formulaId, int quantity) {}
+
+    /**
+     * Réserve la composition choisie par une famille dans « خدماتنا » (parcours « للعائلة » de
+     * l'offre) : pour chaque carte « chambre famille », quantity chambres entières (2 ou 3 places)
+     * ou quantity lits (chambre de 5), le tout avec un seul paiement complet au total des prix des
+     * cartes pour ce départ (voir migration V66, BookingPaymentService.
+     * createOfferFamilyGroupPaymentPlan). La capacité du package est vérifiée en une fois pour
+     * toutes les places ; les lits sont gardés ensemble (voir {@link #reserveBedsTogether}). Que la
+     * composition loge toute la famille est vérifié par l'app, qui seule connaît sa taille.
+     *
+     * @throws RoomException.InvalidRoomTypeException si la composition est vide, contient une
+     *     quantité non positive ou deux fois la même carte.
+     * @throws RoomException.GroupSizeExceededException si le groupSize du package serait dépassé.
+     */
+    @Transactional
+    public BookingPayment reserveOfferFamily(
+            long packageId,
+            UUID userId,
+            List<FamilyItem> items,
+            String paymentMethodCode,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        if (items == null
+                || items.isEmpty()
+                || items.stream().anyMatch(item -> item.quantity() <= 0)
+                || items.stream().map(FamilyItem::formulaId).distinct().count() != items.size()) {
+            throw new RoomException.InvalidRoomTypeException(
+                    "Composition invalide : au moins une carte, chacune une seule fois avec une"
+                            + " quantité positive");
+        }
+        OmraPackage pkg = lockPackageOrThrow(packageId);
+        List<PricedOfferFormula> priced =
+                items.stream()
+                        .map(
+                                item ->
+                                        offerFormulaService.resolveFamilyFormula(
+                                                packageId, item.formulaId()))
+                        .toList();
+
+        int seats = 0;
+        int bedCount = 0;
+        BigDecimal total = BigDecimal.ZERO;
+        for (int i = 0; i < items.size(); i++) {
+            int quantity = items.get(i).quantity();
+            int capacity = priced.get(i).formula().capacity();
+            boolean beds = capacity == SHARED_ROOM_TYPE;
+            seats += beds ? quantity : capacity * quantity;
+            bedCount += beds ? quantity : 0;
+            total = total.add(priced.get(i).price().multiply(BigDecimal.valueOf(quantity)));
+        }
+        packageCapacityService.ensureCapacityAvailable(pkg, packageId, seats);
+
+        List<Long> roomIds = new ArrayList<>();
+        for (int i = 0; i < items.size(); i++) {
+            int capacity = priced.get(i).formula().capacity();
+            if (capacity == SHARED_ROOM_TYPE) {
+                continue;
+            }
+            for (int n = 0; n < items.get(i).quantity(); n++) {
+                roomIds.add(
+                        roomRepository
+                                .insert(capacity, packageId, capacity, capacity, userId)
+                                .id());
+            }
+        }
+        List<Long> bedIds = reserveBedsTogether(packageId, userId, bedCount);
+
+        BookingPayment payment =
+                bookingPaymentService.createOfferFamilyGroupPaymentPlan(
+                        roomIds, bedIds, total, pkg, userId, paymentMethodCode);
+        return bookingPaymentService.attachAcceptedTerms(
+                payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
     }
 
     /**

@@ -255,10 +255,39 @@ public class InvoiceService {
         // booking_payment_room — ou groupe de lits de l'offre spéciale (voir migration V62),
         // dans booking_payment_bed.
         List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
+        List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
+        if (!groupBedIds.isEmpty() && !groupRoomIds.isEmpty()) {
+            return describeFamilyGroup(groupRoomIds, groupBedIds);
+        }
         if (!groupBedIds.isEmpty()) {
             return describeGroupBeds(groupBedIds);
         }
         return describeGroupRooms(payment.id());
+    }
+
+    /**
+     * Composition d'une famille (voir RoomService.reserveOfferFamily) : chambres entières et lits
+     * sur le même paiement.
+     */
+    private PurchaseDescription describeFamilyGroup(List<Long> roomIds, List<Long> bedIds) {
+        List<Room> rooms = roomRepository.findByIds(roomIds);
+        if (rooms.isEmpty()) {
+            return describeGroupBeds(bedIds);
+        }
+        String roomsSummary =
+                rooms.stream()
+                        .map(room -> room.totalCapacity() + " places")
+                        .collect(Collectors.joining(", "));
+        String label =
+                "Réservation famille ("
+                        + rooms.size()
+                        + " chambre(s) : "
+                        + roomsSummary
+                        + " + "
+                        + bedIds.size()
+                        + " lit(s) en chambre de 5) — "
+                        + resolvePackageLabel(rooms.get(0).packageId());
+        return new PurchaseDescription(rooms.get(0).userId(), label);
     }
 
     private PurchaseDescription describeGroupBeds(List<Long> bedIds) {
