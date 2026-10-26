@@ -442,6 +442,7 @@ class RoomServiceTest {
                                 List.of(new FamilyItem(2L, 1), new FamilyItem(5L, 2)),
                                 null,
                                 null,
+                                true,
                                 "MOOV",
                                 null,
                                 null,
@@ -475,6 +476,7 @@ class RoomServiceTest {
                         List.of(new FamilyItem(2L, 1)),
                         nnis,
                         photos,
+                        true,
                         null,
                         null,
                         null,
@@ -482,6 +484,7 @@ class RoomServiceTest {
 
         verify(familyMemberService).validateNnis(USER_ID, nnis);
         verify(familyMemberService).addMembersForPayment(USER_ID, 1L, nnis, photos);
+        verify(familyMemberService).recordParty(1L, true);
     }
 
     @Test
@@ -519,6 +522,7 @@ class RoomServiceTest {
                                 List.of(new FamilyItem(11L, 1)),
                                 null,
                                 null,
+                                true,
                                 null,
                                 null,
                                 null,
@@ -540,6 +544,7 @@ class RoomServiceTest {
                                                         new FamilyItem(2L, 1)),
                                                 null,
                                                 null,
+                                                true,
                                                 null,
                                                 null,
                                                 null,
@@ -566,6 +571,7 @@ class RoomServiceTest {
                                                 List.of(new FamilyItem(3L, 1)),
                                                 null,
                                                 null,
+                                                true,
                                                 null,
                                                 null,
                                                 null,
