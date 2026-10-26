@@ -4,10 +4,12 @@ final class NotificationTable {
 
     private NotificationTable() {}
 
-    static final String NOTIFICATION_COLUMNS = "id, user_id, title, message, read, created_at";
+    static final String NOTIFICATION_COLUMNS =
+            "id, user_id, title, message, read, created_at, action, action_target_id";
 
     static final String INSERT_NOTIFICATION =
-            "INSERT INTO notification (user_id, title, message) VALUES (?, ?, ?) RETURNING "
+            "INSERT INTO notification (user_id, title, message, action, action_target_id) VALUES"
+                    + " (?, ?, ?, ?, ?) RETURNING "
                     + NOTIFICATION_COLUMNS;
 
     static final String SELECT_NOTIFICATION_BY_ID =

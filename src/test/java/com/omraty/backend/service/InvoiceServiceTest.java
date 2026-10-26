@@ -24,6 +24,7 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.CustomOfferRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.VipRequestRepository;
@@ -58,6 +59,7 @@ class InvoiceServiceTest {
     @Mock private VipRequestRepository vipRequestRepository;
     @Mock private PackageRepository packageRepository;
     @Mock private FileStorageService fileStorageService;
+    @Mock private CustomOfferRepository customOfferRepository;
 
     private InvoiceService invoiceService() {
         return new InvoiceService(
@@ -68,7 +70,8 @@ class InvoiceServiceTest {
                 bedRepository,
                 vipRequestRepository,
                 packageRepository,
-                fileStorageService);
+                fileStorageService,
+                customOfferRepository);
     }
 
     private BookingPayment payment(long id, PaymentPlan plan, PaymentStatus status) {

@@ -130,6 +130,24 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(CustomOfferException.CustomOfferNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleCustomOfferNotFound(
+            CustomOfferException.CustomOfferNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(CustomOfferException.InvalidCustomOfferRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCustomOfferRequest(
+            CustomOfferException.InvalidCustomOfferRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(CustomOfferException.CustomOfferStateException.class)
+    public ResponseEntity<ErrorResponse> handleCustomOfferState(
+            CustomOfferException.CustomOfferStateException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(OfferFormulaException.InvalidOfferFormulaRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidOfferFormulaRequest(
             OfferFormulaException.InvalidOfferFormulaRequestException e) {

@@ -38,6 +38,7 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.CustomOfferRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
@@ -81,6 +82,7 @@ class BookingPaymentServiceTest {
     @Mock private PaymentReferenceGenerator paymentReferenceGenerator;
     @Mock private PackageRepository packageRepository;
     @Mock private FamilyMemberService familyMemberService;
+    @Mock private CustomOfferRepository customOfferRepository;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
@@ -102,6 +104,7 @@ class BookingPaymentServiceTest {
                 bookingTermService,
                 objectMapper,
                 familyMemberService,
+                customOfferRepository,
                 "BANKILY");
     }
 

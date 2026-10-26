@@ -11,6 +11,7 @@ import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.BookingTerm;
+import com.omraty.backend.entities.CustomOffer;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.PaymentMethod;
 import com.omraty.backend.entities.Room;
@@ -32,6 +33,7 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.CustomOfferRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.ServiceTierRepository;
@@ -119,6 +121,7 @@ public class BookingPaymentService {
     private final BookingTermService bookingTermService;
     private final ObjectMapper objectMapper;
     private final FamilyMemberService familyMemberService;
+    private final CustomOfferRepository customOfferRepository;
     private final String bpayMethodCode;
 
     static final String FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY = "full_payment_discount_percentage";
@@ -142,6 +145,7 @@ public class BookingPaymentService {
             BookingTermService bookingTermService,
             ObjectMapper objectMapper,
             FamilyMemberService familyMemberService,
+            CustomOfferRepository customOfferRepository,
             @Value("${payment.bpay.method-code:BANKILY}") String bpayMethodCode) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
@@ -161,6 +165,7 @@ public class BookingPaymentService {
         this.bookingTermService = bookingTermService;
         this.objectMapper = objectMapper;
         this.familyMemberService = familyMemberService;
+        this.customOfferRepository = customOfferRepository;
         this.bpayMethodCode = bpayMethodCode;
     }
 
@@ -463,6 +468,18 @@ public class BookingPaymentService {
                         paymentMethodCode);
         bookingPaymentRepository.linkBedsToGroupPayment(payment.id(), bedIds);
         return payment;
+    }
+
+    /**
+     * Crée le paiement d'une proposition préparée par un admin (voir CustomOfferService, migration
+     * V69) : plan FULL, sans réduction (le montant de la proposition est déjà le prix final),
+     * aucune chambre ni lit — la proposition est reliée au paiement de son côté
+     * (custom_offer.booking_payment_id). pkg : départ de la proposition, null s'il n'y en a pas.
+     */
+    public BookingPayment createCustomOfferPaymentPlan(
+            BigDecimal amount, OmraPackage pkg, UUID userId, String paymentMethodCode) {
+        return createPaymentPlan(
+                null, null, null, PaymentPlan.FULL, amount, pkg, userId, paymentMethodCode);
     }
 
     /**
@@ -799,6 +816,7 @@ public class BookingPaymentService {
         }
         notifyPaymentOutcome(confirmed, PaymentStatus.CONFIRMED);
         familyMemberService.activateForPayment(confirmed.id());
+        customOfferRepository.markPaidByPaymentId(confirmed.id());
         invoiceService.generateIfFullyPaid(confirmed.id());
         // Relit l'état : generateIfFullyPaid peut avoir renseigné invoice_key/invoice_number à
         // l'instant (voir carte "Facture panel admin") — la réponse de cette route doit permettre
@@ -881,6 +899,7 @@ public class BookingPaymentService {
         }
         notifyPaymentOutcome(confirmed.get(), PaymentStatus.CONFIRMED);
         familyMemberService.activateForPayment(paymentId);
+        customOfferRepository.markPaidByPaymentId(paymentId);
         invoiceService.generateIfFullyPaid(paymentId);
     }
 
@@ -1131,6 +1150,10 @@ public class BookingPaymentService {
                     .map(vip -> "Offre VIP - " + packageLabel(vip.packageId()))
                     .orElse(null);
         }
+        Optional<CustomOffer> customOffer = customOfferRepository.findByPaymentId(payment.id());
+        if (customOffer.isPresent()) {
+            return "Proposition : " + customOffer.get().title();
+        }
         // Groupe de chambres (V43), de lits (V62), ou les deux pour la composition d'une famille.
         List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
         List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
@@ -1208,6 +1231,7 @@ public class BookingPaymentService {
         // paiement est confirmé, supprimés s'il a échoué.
         if (newStatus == PaymentStatus.CONFIRMED) {
             familyMemberService.activateForPayment(payment.id());
+            customOfferRepository.markPaidByPaymentId(payment.id());
         } else {
             familyMemberService.discardForPayment(payment.id());
         }
@@ -1443,6 +1467,11 @@ public class BookingPaymentService {
                     .findFirst()
                     .map(VipRequest::userId)
                     .orElse(null);
+        }
+        // Proposition préparée par un admin (voir migration V69) : ni chambre ni lit.
+        Optional<CustomOffer> customOffer = customOfferRepository.findByPaymentId(payment.id());
+        if (customOffer.isPresent()) {
+            return customOffer.get().userId();
         }
         // Groupe de lits (voir migration V62) : tous réservés par le même utilisateur (voir
         // RoomService.reserveOfferBeds).

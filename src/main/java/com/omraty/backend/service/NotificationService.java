@@ -9,6 +9,7 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.DeviceTokenRepository;
 import com.omraty.backend.repository.NotificationRepository;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +60,32 @@ public class NotificationService {
      * individuelle, silencieuse si pas de jeton enregistré ou FCM non configuré). Retourne le
      * nombre de destinataires, pour confirmation côté admin.
      */
+    /**
+     * Notification « avec action » (voir Notification, migration V69) : comme {@link #create},
+     * l'action et sa cible étant aussi envoyées dans le push pour que l'app l'ouvre quand on le
+     * touche.
+     */
+    @Transactional
+    public Notification create(
+            UUID userId, String title, String message, String action, long actionTargetId) {
+        Notification notification =
+                notificationRepository.insert(userId, title, message, action, actionTargetId);
+        deviceTokenRepository
+                .findByUserId(userId)
+                .ifPresent(
+                        token ->
+                                pushSender.send(
+                                        token.fcmToken(),
+                                        title,
+                                        message,
+                                        Map.of(
+                                                "action",
+                                                action,
+                                                "actionTargetId",
+                                                String.valueOf(actionTargetId))));
+        return notification;
+    }
+
     @Transactional
     public int broadcastToAllUsers(String title, String message) {
         List<UUID> userIds = authRepository.findAllActiveUserIds();
