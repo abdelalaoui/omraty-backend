@@ -6,6 +6,8 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,8 @@ import org.springframework.web.multipart.MultipartFile;
         havingValue = "local",
         matchIfMissing = true)
 public class LocalFileStorageService implements FileStorageService {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalFileStorageService.class);
 
     private final Path rootDir;
     private final String baseUrl;
@@ -64,6 +68,24 @@ public class LocalFileStorageService implements FileStorageService {
                     "Échec de l'enregistrement du fichier", e);
         }
         return baseUrl + "/" + subDir + "/" + storedFilename;
+    }
+
+    @Override
+    public void delete(String key) {
+        // key = baseUrl + "/" + subDir + "/" + filename (voir store) : on ne supprime que sous
+        // rootDir.
+        if (key == null || !key.startsWith(baseUrl + "/")) {
+            return;
+        }
+        Path target = rootDir.resolve(key.substring(baseUrl.length() + 1)).normalize();
+        if (!target.startsWith(rootDir)) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException e) {
+            log.warn("Échec de la suppression du fichier {}", target, e);
+        }
     }
 
     @Override

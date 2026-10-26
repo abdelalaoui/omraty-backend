@@ -39,6 +39,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class RoomServiceTest {
@@ -66,6 +68,7 @@ class RoomServiceTest {
     @Mock private AuthRepository authRepository;
     @Mock private PromoPackageService promoPackageService;
     @Mock private OfferFormulaService offerFormulaService;
+    @Mock private FamilyMemberService familyMemberService;
 
     private RoomService roomService() {
         return new RoomService(
@@ -76,7 +79,8 @@ class RoomServiceTest {
                 bookingPaymentService,
                 authRepository,
                 promoPackageService,
-                offerFormulaService);
+                offerFormulaService,
+                familyMemberService);
     }
 
     @Test
@@ -436,12 +440,48 @@ class RoomServiceTest {
                                 1L,
                                 USER_ID,
                                 List.of(new FamilyItem(2L, 1), new FamilyItem(5L, 2)),
+                                null,
+                                null,
                                 "MOOV",
                                 null,
                                 null,
                                 null);
 
         assertThat(result).isEqualTo(PAYMENT_STUB);
+    }
+
+    @Test
+    void reserveOfferFamily_withMembers_validatesThemFirstThenAttachesThemToThePayment() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(0);
+        when(offerFormulaService.resolveFamilyFormula(1L, 2L))
+                .thenReturn(new PricedOfferFormula(familyCard(2L, 2), new BigDecimal("150000")));
+        when(roomRepository.insert(2, 1L, 2, 2, USER_ID))
+                .thenReturn(new Room(40L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now()));
+        when(bookingPaymentService.createOfferFamilyGroupPaymentPlan(
+                        List.of(40L), List.of(), new BigDecimal("150000"), pkg, USER_ID, null))
+                .thenReturn(PAYMENT_STUB);
+        when(bookingPaymentService.attachAcceptedTerms(PAYMENT_STUB, null, null, null))
+                .thenReturn(PAYMENT_STUB);
+        List<String> nnis = List.of("2222222222");
+        List<MultipartFile> photos =
+                List.of(new MockMultipartFile("photo", "id.jpg", "image/jpeg", new byte[] {1}));
+
+        roomService()
+                .reserveOfferFamily(
+                        1L,
+                        USER_ID,
+                        List.of(new FamilyItem(2L, 1)),
+                        nnis,
+                        photos,
+                        null,
+                        null,
+                        null,
+                        null);
+
+        verify(familyMemberService).validateNnis(USER_ID, nnis);
+        verify(familyMemberService).addMembersForPayment(USER_ID, 1L, nnis, photos);
     }
 
     @Test
@@ -455,6 +495,8 @@ class RoomServiceTest {
                                                 List.of(
                                                         new FamilyItem(2L, 1),
                                                         new FamilyItem(2L, 1)),
+                                                null,
+                                                null,
                                                 null,
                                                 null,
                                                 null,
@@ -479,6 +521,8 @@ class RoomServiceTest {
                                                 1L,
                                                 USER_ID,
                                                 List.of(new FamilyItem(3L, 1)),
+                                                null,
+                                                null,
                                                 null,
                                                 null,
                                                 null,

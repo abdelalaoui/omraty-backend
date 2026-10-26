@@ -24,6 +24,7 @@ public class PaymentExpirationService {
 
     private final BookingPaymentRepository bookingPaymentRepository;
     private final RoomService roomService;
+    private final FamilyMemberService familyMemberService;
 
     // Auto-référence (via le proxy Spring, pas "this") pour que expireAndRelease s'exécute dans
     // une vraie transaction : un appel this.expireAndRelease(...) depuis expireOverduePayments()
@@ -33,9 +34,12 @@ public class PaymentExpirationService {
     private PaymentExpirationService self = this;
 
     public PaymentExpirationService(
-            BookingPaymentRepository bookingPaymentRepository, RoomService roomService) {
+            BookingPaymentRepository bookingPaymentRepository,
+            RoomService roomService,
+            FamilyMemberService familyMemberService) {
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.roomService = roomService;
+        this.familyMemberService = familyMemberService;
     }
 
     @Autowired
@@ -101,6 +105,9 @@ public class PaymentExpirationService {
                                 roomService.releaseGroupBedReservation(
                                         bookingPaymentRepository.findGroupBedIds(payment.id()));
                             }
+                            // Membres de famille envoyés avec cette réservation non payée (voir
+                            // migration V67) : supprimés avec leurs photos.
+                            familyMemberService.discardForPayment(payment.id());
                             return true;
                         })
                 .orElse(false);

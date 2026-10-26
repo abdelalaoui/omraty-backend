@@ -153,7 +153,13 @@ class UserServiceTest {
                 .thenReturn(
                         Optional.of(
                                 new FamilyMember(
-                                        1L, UUID.randomUUID(), NNI, "identity/m.jpg", true, null)));
+                                        1L,
+                                        UUID.randomUUID(),
+                                        NNI,
+                                        "identity/m.jpg",
+                                        true,
+                                        null,
+                                        null)));
 
         assertThatThrownBy(
                         () -> userService.updateIdentity(user.id(), NNI, validPhoto(), Gender.MALE))

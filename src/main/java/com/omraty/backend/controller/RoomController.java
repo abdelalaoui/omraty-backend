@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,7 +33,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Réservation des chambres/lits d'un package (voir RoomService). Accessible à tout utilisateur
@@ -165,12 +168,19 @@ public class RoomController {
 
     /**
      * Réserve la composition choisie par une famille (chambres entières et lits de l'offre) avec un
-     * seul paiement complet (voir RoomService.reserveOfferFamily).
+     * seul paiement complet (voir RoomService.reserveOfferFamily). Multipart : la réservation en
+     * JSON (partie « reservation ») et les membres de la famille (NNI + photo).
      */
-    @PostMapping("/rooms/offer/family/reserve")
+    @PostMapping(
+            value = "/rooms/offer/family/reserve",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<PaymentResponse> reserveOfferFamily(
             @AuthenticationPrincipal UUID userId,
-            @Valid @RequestBody ReserveOfferFamilyRequest request,
+            @Valid @RequestPart("reservation") ReserveOfferFamilyRequest request,
+            // Un champ « nni » et un champ « photo » par membre (hors l'utilisateur), dans le
+            // même ordre ; absents pour une famille sans autre membre enregistré.
+            @RequestParam(value = "nni", required = false) List<String> memberNnis,
+            @RequestParam(value = "photo", required = false) List<MultipartFile> memberPhotos,
             @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
                     String acceptLanguage) {
         BookingPayment payment =
@@ -180,6 +190,8 @@ public class RoomController {
                         request.items().stream()
                                 .map(item -> new FamilyItem(item.formulaId(), item.quantity()))
                                 .toList(),
+                        memberNnis,
+                        memberPhotos,
                         request.paymentMethod(),
                         request.acceptedTermsVersion(),
                         request.acceptedTermIds(),

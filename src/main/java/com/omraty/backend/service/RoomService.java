@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Réservation des chambres/lits, rattachées à un package (voir OmraPackage.groupSize, plafond
@@ -63,6 +64,7 @@ public class RoomService {
     private final AuthRepository authRepository;
     private final PromoPackageService promoPackageService;
     private final OfferFormulaService offerFormulaService;
+    private final FamilyMemberService familyMemberService;
 
     public RoomService(
             RoomRepository roomRepository,
@@ -72,7 +74,8 @@ public class RoomService {
             BookingPaymentService bookingPaymentService,
             AuthRepository authRepository,
             PromoPackageService promoPackageService,
-            OfferFormulaService offerFormulaService) {
+            OfferFormulaService offerFormulaService,
+            FamilyMemberService familyMemberService) {
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
         this.packageRepository = packageRepository;
@@ -81,6 +84,7 @@ public class RoomService {
         this.authRepository = authRepository;
         this.promoPackageService = promoPackageService;
         this.offerFormulaService = offerFormulaService;
+        this.familyMemberService = familyMemberService;
     }
 
     /** État actuel des lits (disponibles/réservés), groupés par chambre, pour un package. */
@@ -769,6 +773,10 @@ public class RoomService {
      * toutes les places ; les lits sont gardés ensemble (voir {@link #reserveBedsTogether}). Que la
      * composition loge toute la famille est vérifié par l'app, qui seule connaît sa taille.
      *
+     * <p>memberNnis/memberPhotos : NNI et photo de chaque membre (hors l'utilisateur), vérifiés
+     * avant toute réservation puis enregistrés en attente de ce paiement — activés à sa
+     * confirmation, supprimés s'il expire (voir FamilyMemberService, migration V67).
+     *
      * @throws RoomException.InvalidRoomTypeException si la composition est vide, contient une
      *     quantité non positive ou deux fois la même carte.
      * @throws RoomException.GroupSizeExceededException si le groupSize du package serait dépassé.
@@ -778,10 +786,13 @@ public class RoomService {
             long packageId,
             UUID userId,
             List<FamilyItem> items,
+            List<String> memberNnis,
+            List<MultipartFile> memberPhotos,
             String paymentMethodCode,
             String acceptedTermsVersion,
             List<Long> acceptedTermIds,
             String acceptLanguage) {
+        boolean hasMembers = memberNnis != null && !memberNnis.isEmpty();
         if (items == null
                 || items.isEmpty()
                 || items.stream().anyMatch(item -> item.quantity() <= 0)
@@ -789,6 +800,11 @@ public class RoomService {
             throw new RoomException.InvalidRoomTypeException(
                     "Composition invalide : au moins une carte, chacune une seule fois avec une"
                             + " quantité positive");
+        }
+        // NNI des membres vérifiés avant de réserver quoi que ce soit (doublon, NNI déjà
+        // utilisé...).
+        if (hasMembers) {
+            familyMemberService.validateNnis(userId, memberNnis);
         }
         OmraPackage pkg = lockPackageOrThrow(packageId);
         List<PricedOfferFormula> priced =
@@ -830,6 +846,10 @@ public class RoomService {
         BookingPayment payment =
                 bookingPaymentService.createOfferFamilyGroupPaymentPlan(
                         roomIds, bedIds, total, pkg, userId, paymentMethodCode);
+        if (hasMembers) {
+            familyMemberService.addMembersForPayment(
+                    userId, payment.id(), memberNnis, memberPhotos);
+        }
         return bookingPaymentService.attachAcceptedTerms(
                 payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
     }
