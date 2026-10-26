@@ -5,6 +5,7 @@ import com.omraty.backend.entities.enums.Gender;
 import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.exception.UserException;
 import com.omraty.backend.repository.AuthRepository;
+import com.omraty.backend.repository.FamilyMemberRepository;
 import com.omraty.backend.storage.FileStorageService;
 import java.util.List;
 import java.util.Set;
@@ -23,14 +24,17 @@ public class UserService {
     private final AuthRepository authRepository;
     private final FileStorageService fileStorageService;
     private final NotificationService notificationService;
+    private final FamilyMemberRepository familyMemberRepository;
 
     public UserService(
             AuthRepository authRepository,
             FileStorageService fileStorageService,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            FamilyMemberRepository familyMemberRepository) {
         this.authRepository = authRepository;
         this.fileStorageService = fileStorageService;
         this.notificationService = notificationService;
+        this.familyMemberRepository = familyMemberRepository;
     }
 
     /**
@@ -62,7 +66,8 @@ public class UserService {
             throw new UserException.InvalidIdentityRequestException(
                     "Le genre est requis (MALE ou FEMALE)");
         }
-        validatePhoto(photo);
+        validateIdentityPhoto(photo);
+        ensureNniNotUsedByOthers(nni.trim(), userId);
 
         String photoUrl = fileStorageService.store(photo, IDENTITY_PHOTO_SUBDIR);
 
@@ -107,7 +112,7 @@ public class UserService {
         }
         String photoUrl = null;
         if (hasPhoto) {
-            validatePhoto(photo);
+            validateIdentityPhoto(photo);
             photoUrl = fileStorageService.store(photo, IDENTITY_PHOTO_SUBDIR);
         }
         return authRepository
@@ -159,7 +164,23 @@ public class UserService {
         if (updated == 0) {
             throw new UserException.UserNotFoundException("Utilisateur introuvable");
         }
+        // Données personnelles de tiers (NNI/photos des membres de famille, voir migration V65) :
+        // rien ne les référence, elles sont supprimées avec le compte plutôt qu'anonymisées.
+        familyMemberRepository.deleteByUserId(userId);
         authRepository.revokeAllRefreshTokensForUser(userId);
+    }
+
+    /**
+     * NNI unique partout (voir vue draw_participant, migration V65) : ni un autre compte actif, ni
+     * un membre de famille ne doit déjà l'avoir — une personne ne participe qu'une fois à la
+     * tombola.
+     */
+    private void ensureNniNotUsedByOthers(String nni, UUID userId) {
+        if (authRepository.existsOtherActiveUserWithNni(nni, userId)
+                || familyMemberRepository.findByNni(nni).isPresent()) {
+            throw new UserException.NniAlreadyUsedException(
+                    "Ce NNI est déjà enregistré pour une autre personne");
+        }
     }
 
     private void requirePendingIdentity(UUID userId) {
@@ -176,7 +197,11 @@ public class UserService {
         }
     }
 
-    private void validatePhoto(MultipartFile photo) {
+    /**
+     * Photo de pièce d'identité (JPEG/PNG, 5 Mo max) — partagée avec FamilyMemberService pour les
+     * membres de famille.
+     */
+    static void validateIdentityPhoto(MultipartFile photo) {
         if (photo == null || photo.isEmpty()) {
             throw new UserException.InvalidIdentityRequestException(
                     "La photo d'identité est requise");

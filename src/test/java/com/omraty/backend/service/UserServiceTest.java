@@ -10,11 +10,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.omraty.backend.entities.FamilyMember;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.enums.Gender;
 import com.omraty.backend.exception.AuthException;
 import com.omraty.backend.exception.UserException;
 import com.omraty.backend.repository.AuthRepository;
+import com.omraty.backend.repository.FamilyMemberRepository;
 import com.omraty.backend.storage.FileStorageService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,13 +38,19 @@ class UserServiceTest {
     @Mock private AuthRepository authRepository;
     @Mock private FileStorageService fileStorageService;
     @Mock private NotificationService notificationService;
+    @Mock private FamilyMemberRepository familyMemberRepository;
 
     private UserService userService;
     private User user;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(authRepository, fileStorageService, notificationService);
+        userService =
+                new UserService(
+                        authRepository,
+                        fileStorageService,
+                        notificationService,
+                        familyMemberRepository);
         user =
                 new User(
                         UUID.randomUUID(),
@@ -135,6 +143,32 @@ class UserServiceTest {
     void updateIdentity_withNullGender_throwsException() {
         assertThatThrownBy(() -> userService.updateIdentity(user.id(), NNI, validPhoto(), null))
                 .isInstanceOf(UserException.InvalidIdentityRequestException.class);
+
+        verify_neverStoresOrUpdates();
+    }
+
+    @Test
+    void updateIdentity_withNniOfAFamilyMember_isRefusedBeforeStoringThePhoto() {
+        when(familyMemberRepository.findByNni(NNI))
+                .thenReturn(
+                        Optional.of(
+                                new FamilyMember(
+                                        1L, UUID.randomUUID(), NNI, "identity/m.jpg", true, null)));
+
+        assertThatThrownBy(
+                        () -> userService.updateIdentity(user.id(), NNI, validPhoto(), Gender.MALE))
+                .isInstanceOf(UserException.NniAlreadyUsedException.class);
+
+        verify_neverStoresOrUpdates();
+    }
+
+    @Test
+    void updateIdentity_withNniOfAnotherAccount_isRefused() {
+        when(authRepository.existsOtherActiveUserWithNni(NNI, user.id())).thenReturn(true);
+
+        assertThatThrownBy(
+                        () -> userService.updateIdentity(user.id(), NNI, validPhoto(), Gender.MALE))
+                .isInstanceOf(UserException.NniAlreadyUsedException.class);
 
         verify_neverStoresOrUpdates();
     }

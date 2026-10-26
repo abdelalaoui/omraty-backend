@@ -13,6 +13,12 @@ final class UsersTable {
 
     static final String SELECT_USER_BY_ID = "SELECT " + USER_COLUMNS + " FROM users WHERE id = ?";
 
+    // NNI unique parmi les comptes actifs (voir UserService.updateIdentity, FamilyMemberService) :
+    // une personne ne participe qu'une fois à la tombola (voir vue draw_participant, V65).
+    static final String EXISTS_OTHER_ACTIVE_USER_WITH_NNI =
+            "SELECT EXISTS (SELECT 1 FROM users WHERE nni = ? AND id <> ? AND deleted_at IS"
+                    + " NULL)";
+
     static final String SELECT_USERS_BY_IDS =
             "SELECT " + USER_COLUMNS + " FROM users WHERE id = ANY (?)";
 

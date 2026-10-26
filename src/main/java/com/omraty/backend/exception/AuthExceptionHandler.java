@@ -82,6 +82,12 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(UserException.NniAlreadyUsedException.class)
+    public ResponseEntity<ErrorResponse> handleNniAlreadyUsed(
+            UserException.NniAlreadyUsedException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(UserException.IdentityNotPendingException.class)
     public ResponseEntity<ErrorResponse> handleIdentityNotPending(
             UserException.IdentityNotPendingException e) {

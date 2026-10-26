@@ -33,4 +33,14 @@ public class UserException extends RuntimeException {
             super(message);
         }
     }
+
+    /**
+     * NNI déjà enregistré pour une autre personne (compte ou membre de famille) : une personne ne
+     * participe qu'une fois à la tombola (voir vue draw_participant, migration V65).
+     */
+    public static class NniAlreadyUsedException extends UserException {
+        public NniAlreadyUsedException(String message) {
+            super(message);
+        }
+    }
 }
