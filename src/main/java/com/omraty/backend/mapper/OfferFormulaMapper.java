@@ -4,7 +4,9 @@ import com.omraty.backend.dto.response.AdminOfferFormulaResponse;
 import com.omraty.backend.dto.response.OfferFormulaResponse;
 import com.omraty.backend.entities.OfferFormula;
 import com.omraty.backend.service.OfferFormulaService.PricedOfferFormula;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 public final class OfferFormulaMapper {
 
@@ -28,7 +30,8 @@ public final class OfferFormulaMapper {
                 .toList();
     }
 
-    public static AdminOfferFormulaResponse toAdminResponse(OfferFormula formula) {
+    public static AdminOfferFormulaResponse toAdminResponse(
+            OfferFormula formula, Map<Long, BigDecimal> prices) {
         return new AdminOfferFormulaResponse(
                 formula.id(),
                 formula.party(),
@@ -38,11 +41,20 @@ public final class OfferFormulaMapper {
                 formula.labelEn(),
                 formula.labelAr(),
                 formula.displayOrder(),
-                formula.visible());
+                formula.visible(),
+                prices);
     }
 
-    public static List<AdminOfferFormulaResponse> toAdminResponseList(List<OfferFormula> formulas) {
-        return formulas.stream().map(OfferFormulaMapper::toAdminResponse).toList();
+    /** pricesByFormula : grille complète, voir OfferFormulaService.getAllPrices. */
+    public static List<AdminOfferFormulaResponse> toAdminResponseList(
+            List<OfferFormula> formulas, Map<Long, Map<Long, BigDecimal>> pricesByFormula) {
+        return formulas.stream()
+                .map(
+                        formula ->
+                                toAdminResponse(
+                                        formula,
+                                        pricesByFormula.getOrDefault(formula.id(), Map.of())))
+                .toList();
     }
 
     private static String labelFor(OfferFormula formula, String language) {

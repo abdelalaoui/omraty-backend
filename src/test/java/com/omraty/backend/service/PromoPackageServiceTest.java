@@ -2,8 +2,6 @@ package com.omraty.backend.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -55,36 +53,16 @@ class PromoPackageServiceTest {
                                 LocalDateTime.now()));
     }
 
-    private PromoPackage promo(long packageId, String bedPrice, boolean visible) {
+    private PromoPackage promo(long packageId, boolean visible) {
         return new PromoPackage(
                 packageId,
                 "Promo " + packageId,
                 40,
                 LocalDate.of(2026, 11, 1),
                 LocalDate.of(2026, 11, 15),
-                bedPrice == null ? null : new BigDecimal(bedPrice),
-                null,
-                null,
-                null,
+                new BigDecimal("35000"),
                 visible,
-                0,
-                null);
-    }
-
-    private PromoPackage withPrivateRoomPrice(PromoPackage promo, String privateRoomPrice) {
-        return new PromoPackage(
-                promo.packageId(),
-                promo.label(),
-                promo.groupSize(),
-                promo.startDate(),
-                promo.endDate(),
-                promo.bedPrice(),
-                new BigDecimal(privateRoomPrice),
-                null,
-                null,
-                promo.visible(),
-                promo.displayOrder(),
-                promo.priceText());
+                0);
     }
 
     @Test
@@ -97,7 +75,7 @@ class PromoPackageServiceTest {
 
     @Test
     void getBookablePackages_whenOfferEnabled_returnsBookablePackages() {
-        when(packagePromoRepository.findBookable()).thenReturn(List.of(promo(1L, "30000", true)));
+        when(packagePromoRepository.findBookable()).thenReturn(List.of(promo(1L, true)));
 
         assertThat(promoPackageService.getBookablePackages()).hasSize(1);
     }
@@ -118,89 +96,33 @@ class PromoPackageServiceTest {
     }
 
     @Test
-    void resolveBedPrice_returnsThePackageOwnPrice() {
-        when(packagePromoRepository.findByPackageId(1L))
-                .thenReturn(Optional.of(promo(1L, "35000", true)));
+    void ensureBookable_whenVisiblePromo_doesNothing() {
+        when(packagePromoRepository.findByPackageId(1L)).thenReturn(Optional.of(promo(1L, true)));
 
-        assertThat(promoPackageService.resolveBedPrice(1L)).isEqualByComparingTo("35000");
+        promoPackageService.ensureBookable(1L);
     }
 
     @Test
-    void resolvePrivateRoomPrice_returnsThePackagePrivateRoomPrice() {
-        PromoPackage base = promo(1L, "35000", true);
-        when(packagePromoRepository.findByPackageId(1L))
-                .thenReturn(Optional.of(withPrivateRoomPrice(base, "80000")));
-
-        assertThat(promoPackageService.resolvePrivateRoomPrice(1L)).isEqualByComparingTo("80000");
-    }
-
-    @Test
-    void resolvePrivateRoomPrice_whenNotSetByAdmin_throwsPriceNotConfigured() {
-        when(packagePromoRepository.findByPackageId(1L))
-                .thenReturn(Optional.of(promo(1L, "35000", true)));
-
-        assertThatThrownBy(() -> promoPackageService.resolvePrivateRoomPrice(1L))
-                .isInstanceOf(BookingPaymentException.PriceNotConfiguredException.class);
-    }
-
-    @Test
-    void upsertPromoPackage_withPrivateRoomPrice_storesIt() {
-        when(packageRepository.findById(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
-        when(packagePromoRepository.isPromo(1L)).thenReturn(true);
-        when(packagePromoRepository.findByPackageId(1L))
-                .thenReturn(Optional.of(promo(1L, "35000", true)));
-
-        promoPackageService.upsertPromoPackage(
-                1L, null, null, null, null, new BigDecimal("80000"), null, null);
-
-        verify(packagePromoRepository).upsertPrivateRoomPrice(1L, new BigDecimal("80000"));
-    }
-
-    @Test
-    void upsertPromoPackage_withNonPositivePrivateRoomPrice_isRefused() {
-        when(packageRepository.findById(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
-        when(packagePromoRepository.isPromo(1L)).thenReturn(true);
-
-        assertThatThrownBy(
-                        () ->
-                                promoPackageService.upsertPromoPackage(
-                                        1L, null, null, null, null, BigDecimal.ZERO, null, null))
-                .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
-    }
-
-    @Test
-    void resolveBedPrice_whenOfferDisabled_throwsPriceNotConfigured() {
+    void ensureBookable_whenOfferDisabled_throwsPriceNotConfigured() {
         offerEnabled(false);
 
-        assertThatThrownBy(() -> promoPackageService.resolveBedPrice(1L))
+        assertThatThrownBy(() -> promoPackageService.ensureBookable(1L))
                 .isInstanceOf(BookingPaymentException.PriceNotConfiguredException.class);
     }
 
     @Test
-    void resolveBedPrice_whenPackageNotInOffer_throwsNotInOffer() {
+    void ensureBookable_whenPackageNotInOffer_throwsNotInOffer() {
         when(packagePromoRepository.findByPackageId(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> promoPackageService.resolveBedPrice(1L))
+        assertThatThrownBy(() -> promoPackageService.ensureBookable(1L))
                 .isInstanceOf(PromoPackageException.PackageNotInOfferException.class);
     }
 
     @Test
-    void resolveBedPrice_whenPackageHidden_throwsNotInOffer() {
-        when(packagePromoRepository.findByPackageId(1L))
-                .thenReturn(Optional.of(promo(1L, "35000", false)));
+    void ensureBookable_whenPackageHidden_throwsNotInOffer() {
+        when(packagePromoRepository.findByPackageId(1L)).thenReturn(Optional.of(promo(1L, false)));
 
-        assertThatThrownBy(() -> promoPackageService.resolveBedPrice(1L))
-                .isInstanceOf(PromoPackageException.PackageNotInOfferException.class);
-    }
-
-    @Test
-    void resolveBedPrice_whenPriceMissing_throwsNotInOffer() {
-        when(packagePromoRepository.findByPackageId(1L))
-                .thenReturn(Optional.of(promo(1L, null, true)));
-
-        assertThatThrownBy(() -> promoPackageService.resolveBedPrice(1L))
+        assertThatThrownBy(() -> promoPackageService.ensureBookable(1L))
                 .isInstanceOf(PromoPackageException.PackageNotInOfferException.class);
     }
 
@@ -223,65 +145,20 @@ class PromoPackageServiceTest {
     void upsertPromoPackage_whenPackageMissing_throwsNotFound() {
         when(packageRepository.findById(9L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(
-                        () ->
-                                promoPackageService.upsertPromoPackage(
-                                        9L, new BigDecimal("30000"), null, null, null))
+        assertThatThrownBy(() -> promoPackageService.upsertPromoPackage(9L, null, null))
                 .isInstanceOf(PackageException.PackageNotFoundException.class);
     }
 
     @Test
-    void upsertPromoPackage_addingWithoutPrice_throwsInvalidRequest() {
+    void upsertPromoPackage_addingWithoutAnyPrice_storesThePromo() {
         when(packageRepository.findById(1L))
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
-        when(packagePromoRepository.isPromo(1L)).thenReturn(false);
+        when(packagePromoRepository.findByPackageId(1L)).thenReturn(Optional.of(promo(1L, true)));
 
-        assertThatThrownBy(() -> promoPackageService.upsertPromoPackage(1L, null, null, null, null))
-                .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
-        verify(packagePromoRepository, never()).upsertPromo(anyLong(), any(), any(), any());
-    }
+        PromoPackage result = promoPackageService.upsertPromoPackage(1L, null, 2);
 
-    @Test
-    void upsertPromoPackage_withNonPositivePrice_throwsInvalidRequest() {
-        when(packageRepository.findById(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
-        when(packagePromoRepository.isPromo(1L)).thenReturn(true);
-
-        assertThatThrownBy(
-                        () ->
-                                promoPackageService.upsertPromoPackage(
-                                        1L, BigDecimal.ZERO, null, null, null))
-                .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
-    }
-
-    @Test
-    void upsertPromoPackage_addingWithPrice_storesPromoAndPrice() {
-        when(packageRepository.findById(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
-        when(packagePromoRepository.isPromo(1L)).thenReturn(false);
-        when(packagePromoRepository.findByPackageId(1L))
-                .thenReturn(Optional.of(promo(1L, "30000", true)));
-
-        PromoPackage result =
-                promoPackageService.upsertPromoPackage(
-                        1L, new BigDecimal("30000"), null, 2, "  ثلاثون ألف أوقية ");
-
-        assertThat(result.bedPrice()).isEqualByComparingTo("30000");
-        verify(packagePromoRepository).upsertPromo(1L, null, 2, "ثلاثون ألف أوقية");
-        verify(packagePromoRepository).upsertBedPrice(1L, new BigDecimal("30000"));
-    }
-
-    @Test
-    void upsertPromoPackage_withTooLongPriceText_throwsInvalidRequest() {
-        when(packageRepository.findById(1L))
-                .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
-        when(packagePromoRepository.isPromo(1L)).thenReturn(true);
-
-        assertThatThrownBy(
-                        () ->
-                                promoPackageService.upsertPromoPackage(
-                                        1L, null, null, null, "أ".repeat(201)))
-                .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
+        assertThat(result.packageId()).isEqualTo(1L);
+        verify(packagePromoRepository).upsertPromo(1L, null, 2);
     }
 
     @Test

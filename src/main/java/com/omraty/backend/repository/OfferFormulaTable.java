@@ -41,4 +41,22 @@ final class OfferFormulaTable {
                     + OFFER_FORMULA_COLUMNS;
 
     static final String DELETE = "DELETE FROM offer_formula WHERE id = ?";
+
+    // Grille des prix carte × départ (voir migration V66).
+    static final String SELECT_PRICES_BY_PACKAGE =
+            "SELECT formula_id, price FROM offer_formula_price WHERE package_id = ?";
+
+    static final String SELECT_ALL_PRICES =
+            "SELECT formula_id, package_id, price FROM offer_formula_price";
+
+    static final String SELECT_PRICES_BY_FORMULA =
+            "SELECT package_id, price FROM offer_formula_price WHERE formula_id = ?";
+
+    static final String UPSERT_PRICE =
+            "INSERT INTO offer_formula_price (formula_id, package_id, price) VALUES (?, ?, ?)"
+                    + " ON CONFLICT (formula_id, package_id) DO UPDATE SET price ="
+                    + " EXCLUDED.price";
+
+    static final String DELETE_PRICE =
+            "DELETE FROM offer_formula_price WHERE formula_id = ? AND package_id = ?";
 }

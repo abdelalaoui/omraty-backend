@@ -4,45 +4,38 @@ final class PackagePromoTable {
 
     private PackagePromoTable() {}
 
-    /** Prix du lit en chambre de 5 : seul type proposé en promo pour l'instant (voir V57). */
-    static final int BED_TYPE = 5;
+    // Prix d'un lit en chambre de 5 pour ce départ : celui de la carte SHARED_BED visible de la
+    // grille offer_formula_price (voir migration V66). Seulement pour les versions de l'app
+    // antérieures aux cartes de l'offre, qui l'affichent sur le package et en ont besoin pour
+    // ouvrir l'offre (voir PromoPackageController, BannerController).
+    private static final String SHARED_BED_PRICE =
+            "(SELECT ofp.price FROM offer_formula_price ofp JOIN offer_formula f ON f.id ="
+                    + " ofp.formula_id WHERE ofp.package_id = pp.package_id AND f.action ="
+                    + " 'SHARED_BED' AND f.visible = TRUE ORDER BY f.display_order ASC, f.id ASC"
+                    + " LIMIT 1)";
 
-    /** Prix de la chambre privée d'1 place (voir migration V63), optionnel. */
-    static final int PRIVATE_ROOM_TYPE = 1;
-
-    /** Prix des chambres de famille de 3 et 2 places (cartes FAMILY_ROOM, voir V64), optionnels. */
-    static final int ROOM_3_TYPE = 3;
-
-    static final int ROOM_2_TYPE = 2;
+    // Au moins une carte visible avec un prix pour ce départ (ou une carte CONTACT, sans prix) :
+    // sinon l'écran « خدماتنا » serait vide.
+    private static final String HAS_OFFER_CARD =
+            "EXISTS (SELECT 1 FROM offer_formula f WHERE f.visible = TRUE AND (f.action ="
+                    + " 'CONTACT' OR EXISTS (SELECT 1 FROM offer_formula_price ofp WHERE"
+                    + " ofp.formula_id = f.id AND ofp.package_id = pp.package_id)))";
 
     private static final String PROMO_PACKAGE_SELECT =
-            "SELECT p.id AS package_id, p.label, p.group_size, p.start_date, p.end_date,"
-                    + " pr.price AS bed_price, prp.price AS private_room_price, pr3.price AS"
-                    + " room3_price, pr2.price AS room2_price, pp.visible, pp.display_order,"
-                    + " pp.price_text"
+            "SELECT p.id AS package_id, p.label, p.group_size, p.start_date, p.end_date, "
+                    + SHARED_BED_PRICE
+                    + " AS bed_price, pp.visible, pp.display_order"
                     + " FROM package_promo pp"
-                    + " JOIN package p ON p.id = pp.package_id"
-                    + " LEFT JOIN package_promo_price pr ON pr.package_id = pp.package_id"
-                    + " AND pr.type = "
-                    + BED_TYPE
-                    + " LEFT JOIN package_promo_price prp ON prp.package_id = pp.package_id"
-                    + " AND prp.type = "
-                    + PRIVATE_ROOM_TYPE
-                    + " LEFT JOIN package_promo_price pr3 ON pr3.package_id = pp.package_id"
-                    + " AND pr3.type = "
-                    + ROOM_3_TYPE
-                    + " LEFT JOIN package_promo_price pr2 ON pr2.package_id = pp.package_id"
-                    + " AND pr2.type = "
-                    + ROOM_2_TYPE;
+                    + " JOIN package p ON p.id = pp.package_id";
 
     private static final String ORDER =
             " ORDER BY pp.display_order ASC, p.start_date ASC, p.id ASC";
 
     static final String SELECT_ALL = PROMO_PACKAGE_SELECT + ORDER;
 
-    /** Visibles et avec un prix de lit : les seuls réservables depuis la bannière. */
+    /** Visibles et avec au moins une carte proposée : les seuls réservables depuis la bannière. */
     static final String SELECT_BOOKABLE =
-            PROMO_PACKAGE_SELECT + " WHERE pp.visible = TRUE AND pr.price IS NOT NULL" + ORDER;
+            PROMO_PACKAGE_SELECT + " WHERE pp.visible = TRUE AND " + HAS_OFFER_CARD + ORDER;
 
     static final String SELECT_BY_PACKAGE_ID = PROMO_PACKAGE_SELECT + " WHERE pp.package_id = ?";
 
@@ -50,32 +43,17 @@ final class PackagePromoTable {
             "SELECT EXISTS (SELECT 1 FROM package_promo WHERE package_id = ?)";
 
     static final String SELECT_MIN_BOOKABLE_BED_PRICE =
-            "SELECT MIN(pr.price) FROM package_promo pp JOIN package_promo_price pr"
-                    + " ON pr.package_id = pp.package_id AND pr.type = "
-                    + BED_TYPE
-                    + " WHERE pp.visible = TRUE";
+            "SELECT MIN(" + SHARED_BED_PRICE + ") FROM package_promo pp WHERE pp.visible = TRUE";
 
-    // Insère le package dans la promo, ou met à jour visible/display_order/price_text s'il y est
-    // déjà (null = valeur existante, ou valeur par défaut à la création ; price_text "" = effacé).
+    // Insère le package dans la promo, ou met à jour visible/display_order s'il y est déjà (null
+    // = valeur existante, ou valeur par défaut à la création).
     static final String UPSERT_PROMO =
-            "INSERT INTO package_promo (package_id, visible, display_order, price_text)"
-                    + " VALUES (?, COALESCE(?, TRUE), COALESCE(?, 0), NULLIF(?::text, ''))"
+            "INSERT INTO package_promo (package_id, visible, display_order)"
+                    + " VALUES (?, COALESCE(?, TRUE), COALESCE(?, 0))"
                     + " ON CONFLICT (package_id) DO UPDATE SET"
                     + " visible = COALESCE(?, package_promo.visible),"
                     + " display_order = COALESCE(?, package_promo.display_order),"
-                    + " price_text = CASE WHEN ?::text IS NULL THEN package_promo.price_text"
-                    + " ELSE NULLIF(?::text, '') END,"
                     + " updated_at = now()";
-
-    static final String UPSERT_PRICE =
-            "INSERT INTO package_promo_price (package_id, type, price) VALUES (?, ?, ?)"
-                    + " ON CONFLICT (package_id, type) DO UPDATE SET price = EXCLUDED.price";
-
-    // Tous les prix d'un package promo par type de chambre (voir OfferFormulaService : le prix
-    // d'une
-    // carte est celui de sa capacity).
-    static final String SELECT_PRICES_BY_PACKAGE_ID =
-            "SELECT type, price FROM package_promo_price WHERE package_id = ?";
 
     static final String DELETE_PROMO = "DELETE FROM package_promo WHERE package_id = ?";
 }

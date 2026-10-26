@@ -21,4 +21,8 @@ public record ReserveOfferBedRequest(
         // lit, comme avant.
         @Min(value = 1, message = "Au moins un lit doit être réservé")
                 @Max(value = 5, message = "5 lits au maximum (une chambre partagée)")
-                Integer bedCount) {}
+                Integer bedCount,
+        // Optionnel : carte de l'offre choisie dans « خدماتنا » (voir OfferFormulaService), dont
+        // le prix pour ce départ est facturé. Absent (app antérieures) : carte « lit en chambre de
+        // 5 » par défaut.
+        Long formulaId) {}

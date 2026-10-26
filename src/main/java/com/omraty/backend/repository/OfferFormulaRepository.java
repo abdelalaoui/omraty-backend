@@ -3,10 +3,14 @@ package com.omraty.backend.repository;
 import com.omraty.backend.entities.OfferFormula;
 import com.omraty.backend.entities.enums.OfferFormulaAction;
 import com.omraty.backend.entities.enums.OfferParty;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
@@ -100,5 +104,48 @@ public class OfferFormulaRepository {
 
     public boolean deleteById(long id) {
         return jdbcTemplate.update(OfferFormulaTable.DELETE, id) > 0;
+    }
+
+    /** Prix des cartes pour ce départ, indexés par id de carte (voir migration V66). */
+    public Map<Long, BigDecimal> findPricesByPackage(long packageId) {
+        Map<Long, BigDecimal> prices = new HashMap<>();
+        jdbcTemplate.query(
+                OfferFormulaTable.SELECT_PRICES_BY_PACKAGE,
+                (RowCallbackHandler)
+                        rs -> prices.put(rs.getLong("formula_id"), rs.getBigDecimal("price")),
+                packageId);
+        return prices;
+    }
+
+    /** Prix de cette carte par départ, indexés par packageId. */
+    public Map<Long, BigDecimal> findPricesByFormula(long formulaId) {
+        Map<Long, BigDecimal> prices = new HashMap<>();
+        jdbcTemplate.query(
+                OfferFormulaTable.SELECT_PRICES_BY_FORMULA,
+                (RowCallbackHandler)
+                        rs -> prices.put(rs.getLong("package_id"), rs.getBigDecimal("price")),
+                formulaId);
+        return prices;
+    }
+
+    /** Toute la grille, indexée par carte puis par départ (liste de l'admin). */
+    public Map<Long, Map<Long, BigDecimal>> findAllPrices() {
+        Map<Long, Map<Long, BigDecimal>> prices = new HashMap<>();
+        jdbcTemplate.query(
+                OfferFormulaTable.SELECT_ALL_PRICES,
+                (RowCallbackHandler)
+                        rs ->
+                                prices.computeIfAbsent(
+                                                rs.getLong("formula_id"), id -> new HashMap<>())
+                                        .put(rs.getLong("package_id"), rs.getBigDecimal("price")));
+        return prices;
+    }
+
+    public void upsertPrice(long formulaId, long packageId, BigDecimal price) {
+        jdbcTemplate.update(OfferFormulaTable.UPSERT_PRICE, formulaId, packageId, price);
+    }
+
+    public void deletePrice(long formulaId, long packageId) {
+        jdbcTemplate.update(OfferFormulaTable.DELETE_PRICE, formulaId, packageId);
     }
 }

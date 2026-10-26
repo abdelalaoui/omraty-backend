@@ -37,21 +37,14 @@ public class AdminPromoPackageController {
                         .toList());
     }
 
-    /** Ajoute le package à l'offre (bedPrice requis) ou modifie son prix/visibilité/ordre. */
+    /** Ajoute le package à l'offre ou modifie sa visibilité/son ordre. */
     @PutMapping("/{packageId}")
     public ResponseEntity<AdminPromoPackageResponse> upsertPromoPackage(
             @PathVariable long packageId, @RequestBody UpsertPromoPackageRequest request) {
         return ResponseEntity.ok(
                 toResponse(
                         promoPackageService.upsertPromoPackage(
-                                packageId,
-                                request.bedPrice(),
-                                request.visible(),
-                                request.displayOrder(),
-                                request.priceText(),
-                                request.privateRoomPrice(),
-                                request.room3Price(),
-                                request.room2Price())));
+                                packageId, request.visible(), request.displayOrder())));
     }
 
     /** Retire le package de l'offre : il redevient un package Omra ordinaire. */
@@ -68,12 +61,7 @@ public class AdminPromoPackageController {
                 pkg.startDate(),
                 pkg.endDate(),
                 pkg.groupSize(),
-                pkg.bedPrice(),
-                pkg.privateRoomPrice(),
-                pkg.room3Price(),
-                pkg.room2Price(),
                 pkg.visible(),
-                pkg.displayOrder(),
-                pkg.priceText());
+                pkg.displayOrder());
     }
 }

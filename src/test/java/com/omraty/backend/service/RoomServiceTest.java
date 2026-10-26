@@ -13,6 +13,7 @@ import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.User;
+import com.omraty.backend.entities.enums.OfferFormulaAction;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
@@ -60,6 +61,7 @@ class RoomServiceTest {
     @Mock private BookingPaymentService bookingPaymentService;
     @Mock private AuthRepository authRepository;
     @Mock private PromoPackageService promoPackageService;
+    @Mock private OfferFormulaService offerFormulaService;
 
     private RoomService roomService() {
         return new RoomService(
@@ -69,7 +71,8 @@ class RoomServiceTest {
                 new PackageCapacityService(roomRepository),
                 bookingPaymentService,
                 authRepository,
-                promoPackageService);
+                promoPackageService,
+                offerFormulaService);
     }
 
     @Test
@@ -173,7 +176,7 @@ class RoomServiceTest {
         assertThatThrownBy(() -> roomService().reserveOfferBed(1L, USER_ID))
                 .isInstanceOf(RoomException.GroupSizeExceededException.class);
 
-        verify(promoPackageService, never()).resolveBedPrice(anyLong());
+        verify(offerFormulaService, never()).resolvePrice(anyLong(), any(), any(), anyInt());
     }
 
     @Test
@@ -181,7 +184,7 @@ class RoomServiceTest {
         when(packageRepository.findByIdForUpdate(1L))
                 .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 40, null, null)));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(3);
-        when(promoPackageService.resolveBedPrice(1L))
+        when(offerFormulaService.resolvePrice(1L, null, OfferFormulaAction.SHARED_BED, 5))
                 .thenThrow(
                         new BookingPaymentException.PriceNotConfiguredException(
                                 "L'offre spéciale n'est pas active actuellement"));
@@ -197,7 +200,8 @@ class RoomServiceTest {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
         when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(3);
-        when(promoPackageService.resolveBedPrice(1L)).thenReturn(new BigDecimal("45000"));
+        when(offerFormulaService.resolvePrice(1L, null, OfferFormulaAction.SHARED_BED, 5))
+                .thenReturn(new BigDecimal("45000"));
         Room openRoom = new Room(10L, 5, 1L, 5, 3, null, LocalDateTime.now());
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
         Bed freeBed = new Bed(100L, 4, false, 10L, null, null);
@@ -220,7 +224,8 @@ class RoomServiceTest {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
         when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(5);
-        when(promoPackageService.resolveBedPrice(1L)).thenReturn(new BigDecimal("45000"));
+        when(offerFormulaService.resolvePrice(1L, null, OfferFormulaAction.SHARED_BED, 5))
+                .thenReturn(new BigDecimal("45000"));
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.empty());
         Room newRoom = new Room(20L, 5, 1L, 5, 0, null, LocalDateTime.now());
         when(roomRepository.insert(5, 1L, 5, 0, null)).thenReturn(newRoom);
@@ -245,7 +250,8 @@ class RoomServiceTest {
         assertThatThrownBy(
                         () ->
                                 roomService()
-                                        .reserveOfferBeds(1L, USER_ID, 6, null, null, null, null))
+                                        .reserveOfferBeds(
+                                                1L, USER_ID, 6, null, null, null, null, null))
                 .isInstanceOf(RoomException.InvalidRoomTypeException.class);
 
         verify(packageRepository, never()).findByIdForUpdate(anyLong());
@@ -260,7 +266,8 @@ class RoomServiceTest {
         assertThatThrownBy(
                         () ->
                                 roomService()
-                                        .reserveOfferBeds(1L, USER_ID, 3, null, null, null, null))
+                                        .reserveOfferBeds(
+                                                1L, USER_ID, 3, null, null, null, null, null))
                 .isInstanceOf(RoomException.GroupSizeExceededException.class);
 
         verify(bedRepository, never()).markReserved(anyLong(), any());
@@ -271,7 +278,8 @@ class RoomServiceTest {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
         when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(2);
-        when(promoPackageService.resolveBedPrice(1L)).thenReturn(new BigDecimal("45000"));
+        when(offerFormulaService.resolvePrice(1L, null, OfferFormulaAction.FAMILY_ROOM, 5))
+                .thenReturn(new BigDecimal("45000"));
         Room openRoom = new Room(10L, 5, 1L, 5, 2, null, LocalDateTime.now());
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
         when(bedRepository.findFirstUnreservedBedForUpdate(10L))
@@ -288,7 +296,7 @@ class RoomServiceTest {
                 .thenReturn(PAYMENT_STUB);
 
         BookingPayment result =
-                roomService().reserveOfferBeds(1L, USER_ID, 2, "MOOV", null, null, null);
+                roomService().reserveOfferBeds(1L, USER_ID, 2, "MOOV", null, null, null, null);
 
         assertThat(result).isEqualTo(PAYMENT_STUB);
         verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
@@ -299,7 +307,8 @@ class RoomServiceTest {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
         when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(4);
-        when(promoPackageService.resolveBedPrice(1L)).thenReturn(new BigDecimal("45000"));
+        when(offerFormulaService.resolvePrice(1L, null, OfferFormulaAction.FAMILY_ROOM, 5))
+                .thenReturn(new BigDecimal("45000"));
         Room openRoom = new Room(10L, 5, 1L, 5, 4, null, LocalDateTime.now());
         when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
         Room newRoom = new Room(20L, 5, 1L, 5, 0, null, LocalDateTime.now());
@@ -317,7 +326,7 @@ class RoomServiceTest {
         when(bookingPaymentService.attachAcceptedTerms(PAYMENT_STUB, null, null, null))
                 .thenReturn(PAYMENT_STUB);
 
-        roomService().reserveOfferBeds(1L, USER_ID, 2, null, null, null, null);
+        roomService().reserveOfferBeds(1L, USER_ID, 2, null, null, null, null, null);
 
         verify(bedRepository).insertBedsForRoom(20L, 5);
         verify(bedRepository, never()).findFirstUnreservedBedForUpdate(10L);
@@ -338,7 +347,8 @@ class RoomServiceTest {
         OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
         when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
         when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(10);
-        when(promoPackageService.resolvePrivateRoomPrice(1L)).thenReturn(new BigDecimal("80000"));
+        when(offerFormulaService.resolvePrice(1L, null, OfferFormulaAction.PRIVATE_ROOM, 1))
+                .thenReturn(new BigDecimal("80000"));
         Room privateRoom = new Room(30L, 1, 1L, 1, 1, USER_ID, LocalDateTime.now());
         when(roomRepository.insert(1, 1L, 1, 1, USER_ID)).thenReturn(privateRoom);
         when(bookingPaymentService.createOfferRoomPaymentPlan(
@@ -348,7 +358,7 @@ class RoomServiceTest {
                 .thenReturn(PAYMENT_STUB);
 
         BookingPayment result =
-                roomService().reserveOfferPrivateRoom(1L, USER_ID, "MOOV", null, null, null);
+                roomService().reserveOfferPrivateRoom(1L, USER_ID, "MOOV", null, null, null, null);
 
         assertThat(result).isEqualTo(PAYMENT_STUB);
         verify(bedRepository, never()).insertBedsForRoom(anyLong(), anyInt());
@@ -364,7 +374,7 @@ class RoomServiceTest {
                         () ->
                                 roomService()
                                         .reserveOfferPrivateRoom(
-                                                1L, USER_ID, null, null, null, null))
+                                                1L, USER_ID, null, null, null, null, null))
                 .isInstanceOf(RoomException.GroupSizeExceededException.class);
 
         verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());

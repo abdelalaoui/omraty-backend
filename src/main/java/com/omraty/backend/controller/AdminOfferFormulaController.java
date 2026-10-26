@@ -3,6 +3,7 @@ package com.omraty.backend.controller;
 import com.omraty.backend.dto.request.CreateOfferFormulaRequest;
 import com.omraty.backend.dto.request.UpdateOfferFormulaRequest;
 import com.omraty.backend.dto.response.AdminOfferFormulaResponse;
+import com.omraty.backend.entities.OfferFormula;
 import com.omraty.backend.mapper.OfferFormulaMapper;
 import com.omraty.backend.service.OfferFormulaService;
 import java.util.List;
@@ -34,38 +35,45 @@ public class AdminOfferFormulaController {
     @GetMapping
     public ResponseEntity<List<AdminOfferFormulaResponse>> listFormulas() {
         return ResponseEntity.ok(
-                OfferFormulaMapper.toAdminResponseList(offerFormulaService.getAllFormulas()));
+                OfferFormulaMapper.toAdminResponseList(
+                        offerFormulaService.getAllFormulas(), offerFormulaService.getAllPrices()));
     }
 
     @PostMapping
     public ResponseEntity<AdminOfferFormulaResponse> createFormula(
             @RequestBody CreateOfferFormulaRequest request) {
+        OfferFormula created =
+                offerFormulaService.createFormula(
+                        request.party(),
+                        request.action(),
+                        request.capacity(),
+                        request.labelFr(),
+                        request.labelEn(),
+                        request.labelAr(),
+                        request.displayOrder(),
+                        request.visible(),
+                        request.prices());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(
                         OfferFormulaMapper.toAdminResponse(
-                                offerFormulaService.createFormula(
-                                        request.party(),
-                                        request.action(),
-                                        request.capacity(),
-                                        request.labelFr(),
-                                        request.labelEn(),
-                                        request.labelAr(),
-                                        request.displayOrder(),
-                                        request.visible())));
+                                created, offerFormulaService.getPrices(created.id())));
     }
 
     @PatchMapping("/{id}")
     public ResponseEntity<AdminOfferFormulaResponse> updateFormula(
             @PathVariable long id, @RequestBody UpdateOfferFormulaRequest request) {
+        OfferFormula updated =
+                offerFormulaService.updateFormula(
+                        id,
+                        request.labelFr(),
+                        request.labelEn(),
+                        request.labelAr(),
+                        request.displayOrder(),
+                        request.visible(),
+                        request.prices());
         return ResponseEntity.ok(
                 OfferFormulaMapper.toAdminResponse(
-                        offerFormulaService.updateFormula(
-                                id,
-                                request.labelFr(),
-                                request.labelEn(),
-                                request.labelAr(),
-                                request.displayOrder(),
-                                request.visible())));
+                        updated, offerFormulaService.getPrices(updated.id())));
     }
 
     @DeleteMapping("/{id}")
