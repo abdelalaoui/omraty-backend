@@ -48,7 +48,10 @@ public class AdminPromoPackageController {
                                 request.bedPrice(),
                                 request.visible(),
                                 request.displayOrder(),
-                                request.priceText())));
+                                request.priceText(),
+                                request.privateRoomPrice(),
+                                request.room3Price(),
+                                request.room2Price())));
     }
 
     /** Retire le package de l'offre : il redevient un package Omra ordinaire. */
@@ -66,6 +69,9 @@ public class AdminPromoPackageController {
                 pkg.endDate(),
                 pkg.groupSize(),
                 pkg.bedPrice(),
+                pkg.privateRoomPrice(),
+                pkg.room3Price(),
+                pkg.room2Price(),
                 pkg.visible(),
                 pkg.displayOrder(),
                 pkg.priceText());

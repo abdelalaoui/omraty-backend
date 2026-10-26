@@ -55,6 +55,16 @@ public class AuthRepository {
                 .findFirst();
     }
 
+    /** Un autre compte actif que excludingUserId a-t-il déjà ce NNI ? */
+    public boolean existsOtherActiveUserWithNni(String nni, UUID excludingUserId) {
+        return Boolean.TRUE.equals(
+                jdbcTemplate.queryForObject(
+                        UsersTable.EXISTS_OTHER_ACTIVE_USER_WITH_NNI,
+                        Boolean.class,
+                        nni,
+                        excludingUserId));
+    }
+
     /** Voir RoomService.getAllPurchases (GET /admin/bookings). */
     public List<User> findByIds(List<UUID> ids) {
         if (ids.isEmpty()) {

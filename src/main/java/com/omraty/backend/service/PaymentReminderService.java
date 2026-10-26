@@ -139,6 +139,15 @@ public class PaymentReminderService {
             if (payment.roomId() != null || payment.bedId() != null) {
                 continue;
             }
+            // Groupe de lits (voir migration V62) : toujours en plan FULL, donc jamais de tranche à
+            // rappeler en pratique — géré quand même pour ne pas perdre l'owner.
+            List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
+            if (!groupBedIds.isEmpty()) {
+                bedRepository.findByIds(groupBedIds).stream()
+                        .findFirst()
+                        .ifPresent(bed -> result.put(payment.id(), bed.userId()));
+                continue;
+            }
             List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
             roomRepository.findByIds(groupRoomIds).stream()
                     .findFirst()

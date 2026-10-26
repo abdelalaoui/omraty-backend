@@ -5,7 +5,15 @@ import java.math.BigDecimal;
 /**
  * Ajout d'un package à la promo ou modification (PUT /admin/promo-packages/{packageId}) : bedPrice
  * requis à l'ajout, tous les champs optionnels ensuite (null = inchangé). priceText : prix en
- * lettres (arabe, 200 caractères max), "" pour l'effacer.
+ * lettres (arabe, 200 caractères max), "" pour l'effacer. privateRoomPrice : prix de la chambre
+ * privée d'1 place (voir migration V63) ; room3Price/room2Price : prix des chambres de famille de 3
+ * et 2 places (voir migration V64). Tous optionnels.
  */
 public record UpsertPromoPackageRequest(
-        BigDecimal bedPrice, Boolean visible, Integer displayOrder, String priceText) {}
+        BigDecimal bedPrice,
+        Boolean visible,
+        Integer displayOrder,
+        String priceText,
+        BigDecimal privateRoomPrice,
+        BigDecimal room3Price,
+        BigDecimal room2Price) {}

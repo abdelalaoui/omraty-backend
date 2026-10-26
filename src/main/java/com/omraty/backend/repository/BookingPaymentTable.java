@@ -144,6 +144,31 @@ final class BookingPaymentTable {
                     + " booking_payment bp ON bp.id = bpr.booking_payment_id WHERE bpr.room_id ="
                     + " ANY (?) AND bp.status <> 'EXPIRED'";
 
+    // Paiement groupé de lits (voir migration V62) : lie un lit déjà réservé à un booking_payment
+    // dont room_id/bed_id/vip_request_id sont tous NULL.
+    static final String INSERT_BOOKING_PAYMENT_BED =
+            "INSERT INTO booking_payment_bed (booking_payment_id, bed_id) VALUES (?, ?)";
+
+    // Lits d'un paiement groupé, pour la libération à l'expiration (voir
+    // PaymentExpirationService) et la description de facture (voir InvoiceService).
+    static final String SELECT_GROUP_BED_IDS_BY_PAYMENT_ID =
+            "SELECT bed_id FROM booking_payment_bed WHERE booking_payment_id = ?";
+
+    // Équivalent de SELECT_GROUP_BOOKING_PAYMENTS_BY_ROOM_IDS côté lits (voir migration V62), pour
+    // GET /users/me/purchases. group_bed_id (alias) : même raison que group_room_id.
+    static final String SELECT_GROUP_BOOKING_PAYMENTS_BY_BED_IDS =
+            "SELECT bpb.bed_id AS group_bed_id, bp.id, bp.room_id, bp.bed_id,"
+                    + " bp.vip_request_id, bp.plan, bp.status, bp.total_amount,"
+                    + " bp.moov_payment_code, bp.moov_transaction_id, bp.payer_phone,"
+                    + " bp.expires_at, bp.created_at, bp.payment_method, bp.payment_reference,"
+                    + " bp.declared_at, bp.confirmed_by_admin_id, bp.confirmed_at,"
+                    + " bp.rejection_reason, bp.invoice_key, bp.invoice_number,"
+                    + " bp.invoice_generated_at, bp.accepted_terms_version, bp.accepted_terms_at,"
+                    + " bp.accepted_terms_snapshot::text AS accepted_terms_snapshot FROM"
+                    + " booking_payment_bed bpb JOIN"
+                    + " booking_payment bp ON bp.id = bpb.booking_payment_id WHERE bpb.bed_id ="
+                    + " ANY (?) AND bp.status <> 'EXPIRED'";
+
     // Renseigne la référence du moyen de paiement manuel choisi (voir migrations V50/V51,
     // BookingPaymentService) : équivalent de ATTACH_GATEWAY_RESULT mais sans appel passerelle.
     // payment_reference est NULL pour un plan INSTALLMENTS (représente toujours « le paiement dû

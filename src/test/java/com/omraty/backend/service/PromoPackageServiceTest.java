@@ -63,9 +63,28 @@ class PromoPackageServiceTest {
                 LocalDate.of(2026, 11, 1),
                 LocalDate.of(2026, 11, 15),
                 bedPrice == null ? null : new BigDecimal(bedPrice),
+                null,
+                null,
+                null,
                 visible,
                 0,
                 null);
+    }
+
+    private PromoPackage withPrivateRoomPrice(PromoPackage promo, String privateRoomPrice) {
+        return new PromoPackage(
+                promo.packageId(),
+                promo.label(),
+                promo.groupSize(),
+                promo.startDate(),
+                promo.endDate(),
+                promo.bedPrice(),
+                new BigDecimal(privateRoomPrice),
+                null,
+                null,
+                promo.visible(),
+                promo.displayOrder(),
+                promo.priceText());
     }
 
     @Test
@@ -104,6 +123,51 @@ class PromoPackageServiceTest {
                 .thenReturn(Optional.of(promo(1L, "35000", true)));
 
         assertThat(promoPackageService.resolveBedPrice(1L)).isEqualByComparingTo("35000");
+    }
+
+    @Test
+    void resolvePrivateRoomPrice_returnsThePackagePrivateRoomPrice() {
+        PromoPackage base = promo(1L, "35000", true);
+        when(packagePromoRepository.findByPackageId(1L))
+                .thenReturn(Optional.of(withPrivateRoomPrice(base, "80000")));
+
+        assertThat(promoPackageService.resolvePrivateRoomPrice(1L)).isEqualByComparingTo("80000");
+    }
+
+    @Test
+    void resolvePrivateRoomPrice_whenNotSetByAdmin_throwsPriceNotConfigured() {
+        when(packagePromoRepository.findByPackageId(1L))
+                .thenReturn(Optional.of(promo(1L, "35000", true)));
+
+        assertThatThrownBy(() -> promoPackageService.resolvePrivateRoomPrice(1L))
+                .isInstanceOf(BookingPaymentException.PriceNotConfiguredException.class);
+    }
+
+    @Test
+    void upsertPromoPackage_withPrivateRoomPrice_storesIt() {
+        when(packageRepository.findById(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
+        when(packagePromoRepository.isPromo(1L)).thenReturn(true);
+        when(packagePromoRepository.findByPackageId(1L))
+                .thenReturn(Optional.of(promo(1L, "35000", true)));
+
+        promoPackageService.upsertPromoPackage(
+                1L, null, null, null, null, new BigDecimal("80000"), null, null);
+
+        verify(packagePromoRepository).upsertPrivateRoomPrice(1L, new BigDecimal("80000"));
+    }
+
+    @Test
+    void upsertPromoPackage_withNonPositivePrivateRoomPrice_isRefused() {
+        when(packageRepository.findById(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra", 40, null, null)));
+        when(packagePromoRepository.isPromo(1L)).thenReturn(true);
+
+        assertThatThrownBy(
+                        () ->
+                                promoPackageService.upsertPromoPackage(
+                                        1L, null, null, null, null, BigDecimal.ZERO, null, null))
+                .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
     }
 
     @Test

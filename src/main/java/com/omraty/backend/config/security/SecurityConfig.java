@@ -73,6 +73,10 @@ public class SecurityConfig {
                                                 "/hotels",
                                                 "/reservation-groups",
                                                 "/promo-packages",
+                                                // Cartes « خدماتنا » de l'offre (voir
+                                                // OfferFormulaService), consultables sans compte
+                                                // comme les packages promo.
+                                                "/promo-packages/*/formulas",
                                                 "/rooms/*/beds",
                                                 // Conditions à cocher avant de réserver, affichées
                                                 // avant même la connexion (voir

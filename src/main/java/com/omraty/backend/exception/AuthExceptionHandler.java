@@ -82,6 +82,12 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(UserException.NniAlreadyUsedException.class)
+    public ResponseEntity<ErrorResponse> handleNniAlreadyUsed(
+            UserException.NniAlreadyUsedException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(UserException.IdentityNotPendingException.class)
     public ResponseEntity<ErrorResponse> handleIdentityNotPending(
             UserException.IdentityNotPendingException e) {
@@ -121,6 +127,18 @@ public class AuthExceptionHandler {
     @ExceptionHandler(ServiceCardException.ServiceCardNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleServiceCardNotFound(
             ServiceCardException.ServiceCardNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(OfferFormulaException.InvalidOfferFormulaRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidOfferFormulaRequest(
+            OfferFormulaException.InvalidOfferFormulaRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(OfferFormulaException.OfferFormulaNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleOfferFormulaNotFound(
+            OfferFormulaException.OfferFormulaNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 

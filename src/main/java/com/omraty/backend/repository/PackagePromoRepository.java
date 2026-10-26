@@ -3,9 +3,12 @@ package com.omraty.backend.repository;
 import com.omraty.backend.entities.PromoPackage;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
@@ -21,6 +24,9 @@ public class PackagePromoRepository {
                             rs.getObject("start_date", LocalDate.class),
                             rs.getObject("end_date", LocalDate.class),
                             rs.getBigDecimal("bed_price"),
+                            rs.getBigDecimal("private_room_price"),
+                            rs.getBigDecimal("room3_price"),
+                            rs.getBigDecimal("room2_price"),
                             rs.getBoolean("visible"),
                             rs.getInt("display_order"),
                             rs.getString("price_text"));
@@ -78,6 +84,34 @@ public class PackagePromoRepository {
     public void upsertBedPrice(long packageId, BigDecimal price) {
         jdbcTemplate.update(
                 PackagePromoTable.UPSERT_PRICE, packageId, PackagePromoTable.BED_TYPE, price);
+    }
+
+    public void upsertPrivateRoomPrice(long packageId, BigDecimal price) {
+        upsertPrice(packageId, PackagePromoTable.PRIVATE_ROOM_TYPE, price);
+    }
+
+    public void upsertRoom3Price(long packageId, BigDecimal price) {
+        upsertPrice(packageId, PackagePromoTable.ROOM_3_TYPE, price);
+    }
+
+    public void upsertRoom2Price(long packageId, BigDecimal price) {
+        upsertPrice(packageId, PackagePromoTable.ROOM_2_TYPE, price);
+    }
+
+    private void upsertPrice(long packageId, int type, BigDecimal price) {
+        jdbcTemplate.update(PackagePromoTable.UPSERT_PRICE, packageId, type, price);
+    }
+
+    /**
+     * Prix de ce package promo indexés par type de chambre (1, 2, 3, 5), vide s'il n'en a aucun.
+     */
+    public Map<Integer, BigDecimal> findPricesByType(long packageId) {
+        Map<Integer, BigDecimal> prices = new HashMap<>();
+        jdbcTemplate.query(
+                PackagePromoTable.SELECT_PRICES_BY_PACKAGE_ID,
+                (RowCallbackHandler) rs -> prices.put(rs.getInt("type"), rs.getBigDecimal("price")),
+                packageId);
+        return prices;
     }
 
     /**

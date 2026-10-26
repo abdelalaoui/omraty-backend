@@ -5,6 +5,7 @@ import com.omraty.backend.dto.request.PurchaseRoomGroupRequest;
 import com.omraty.backend.dto.request.PurchaseRoomRequest;
 import com.omraty.backend.dto.request.ReserveBedRequest;
 import com.omraty.backend.dto.request.ReserveOfferBedRequest;
+import com.omraty.backend.dto.request.ReserveOfferPrivateRoomRequest;
 import com.omraty.backend.dto.request.RoomGroupItemRequest;
 import com.omraty.backend.dto.response.PaymentResponse;
 import com.omraty.backend.dto.response.PurchaseResponse;
@@ -105,7 +106,8 @@ public class RoomController {
     /**
      * Réserve un lit (chambre de 5) au prix de l'offre spéciale en cours (voir
      * RoomService.reserveOfferBed) — toujours en paiement complet, jamais en tranches. Distinct de
-     * POST /rooms/5/beds/reserve (prix catalogue, plan au choix du client).
+     * POST /rooms/5/beds/reserve (prix catalogue, plan au choix du client). bedCount > 1 :
+     * plusieurs lits pour un seul paiement (voir RoomService.reserveOfferBeds).
      */
     @PostMapping("/rooms/offer/beds/reserve")
     public ResponseEntity<PaymentResponse> reserveOfferBed(
@@ -114,7 +116,38 @@ public class RoomController {
             @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
                     String acceptLanguage) {
         BookingPayment payment =
-                roomService.reserveOfferBed(
+                request.bedCount() != null && request.bedCount() > 1
+                        ? roomService.reserveOfferBeds(
+                                request.packageId(),
+                                userId,
+                                request.bedCount(),
+                                request.paymentMethod(),
+                                request.acceptedTermsVersion(),
+                                request.acceptedTermIds(),
+                                acceptLanguage)
+                        : roomService.reserveOfferBed(
+                                request.packageId(),
+                                userId,
+                                request.paymentMethod(),
+                                request.acceptedTermsVersion(),
+                                request.acceptedTermIds(),
+                                acceptLanguage);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
+    }
+
+    /**
+     * Achète la chambre privée d'1 place au prix de l'offre spéciale (voir
+     * RoomService.reserveOfferPrivateRoom, migration V63) — toujours en paiement complet.
+     */
+    @PostMapping("/rooms/offer/private-room/reserve")
+    public ResponseEntity<PaymentResponse> reserveOfferPrivateRoom(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody ReserveOfferPrivateRoomRequest request,
+            @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
+                    String acceptLanguage) {
+        BookingPayment payment =
+                roomService.reserveOfferPrivateRoom(
                         request.packageId(),
                         userId,
                         request.paymentMethod(),

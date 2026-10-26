@@ -410,6 +410,50 @@ public class BookingPaymentService {
         return attachAcceptedTerms(payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
     }
 
+    /**
+     * Crée le paiement de la chambre privée d'1 place de l'offre spéciale (roomId renseigné, voir
+     * RoomService.reserveOfferPrivateRoom, migration V63) : mêmes règles que {@link
+     * #createOfferPaymentPlan(long, BigDecimal, OmraPackage, UUID, String)} — plan FULL, sans
+     * {@link #applyFullPaymentDiscount}, offerPrice étant déjà le prix final de l'offre.
+     */
+    public BookingPayment createOfferRoomPaymentPlan(
+            long roomId,
+            BigDecimal offerPrice,
+            OmraPackage pkg,
+            UUID userId,
+            String paymentMethodCode) {
+        return createPaymentPlan(
+                roomId, null, null, PaymentPlan.FULL, offerPrice, pkg, userId, paymentMethodCode);
+    }
+
+    /**
+     * Crée un seul paiement couvrant plusieurs lits de l'offre spéciale (voir migration V62,
+     * RoomService.reserveOfferBeds — parcours "famille" de la bannière BED_OFFER). Mêmes règles que
+     * {@link #createOfferPaymentPlan(long, BigDecimal, OmraPackage, UUID, String)} (plan FULL, pas
+     * de réduction : totalAmount est déjà le prix de l'offre × nombre de lits), seule la cible
+     * change : les lits sont liés via booking_payment_bed, comme les chambres d'un {@link
+     * #createGroupPaymentPlan}.
+     */
+    public BookingPayment createOfferBedGroupPaymentPlan(
+            List<Long> bedIds,
+            BigDecimal totalAmount,
+            OmraPackage pkg,
+            UUID userId,
+            String paymentMethodCode) {
+        BookingPayment payment =
+                createPaymentPlan(
+                        null,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        totalAmount,
+                        pkg,
+                        userId,
+                        paymentMethodCode);
+        bookingPaymentRepository.linkBedsToGroupPayment(payment.id(), bedIds);
+        return payment;
+    }
+
     private BookingPayment createPaymentPlan(
             Long roomId,
             Long bedId,
@@ -1014,9 +1058,10 @@ public class BookingPaymentService {
                     .findFirst()
                     .map(
                             room ->
-                                    "Chambre "
-                                            + room.totalCapacity()
-                                            + " places - "
+                                    (room.totalCapacity() == 1
+                                                    ? "Chambre privée (1 personne)"
+                                                    : "Chambre " + room.totalCapacity() + " places")
+                                            + " - "
                                             + packageLabel(room.packageId()))
                     .orElse(null);
         }
@@ -1041,6 +1086,10 @@ public class BookingPaymentService {
                     .findFirst()
                     .map(vip -> "Offre VIP - " + packageLabel(vip.packageId()))
                     .orElse(null);
+        }
+        List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
+        if (!groupBedIds.isEmpty()) {
+            return "Achat groupé (" + groupBedIds.size() + " lit(s), offre spéciale)";
         }
         List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
         return "Achat groupé (" + groupRoomIds.size() + " chambre(s))";
@@ -1339,6 +1388,15 @@ public class BookingPaymentService {
                     .map(VipRequest::userId)
                     .orElse(null);
         }
+        // Groupe de lits (voir migration V62) : tous réservés par le même utilisateur (voir
+        // RoomService.reserveOfferBeds).
+        List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
+        if (!groupBedIds.isEmpty()) {
+            return bedRepository.findByIds(groupBedIds).stream()
+                    .findFirst()
+                    .map(Bed::userId)
+                    .orElse(null);
+        }
         List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
         return roomRepository.findByIds(groupRoomIds).stream()
                 .findFirst()
@@ -1359,10 +1417,17 @@ public class BookingPaymentService {
         return payments;
     }
 
-    /** Plans de paiement des lits réservés (type 5), indexés par bedId. */
+    /**
+     * Plans de paiement des lits réservés (type 5), indexés par bedId — fusionne les lits réservés
+     * un par un (booking_payment.bed_id) et les groupes de lits de l'offre spéciale
+     * (booking_payment_bed, voir migration V62, {@link #createOfferBedGroupPaymentPlan}).
+     */
     public Map<Long, BookingPayment> findPaymentsByBedIds(List<Long> bedIds) {
-        return bookingPaymentRepository.findByBedIds(bedIds).stream()
-                .collect(Collectors.toMap(BookingPayment::bedId, payment -> payment));
+        Map<Long, BookingPayment> payments = new HashMap<>();
+        bookingPaymentRepository.findByBedIds(bedIds).stream()
+                .forEach(payment -> payments.put(payment.bedId(), payment));
+        payments.putAll(bookingPaymentRepository.findGroupPaymentsByBedIds(bedIds));
+        return payments;
     }
 
     /** Tranches de plusieurs plans de paiement, groupées par bookingPaymentId. */

@@ -40,6 +40,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class RoomService {
 
     private static final int SHARED_ROOM_TYPE = 5;
+
+    /** Chambre privée d'1 place, uniquement via l'offre (voir {@link #reserveOfferPrivateRoom}). */
+    private static final int PRIVATE_ROOM_TYPE = 1;
+
     private static final Set<Integer> WHOLE_ROOM_TYPES = Set.of(2, 3);
 
     /**
@@ -326,7 +330,11 @@ public class RoomService {
                 roomRepository
                         .findOpenRoomForUpdate(packageId, SHARED_ROOM_TYPE)
                         .orElseGet(() -> openNewSharedRoom(packageId, SHARED_ROOM_TYPE));
+        return new ReservedBedContext(reserveFreeBedInRoom(room, userId), price, pkg);
+    }
 
+    /** Réserve le premier lit libre de room pour userId ; renvoie l'id du lit. */
+    private long reserveFreeBedInRoom(Room room, UUID userId) {
         Bed bed =
                 bedRepository
                         .findFirstUnreservedBedForUpdate(room.id())
@@ -339,7 +347,95 @@ public class RoomService {
 
         Bed reservedBed = bedRepository.markReserved(bed.id(), userId);
         roomRepository.incrementReservedCount(room.id());
-        return new ReservedBedContext(reservedBed.id(), price, pkg);
+        return reservedBed.id();
+    }
+
+    /**
+     * Réserve bedCount lits de l'offre spéciale d'un coup, avec un seul paiement (voir migration
+     * V62, BookingPaymentService.createOfferBedGroupPaymentPlan) — parcours "famille" de la
+     * bannière BED_OFFER côté app. Mêmes règles que {@link #reserveOfferBed} (prix du package
+     * promo, toujours en paiement complet), pour bedCount lits : la capacité est vérifiée en une
+     * seule fois, et la famille est logée dans une même chambre dès que possible — si la chambre
+     * ouverte n'a plus assez de lits libres pour tout le monde, une nouvelle chambre est ouverte
+     * plutôt que de séparer la famille (la chambre précédente reste ouverte pour les suivants).
+     *
+     * @throws RoomException.InvalidRoomTypeException si bedCount n'est pas entre 1 et 5 (une
+     *     chambre partagée).
+     * @throws RoomException.GroupSizeExceededException si le groupSize du package serait dépassé.
+     */
+    @Transactional
+    public BookingPayment reserveOfferBeds(
+            long packageId,
+            UUID userId,
+            int bedCount,
+            String paymentMethodCode,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        if (bedCount < 1 || bedCount > SHARED_ROOM_TYPE) {
+            throw new RoomException.InvalidRoomTypeException(
+                    "Le nombre de lits doit être compris entre 1 et "
+                            + SHARED_ROOM_TYPE
+                            + " (reçu : "
+                            + bedCount
+                            + ")");
+        }
+        OmraPackage pkg = lockPackageOrThrow(packageId);
+        packageCapacityService.ensureCapacityAvailable(pkg, packageId, bedCount);
+        BigDecimal price = promoPackageService.resolveBedPrice(packageId);
+
+        Room room =
+                roomRepository
+                        .findOpenRoomForUpdate(packageId, SHARED_ROOM_TYPE)
+                        .filter(open -> open.totalCapacity() - open.reservedCount() >= bedCount)
+                        .orElseGet(() -> openNewSharedRoom(packageId, SHARED_ROOM_TYPE));
+        List<Long> bedIds = new ArrayList<>();
+        for (int i = 0; i < bedCount; i++) {
+            bedIds.add(reserveFreeBedInRoom(room, userId));
+        }
+
+        BookingPayment payment =
+                bookingPaymentService.createOfferBedGroupPaymentPlan(
+                        bedIds,
+                        price.multiply(BigDecimal.valueOf(bedCount)),
+                        pkg,
+                        userId,
+                        paymentMethodCode);
+        return bookingPaymentService.attachAcceptedTerms(
+                payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
+    }
+
+    /**
+     * Achète la chambre privée d'1 place de l'offre spéciale (voir migration V63) — option « لنفسي
+     * → غرفة خاصة » de l'app, pour un client qui veut être seul, sans compagnon. Chambre créée déjà
+     * pleine comme un achat de chambre 2/3 (pas de lits), au prix saisi par l'admin pour ce package
+     * promo (voir PromoPackageService.resolvePrivateRoomPrice), toujours en paiement complet comme
+     * {@link #reserveOfferBed}. Un paiement expiré la libère comme une chambre entière (voir {@link
+     * #releaseReservation}).
+     *
+     * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
+     * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
+     *     l'offre est coupée ou sans prix de chambre privée pour ce package.
+     */
+    @Transactional
+    public BookingPayment reserveOfferPrivateRoom(
+            long packageId,
+            UUID userId,
+            String paymentMethodCode,
+            String acceptedTermsVersion,
+            List<Long> acceptedTermIds,
+            String acceptLanguage) {
+        OmraPackage pkg = lockPackageOrThrow(packageId);
+        packageCapacityService.ensureCapacityAvailable(pkg, packageId, PRIVATE_ROOM_TYPE);
+        BigDecimal price = promoPackageService.resolvePrivateRoomPrice(packageId);
+        Room room =
+                roomRepository.insert(
+                        PRIVATE_ROOM_TYPE, packageId, PRIVATE_ROOM_TYPE, PRIVATE_ROOM_TYPE, userId);
+        BookingPayment payment =
+                bookingPaymentService.createOfferRoomPaymentPlan(
+                        room.id(), price, pkg, userId, paymentMethodCode);
+        return bookingPaymentService.attachAcceptedTerms(
+                payment, acceptedTermsVersion, acceptedTermIds, acceptLanguage);
     }
 
     /**
@@ -620,6 +716,18 @@ public class RoomService {
             for (Bed bed : bedRepository.findByRoomIds(List.of(roomId))) {
                 bedRepository.release(bed.id());
             }
+        }
+    }
+
+    /**
+     * Libère chaque lit d'un paiement groupé de lits expiré (voir PaymentExpirationService,
+     * migration V62) — même traitement qu'un lit seul dans {@link #releaseReservation}.
+     */
+    @Transactional
+    public void releaseGroupBedReservation(List<Long> bedIds) {
+        for (Long bedId : bedIds) {
+            Bed bed = bedRepository.release(bedId);
+            roomRepository.decrementReservedCount(bed.roomId());
         }
     }
 

@@ -1,5 +1,7 @@
 package com.omraty.backend.dto.request;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
@@ -13,4 +15,10 @@ public record ReserveOfferBedRequest(
         // renvoyée par GET /booking-terms, périmée -> 409.
         String paymentMethod,
         String acceptedTermsVersion,
-        List<Long> acceptedTermIds) {}
+        List<Long> acceptedTermIds,
+        // Optionnel : nombre de lits à réserver d'un coup, avec un seul paiement (parcours
+        // "famille", voir RoomService.reserveOfferBeds). Absent (app antérieures) ou 1 : un seul
+        // lit, comme avant.
+        @Min(value = 1, message = "Au moins un lit doit être réservé")
+                @Max(value = 5, message = "5 lits au maximum (une chambre partagée)")
+                Integer bedCount) {}
