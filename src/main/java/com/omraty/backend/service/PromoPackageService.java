@@ -147,12 +147,14 @@ public class PromoPackageService {
             Boolean visible,
             Integer displayOrder,
             String priceText) {
-        return upsertPromoPackage(packageId, bedPrice, visible, displayOrder, priceText, null);
+        return upsertPromoPackage(
+                packageId, bedPrice, visible, displayOrder, priceText, null, null, null);
     }
 
     /**
      * Comme {@link #upsertPromoPackage(long, BigDecimal, Boolean, Integer, String)}, avec en plus
-     * le prix de la chambre privée d'1 place (voir migration V63) : optionnel, null = inchangé.
+     * les prix de la chambre privée d'1 place (voir migration V63) et des chambres de famille de 3
+     * et 2 places (voir migration V64) : optionnels, null = inchangé.
      */
     @Transactional
     public PromoPackage upsertPromoPackage(
@@ -161,7 +163,9 @@ public class PromoPackageService {
             Boolean visible,
             Integer displayOrder,
             String priceText,
-            BigDecimal privateRoomPrice) {
+            BigDecimal privateRoomPrice,
+            BigDecimal room3Price,
+            BigDecimal room2Price) {
         packageRepository
                 .findById(packageId)
                 .orElseThrow(
@@ -181,6 +185,11 @@ public class PromoPackageService {
             throw new PromoPackageException.InvalidPromoPackageRequestException(
                     "Le prix de la chambre privée doit être supérieur à 0");
         }
+        if ((room3Price != null && room3Price.signum() <= 0)
+                || (room2Price != null && room2Price.signum() <= 0)) {
+            throw new PromoPackageException.InvalidPromoPackageRequestException(
+                    "Le prix d'une chambre de famille doit être supérieur à 0");
+        }
         if (priceText != null && priceText.trim().length() > MAX_PRICE_TEXT_LENGTH) {
             throw new PromoPackageException.InvalidPromoPackageRequestException(
                     "Le prix en lettres ne doit pas dépasser "
@@ -194,6 +203,12 @@ public class PromoPackageService {
         }
         if (privateRoomPrice != null) {
             packagePromoRepository.upsertPrivateRoomPrice(packageId, privateRoomPrice);
+        }
+        if (room3Price != null) {
+            packagePromoRepository.upsertRoom3Price(packageId, room3Price);
+        }
+        if (room2Price != null) {
+            packagePromoRepository.upsertRoom2Price(packageId, room2Price);
         }
         return packagePromoRepository.findByPackageId(packageId).orElseThrow();
     }

@@ -10,10 +10,16 @@ final class PackagePromoTable {
     /** Prix de la chambre privée d'1 place (voir migration V63), optionnel. */
     static final int PRIVATE_ROOM_TYPE = 1;
 
+    /** Prix des chambres de famille de 3 et 2 places (cartes FAMILY_ROOM, voir V64), optionnels. */
+    static final int ROOM_3_TYPE = 3;
+
+    static final int ROOM_2_TYPE = 2;
+
     private static final String PROMO_PACKAGE_SELECT =
             "SELECT p.id AS package_id, p.label, p.group_size, p.start_date, p.end_date,"
-                    + " pr.price AS bed_price, prp.price AS private_room_price, pp.visible,"
-                    + " pp.display_order, pp.price_text"
+                    + " pr.price AS bed_price, prp.price AS private_room_price, pr3.price AS"
+                    + " room3_price, pr2.price AS room2_price, pp.visible, pp.display_order,"
+                    + " pp.price_text"
                     + " FROM package_promo pp"
                     + " JOIN package p ON p.id = pp.package_id"
                     + " LEFT JOIN package_promo_price pr ON pr.package_id = pp.package_id"
@@ -21,7 +27,13 @@ final class PackagePromoTable {
                     + BED_TYPE
                     + " LEFT JOIN package_promo_price prp ON prp.package_id = pp.package_id"
                     + " AND prp.type = "
-                    + PRIVATE_ROOM_TYPE;
+                    + PRIVATE_ROOM_TYPE
+                    + " LEFT JOIN package_promo_price pr3 ON pr3.package_id = pp.package_id"
+                    + " AND pr3.type = "
+                    + ROOM_3_TYPE
+                    + " LEFT JOIN package_promo_price pr2 ON pr2.package_id = pp.package_id"
+                    + " AND pr2.type = "
+                    + ROOM_2_TYPE;
 
     private static final String ORDER =
             " ORDER BY pp.display_order ASC, p.start_date ASC, p.id ASC";
@@ -58,6 +70,12 @@ final class PackagePromoTable {
     static final String UPSERT_PRICE =
             "INSERT INTO package_promo_price (package_id, type, price) VALUES (?, ?, ?)"
                     + " ON CONFLICT (package_id, type) DO UPDATE SET price = EXCLUDED.price";
+
+    // Tous les prix d'un package promo par type de chambre (voir OfferFormulaService : le prix
+    // d'une
+    // carte est celui de sa capacity).
+    static final String SELECT_PRICES_BY_PACKAGE_ID =
+            "SELECT type, price FROM package_promo_price WHERE package_id = ?";
 
     static final String DELETE_PROMO = "DELETE FROM package_promo WHERE package_id = ?";
 }

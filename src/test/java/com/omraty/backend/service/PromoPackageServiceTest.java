@@ -64,6 +64,8 @@ class PromoPackageServiceTest {
                 LocalDate.of(2026, 11, 15),
                 bedPrice == null ? null : new BigDecimal(bedPrice),
                 null,
+                null,
+                null,
                 visible,
                 0,
                 null);
@@ -78,6 +80,8 @@ class PromoPackageServiceTest {
                 promo.endDate(),
                 promo.bedPrice(),
                 new BigDecimal(privateRoomPrice),
+                null,
+                null,
                 promo.visible(),
                 promo.displayOrder(),
                 promo.priceText());
@@ -147,7 +151,8 @@ class PromoPackageServiceTest {
         when(packagePromoRepository.findByPackageId(1L))
                 .thenReturn(Optional.of(promo(1L, "35000", true)));
 
-        promoPackageService.upsertPromoPackage(1L, null, null, null, null, new BigDecimal("80000"));
+        promoPackageService.upsertPromoPackage(
+                1L, null, null, null, null, new BigDecimal("80000"), null, null);
 
         verify(packagePromoRepository).upsertPrivateRoomPrice(1L, new BigDecimal("80000"));
     }
@@ -161,7 +166,7 @@ class PromoPackageServiceTest {
         assertThatThrownBy(
                         () ->
                                 promoPackageService.upsertPromoPackage(
-                                        1L, null, null, null, null, BigDecimal.ZERO))
+                                        1L, null, null, null, null, BigDecimal.ZERO, null, null))
                 .isInstanceOf(PromoPackageException.InvalidPromoPackageRequestException.class);
     }
 

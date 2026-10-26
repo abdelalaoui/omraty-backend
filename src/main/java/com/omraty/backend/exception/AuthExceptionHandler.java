@@ -124,6 +124,18 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
     }
 
+    @ExceptionHandler(OfferFormulaException.InvalidOfferFormulaRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidOfferFormulaRequest(
+            OfferFormulaException.InvalidOfferFormulaRequestException e) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(OfferFormulaException.OfferFormulaNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleOfferFormulaNotFound(
+            OfferFormulaException.OfferFormulaNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+    }
+
     @ExceptionHandler(ServiceTierException.InvalidServiceTierRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidServiceTierRequest(
             ServiceTierException.InvalidServiceTierRequestException e) {
