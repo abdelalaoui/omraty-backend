@@ -5,6 +5,7 @@ import com.omraty.backend.dto.request.PurchaseRoomGroupRequest;
 import com.omraty.backend.dto.request.PurchaseRoomRequest;
 import com.omraty.backend.dto.request.ReserveBedRequest;
 import com.omraty.backend.dto.request.ReserveOfferBedRequest;
+import com.omraty.backend.dto.request.ReserveOfferFamilyRequest;
 import com.omraty.backend.dto.request.ReserveOfferPrivateRoomRequest;
 import com.omraty.backend.dto.request.RoomGroupItemRequest;
 import com.omraty.backend.dto.response.PaymentResponse;
@@ -15,6 +16,7 @@ import com.omraty.backend.mapper.PurchaseMapper;
 import com.omraty.backend.mapper.RoomMapper;
 import com.omraty.backend.service.BookingPaymentService;
 import com.omraty.backend.service.RoomService;
+import com.omraty.backend.service.RoomService.FamilyItem;
 import com.omraty.backend.service.RoomService.RoomGroupItem;
 import com.omraty.backend.service.RoomWithBeds;
 import jakarta.validation.Valid;
@@ -157,6 +159,31 @@ public class RoomController {
                         request.acceptedTermIds(),
                         acceptLanguage,
                         request.formulaId());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
+    }
+
+    /**
+     * Réserve la composition choisie par une famille (chambres entières et lits de l'offre) avec un
+     * seul paiement complet (voir RoomService.reserveOfferFamily).
+     */
+    @PostMapping("/rooms/offer/family/reserve")
+    public ResponseEntity<PaymentResponse> reserveOfferFamily(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody ReserveOfferFamilyRequest request,
+            @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false)
+                    String acceptLanguage) {
+        BookingPayment payment =
+                roomService.reserveOfferFamily(
+                        request.packageId(),
+                        userId,
+                        request.items().stream()
+                                .map(item -> new FamilyItem(item.formulaId(), item.quantity()))
+                                .toList(),
+                        request.paymentMethod(),
+                        request.acceptedTermsVersion(),
+                        request.acceptedTermIds(),
+                        acceptLanguage);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }

@@ -10,10 +10,12 @@ import static org.mockito.Mockito.when;
 
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingPayment;
+import com.omraty.backend.entities.OfferFormula;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.User;
 import com.omraty.backend.entities.enums.OfferFormulaAction;
+import com.omraty.backend.entities.enums.OfferParty;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.entities.enums.PaymentStatus;
 import com.omraty.backend.exception.BookingPaymentException;
@@ -24,6 +26,8 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
+import com.omraty.backend.service.OfferFormulaService.PricedOfferFormula;
+import com.omraty.backend.service.RoomService.FamilyItem;
 import com.omraty.backend.service.RoomService.RoomGroupItem;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -375,6 +379,110 @@ class RoomServiceTest {
                                 roomService()
                                         .reserveOfferPrivateRoom(
                                                 1L, USER_ID, null, null, null, null, null))
+                .isInstanceOf(RoomException.GroupSizeExceededException.class);
+
+        verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
+    }
+
+    private static OfferFormula familyCard(long id, int capacity) {
+        return new OfferFormula(
+                id,
+                OfferParty.FAMILY,
+                OfferFormulaAction.FAMILY_ROOM,
+                capacity,
+                "fr",
+                "en",
+                "ar",
+                1,
+                true,
+                null);
+    }
+
+    @Test
+    void reserveOfferFamily_reservesWholeRoomsAndBedsWithOnePaymentAtTheCardsTotal() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(10);
+        when(offerFormulaService.resolveFamilyFormula(1L, 2L))
+                .thenReturn(new PricedOfferFormula(familyCard(2L, 2), new BigDecimal("150000")));
+        when(offerFormulaService.resolveFamilyFormula(1L, 5L))
+                .thenReturn(new PricedOfferFormula(familyCard(5L, 5), new BigDecimal("115000")));
+        when(roomRepository.insert(2, 1L, 2, 2, USER_ID))
+                .thenReturn(new Room(40L, 2, 1L, 2, 2, USER_ID, LocalDateTime.now()));
+        Room openRoom = new Room(10L, 5, 1L, 5, 0, null, LocalDateTime.now());
+        when(roomRepository.findOpenRoomForUpdate(1L, 5)).thenReturn(Optional.of(openRoom));
+        when(bedRepository.findFirstUnreservedBedForUpdate(10L))
+                .thenReturn(Optional.of(new Bed(101L, 1, false, 10L, null, null)))
+                .thenReturn(Optional.of(new Bed(102L, 2, false, 10L, null, null)));
+        when(bedRepository.markReserved(101L, USER_ID))
+                .thenReturn(new Bed(101L, 1, true, 10L, USER_ID, LocalDateTime.now()));
+        when(bedRepository.markReserved(102L, USER_ID))
+                .thenReturn(new Bed(102L, 2, true, 10L, USER_ID, LocalDateTime.now()));
+        // 1 chambre de 2 (150 000) + 2 lits (2 × 115 000) = 380 000, un seul paiement.
+        when(bookingPaymentService.createOfferFamilyGroupPaymentPlan(
+                        List.of(40L),
+                        List.of(101L, 102L),
+                        new BigDecimal("380000"),
+                        pkg,
+                        USER_ID,
+                        "MOOV"))
+                .thenReturn(PAYMENT_STUB);
+        when(bookingPaymentService.attachAcceptedTerms(PAYMENT_STUB, null, null, null))
+                .thenReturn(PAYMENT_STUB);
+
+        BookingPayment result =
+                roomService()
+                        .reserveOfferFamily(
+                                1L,
+                                USER_ID,
+                                List.of(new FamilyItem(2L, 1), new FamilyItem(5L, 2)),
+                                "MOOV",
+                                null,
+                                null,
+                                null);
+
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+    }
+
+    @Test
+    void reserveOfferFamily_withSameCardTwice_isRefusedBeforeLockingThePackage() {
+        assertThatThrownBy(
+                        () ->
+                                roomService()
+                                        .reserveOfferFamily(
+                                                1L,
+                                                USER_ID,
+                                                List.of(
+                                                        new FamilyItem(2L, 1),
+                                                        new FamilyItem(2L, 1)),
+                                                null,
+                                                null,
+                                                null,
+                                                null))
+                .isInstanceOf(RoomException.InvalidRoomTypeException.class);
+
+        verify(packageRepository, never()).findByIdForUpdate(anyLong());
+    }
+
+    @Test
+    void reserveOfferFamily_whenSeatsExceedGroupSize_throwsWithoutCreatingAnything() {
+        when(packageRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "Omra Test", 10, null, null)));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(8);
+        when(offerFormulaService.resolveFamilyFormula(1L, 3L))
+                .thenReturn(new PricedOfferFormula(familyCard(3L, 3), new BigDecimal("200000")));
+
+        assertThatThrownBy(
+                        () ->
+                                roomService()
+                                        .reserveOfferFamily(
+                                                1L,
+                                                USER_ID,
+                                                List.of(new FamilyItem(3L, 1)),
+                                                null,
+                                                null,
+                                                null,
+                                                null))
                 .isInstanceOf(RoomException.GroupSizeExceededException.class);
 
         verify(roomRepository, never()).insert(anyInt(), anyLong(), anyInt(), anyInt(), any());
