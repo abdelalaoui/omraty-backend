@@ -6,6 +6,7 @@ import com.omraty.backend.entities.BookingPayment;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.User;
+import com.omraty.backend.entities.enums.OfferFormulaAction;
 import com.omraty.backend.entities.enums.PaymentPlan;
 import com.omraty.backend.exception.PackageException;
 import com.omraty.backend.exception.RoomException;
@@ -60,6 +61,7 @@ public class RoomService {
     private final BookingPaymentService bookingPaymentService;
     private final AuthRepository authRepository;
     private final PromoPackageService promoPackageService;
+    private final OfferFormulaService offerFormulaService;
 
     public RoomService(
             RoomRepository roomRepository,
@@ -68,7 +70,8 @@ public class RoomService {
             PackageCapacityService packageCapacityService,
             BookingPaymentService bookingPaymentService,
             AuthRepository authRepository,
-            PromoPackageService promoPackageService) {
+            PromoPackageService promoPackageService,
+            OfferFormulaService offerFormulaService) {
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
         this.packageRepository = packageRepository;
@@ -76,6 +79,7 @@ public class RoomService {
         this.bookingPaymentService = bookingPaymentService;
         this.authRepository = authRepository;
         this.promoPackageService = promoPackageService;
+        this.offerFormulaService = offerFormulaService;
     }
 
     /** État actuel des lits (disponibles/réservés), groupés par chambre, pour un package. */
@@ -240,7 +244,7 @@ public class RoomService {
 
     /**
      * Réserve un lit (chambre de 5) d'un package promo à son prix propre (voir
-     * PromoPackageService.resolveBedPrice, migration V57) plutôt qu'au prix catalogue — toujours en
+     * OfferFormulaService.resolvePrice, migration V66) plutôt qu'au prix catalogue — toujours en
      * paiement complet (plan FULL forcé), jamais en tranches, contrairement à {@link #reserveBed}
      * qui laisse le client choisir, et sans jamais appliquer la réduction paiement-complet (voir
      * BookingPaymentService.createOfferPaymentPlan) : le prix de l'offre est déjà le prix final.
@@ -254,7 +258,7 @@ public class RoomService {
      */
     @Transactional
     public BookingPayment reserveOfferBed(long packageId, UUID userId) {
-        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId);
+        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId, null);
         return bookingPaymentService.createOfferPaymentPlan(
                 ctx.bedId(), ctx.price(), ctx.pkg(), userId);
     }
@@ -271,7 +275,7 @@ public class RoomService {
             String acceptedTermsVersion,
             List<Long> acceptedTermIds,
             String acceptLanguage) {
-        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId);
+        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId, null);
         return bookingPaymentService.createOfferPaymentPlan(
                 ctx.bedId(),
                 ctx.price(),
@@ -288,7 +292,7 @@ public class RoomService {
      */
     @Transactional
     public BookingPayment reserveOfferBed(long packageId, UUID userId, String paymentMethodCode) {
-        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId);
+        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId, null);
         return createOfferBedPaymentPlan(ctx, userId, paymentMethodCode);
     }
 
@@ -303,8 +307,9 @@ public class RoomService {
             String paymentMethodCode,
             String acceptedTermsVersion,
             List<Long> acceptedTermIds,
-            String acceptLanguage) {
-        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId);
+            String acceptLanguage,
+            Long formulaId) {
+        ReservedBedContext ctx = reserveOfferBedInternal(packageId, userId, formulaId);
         return bookingPaymentService.attachAcceptedTerms(
                 createOfferBedPaymentPlan(ctx, userId, paymentMethodCode),
                 acceptedTermsVersion,
@@ -321,10 +326,17 @@ public class RoomService {
                         ctx.bedId(), ctx.price(), ctx.pkg(), userId, paymentMethodCode);
     }
 
-    private ReservedBedContext reserveOfferBedInternal(long packageId, UUID userId) {
+    /**
+     * formulaId : carte « lit en chambre de 5 » choisie dans l'app ; null pour les versions
+     * antérieures aux cartes (première carte de ce type, voir OfferFormulaService.resolvePrice).
+     */
+    private ReservedBedContext reserveOfferBedInternal(
+            long packageId, UUID userId, Long formulaId) {
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, 1);
-        BigDecimal price = promoPackageService.resolveBedPrice(packageId);
+        BigDecimal price =
+                offerFormulaService.resolvePrice(
+                        packageId, formulaId, OfferFormulaAction.SHARED_BED, SHARED_ROOM_TYPE);
 
         Room room =
                 roomRepository
@@ -371,7 +383,8 @@ public class RoomService {
             String paymentMethodCode,
             String acceptedTermsVersion,
             List<Long> acceptedTermIds,
-            String acceptLanguage) {
+            String acceptLanguage,
+            Long formulaId) {
         if (bedCount < 1 || bedCount > SHARED_ROOM_TYPE) {
             throw new RoomException.InvalidRoomTypeException(
                     "Le nombre de lits doit être compris entre 1 et "
@@ -382,7 +395,10 @@ public class RoomService {
         }
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, bedCount);
-        BigDecimal price = promoPackageService.resolveBedPrice(packageId);
+        // Prix d'un lit de la carte « chambre famille de 5 » choisie (voir migration V66).
+        BigDecimal price =
+                offerFormulaService.resolvePrice(
+                        packageId, formulaId, OfferFormulaAction.FAMILY_ROOM, SHARED_ROOM_TYPE);
 
         Room room =
                 roomRepository
@@ -409,9 +425,9 @@ public class RoomService {
      * Achète la chambre privée d'1 place de l'offre spéciale (voir migration V63) — option « لنفسي
      * → غرفة خاصة » de l'app, pour un client qui veut être seul, sans compagnon. Chambre créée déjà
      * pleine comme un achat de chambre 2/3 (pas de lits), au prix saisi par l'admin pour ce package
-     * promo (voir PromoPackageService.resolvePrivateRoomPrice), toujours en paiement complet comme
-     * {@link #reserveOfferBed}. Un paiement expiré la libère comme une chambre entière (voir {@link
-     * #releaseReservation}).
+     * promo (voir OfferFormulaService.resolvePrice, migration V66), toujours en paiement complet
+     * comme {@link #reserveOfferBed}. Un paiement expiré la libère comme une chambre entière (voir
+     * {@link #releaseReservation}).
      *
      * @throws RoomException.GroupSizeExceededException si le groupSize du package est déjà atteint.
      * @throws com.omraty.backend.exception.BookingPaymentException.PriceNotConfiguredException si
@@ -424,10 +440,13 @@ public class RoomService {
             String paymentMethodCode,
             String acceptedTermsVersion,
             List<Long> acceptedTermIds,
-            String acceptLanguage) {
+            String acceptLanguage,
+            Long formulaId) {
         OmraPackage pkg = lockPackageOrThrow(packageId);
         packageCapacityService.ensureCapacityAvailable(pkg, packageId, PRIVATE_ROOM_TYPE);
-        BigDecimal price = promoPackageService.resolvePrivateRoomPrice(packageId);
+        BigDecimal price =
+                offerFormulaService.resolvePrice(
+                        packageId, formulaId, OfferFormulaAction.PRIVATE_ROOM, PRIVATE_ROOM_TYPE);
         Room room =
                 roomRepository.insert(
                         PRIVATE_ROOM_TYPE, packageId, PRIVATE_ROOM_TYPE, PRIVATE_ROOM_TYPE, userId);

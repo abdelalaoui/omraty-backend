@@ -124,14 +124,16 @@ public class RoomController {
                                 request.paymentMethod(),
                                 request.acceptedTermsVersion(),
                                 request.acceptedTermIds(),
-                                acceptLanguage)
+                                acceptLanguage,
+                                request.formulaId())
                         : roomService.reserveOfferBed(
                                 request.packageId(),
                                 userId,
                                 request.paymentMethod(),
                                 request.acceptedTermsVersion(),
                                 request.acceptedTermIds(),
-                                acceptLanguage);
+                                acceptLanguage,
+                                request.formulaId());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }
@@ -153,7 +155,8 @@ public class RoomController {
                         request.paymentMethod(),
                         request.acceptedTermsVersion(),
                         request.acceptedTermIds(),
-                        acceptLanguage);
+                        acceptLanguage,
+                        request.formulaId());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bookingPaymentService.toCreationResponse(payment, acceptLanguage));
     }

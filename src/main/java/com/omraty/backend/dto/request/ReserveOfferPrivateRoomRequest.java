@@ -11,4 +11,6 @@ public record ReserveOfferPrivateRoomRequest(
         @NotNull(message = "Le packageId est requis") Long packageId,
         String paymentMethod,
         String acceptedTermsVersion,
-        List<Long> acceptedTermIds) {}
+        List<Long> acceptedTermIds,
+        // Carte « chambre privée » choisie (voir OfferFormulaService) ; absente : la première.
+        Long formulaId) {}

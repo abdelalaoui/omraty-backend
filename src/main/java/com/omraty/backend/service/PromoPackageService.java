@@ -18,20 +18,19 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <ul>
  *   <li>ils ne sont proposés que depuis la bannière ({@link #getBookablePackages}) et ne se
- *       réservent que par RoomService.reserveOfferBed : le parcours Omra normal les ignore (voir
- *       PackageService.getReservationGroups) et les refuse ({@link #ensureNotPromo}) ;
- *   <li>chacun a son propre prix de lit ({@link #resolveBedPrice}) au lieu du tarif global des
- *       formules.
+ *       réservent que par les routes de l'offre (RoomService.reserveOfferBed...) : le parcours Omra
+ *       normal les ignore (voir PackageService.getReservationGroups) et les refuse ({@link
+ *       #ensureNotPromo}) ;
+ *   <li>leurs prix sont ceux des cartes de l'offre pour ce départ (voir migration V66,
+ *       OfferFormulaService) au lieu du tarif global des formules.
  * </ul>
  *
- * Le réglage bed_offer_enabled (V47) reste l'interrupteur général de l'offre ; bed_offer_price
- * (prix unique) n'est plus lu.
+ * Le réglage bed_offer_enabled (V47) reste l'interrupteur général de l'offre.
  */
 @Service
 public class PromoPackageService {
 
     static final String BED_OFFER_ENABLED_KEY = "bed_offer_enabled";
-    static final int MAX_PRICE_TEXT_LENGTH = 200;
 
     private final PackagePromoRepository packagePromoRepository;
     private final PackageRepository packageRepository;
@@ -51,15 +50,18 @@ public class PromoPackageService {
                 appSettingService.getSetting(BED_OFFER_ENABLED_KEY).value().trim());
     }
 
-    /** Packages proposés depuis la bannière (visibles, avec un prix) ; vide si offre coupée. */
+    /**
+     * Packages proposés depuis la bannière (visibles, avec une carte proposée) ; vide si coupée.
+     */
     public List<PromoPackage> getBookablePackages() {
         return isOfferEnabled() ? packagePromoRepository.findBookable() : List.of();
     }
 
     /**
-     * Prix de lit le plus bas des packages proposés, pour le ctaPrice de la bannière (voir
-     * BannerController) : les versions de l'app antérieures aux packages promo n'ouvrent l'offre
-     * que si ce prix est renseigné. Vide si l'offre est coupée ou sans package proposé.
+     * Prix de lit le plus bas des packages proposés (carte « lit en chambre de 5 »), pour le
+     * ctaPrice de la bannière (voir BannerController) : les versions de l'app antérieures aux
+     * packages promo n'ouvrent l'offre que si ce prix est renseigné. Vide si l'offre est coupée ou
+     * sans lit à prix.
      */
     public Optional<BigDecimal> getMinimumBedPrice() {
         return isOfferEnabled()
@@ -68,22 +70,20 @@ public class PromoPackageService {
     }
 
     /**
-     * Prix réellement facturé pour un lit de ce package via l'offre (voir
-     * RoomService.reserveOfferBed).
+     * Le départ peut-il être réservé via l'offre (voir OfferFormulaService.resolvePrice) ?
      *
      * @throws BookingPaymentException.PriceNotConfiguredException si l'offre est coupée.
      * @throws PromoPackageException.PackageNotInOfferException si le package n'est pas proposé dans
-     *     l'offre (pas en promo, masqué ou sans prix).
+     *     l'offre (pas en promo ou masqué).
      */
-    public BigDecimal resolveBedPrice(long packageId) {
+    public void ensureBookable(long packageId) {
         if (!isOfferEnabled()) {
             throw new BookingPaymentException.PriceNotConfiguredException(
                     "L'offre spéciale n'est pas active actuellement");
         }
-        return packagePromoRepository
+        packagePromoRepository
                 .findByPackageId(packageId)
                 .filter(PromoPackage::visible)
-                .map(PromoPackage::bedPrice)
                 .orElseThrow(
                         () ->
                                 new PromoPackageException.PackageNotInOfferException(
@@ -91,37 +91,8 @@ public class PromoPackageService {
     }
 
     /**
-     * Prix réellement facturé pour la chambre privée d'1 place de ce package via l'offre (voir
-     * RoomService.reserveOfferPrivateRoom, migration V63).
-     *
-     * @throws BookingPaymentException.PriceNotConfiguredException si l'offre est coupée ou si
-     *     l'admin n'a pas saisi de prix de chambre privée pour ce package.
-     * @throws PromoPackageException.PackageNotInOfferException si le package n'est pas proposé dans
-     *     l'offre (pas en promo ou masqué).
-     */
-    public BigDecimal resolvePrivateRoomPrice(long packageId) {
-        if (!isOfferEnabled()) {
-            throw new BookingPaymentException.PriceNotConfiguredException(
-                    "L'offre spéciale n'est pas active actuellement");
-        }
-        PromoPackage promo =
-                packagePromoRepository
-                        .findByPackageId(packageId)
-                        .filter(PromoPackage::visible)
-                        .orElseThrow(
-                                () ->
-                                        new PromoPackageException.PackageNotInOfferException(
-                                                "Ce package ne fait pas partie de l'offre"));
-        if (promo.privateRoomPrice() == null) {
-            throw new BookingPaymentException.PriceNotConfiguredException(
-                    "La chambre privée n'est pas proposée pour ce package");
-        }
-        return promo.privateRoomPrice();
-    }
-
-    /**
-     * Les packages promo ne se réservent que depuis la bannière (prix propre, paiement complet) :
-     * refuse les routes de réservation du parcours Omra normal.
+     * Les packages promo ne se réservent que depuis la bannière (prix des cartes, paiement complet)
+     * : refuse les routes de réservation du parcours Omra normal.
      */
     public void ensureNotPromo(long packageId) {
         if (packagePromoRepository.isPromo(packageId)) {
@@ -137,79 +108,19 @@ public class PromoPackageService {
     }
 
     /**
-     * Met un package Omra existant en promo, ou modifie sa promo : bedPrice requis à l'ajout,
-     * visible/displayOrder optionnels (valeur existante, ou visible et en tête à l'ajout).
-     * priceText (prix en lettres, arabe) : null = inchangé, "" = effacé.
-     */
-    public PromoPackage upsertPromoPackage(
-            long packageId,
-            BigDecimal bedPrice,
-            Boolean visible,
-            Integer displayOrder,
-            String priceText) {
-        return upsertPromoPackage(
-                packageId, bedPrice, visible, displayOrder, priceText, null, null, null);
-    }
-
-    /**
-     * Comme {@link #upsertPromoPackage(long, BigDecimal, Boolean, Integer, String)}, avec en plus
-     * les prix de la chambre privée d'1 place (voir migration V63) et des chambres de famille de 3
-     * et 2 places (voir migration V64) : optionnels, null = inchangé.
+     * Met un package Omra existant en promo, ou modifie sa promo : visible/displayOrder optionnels
+     * (valeur existante, ou visible et en tête à l'ajout). Ses prix se saisissent ensuite sur les
+     * cartes de l'offre.
      */
     @Transactional
-    public PromoPackage upsertPromoPackage(
-            long packageId,
-            BigDecimal bedPrice,
-            Boolean visible,
-            Integer displayOrder,
-            String priceText,
-            BigDecimal privateRoomPrice,
-            BigDecimal room3Price,
-            BigDecimal room2Price) {
+    public PromoPackage upsertPromoPackage(long packageId, Boolean visible, Integer displayOrder) {
         packageRepository
                 .findById(packageId)
                 .orElseThrow(
                         () ->
                                 new PackageException.PackageNotFoundException(
                                         "Package introuvable (id=" + packageId + ")"));
-        boolean alreadyPromo = packagePromoRepository.isPromo(packageId);
-        if (bedPrice == null && !alreadyPromo) {
-            throw new PromoPackageException.InvalidPromoPackageRequestException(
-                    "Le prix du lit est requis pour ajouter un package à l'offre");
-        }
-        if (bedPrice != null && bedPrice.signum() <= 0) {
-            throw new PromoPackageException.InvalidPromoPackageRequestException(
-                    "Le prix du lit doit être supérieur à 0");
-        }
-        if (privateRoomPrice != null && privateRoomPrice.signum() <= 0) {
-            throw new PromoPackageException.InvalidPromoPackageRequestException(
-                    "Le prix de la chambre privée doit être supérieur à 0");
-        }
-        if ((room3Price != null && room3Price.signum() <= 0)
-                || (room2Price != null && room2Price.signum() <= 0)) {
-            throw new PromoPackageException.InvalidPromoPackageRequestException(
-                    "Le prix d'une chambre de famille doit être supérieur à 0");
-        }
-        if (priceText != null && priceText.trim().length() > MAX_PRICE_TEXT_LENGTH) {
-            throw new PromoPackageException.InvalidPromoPackageRequestException(
-                    "Le prix en lettres ne doit pas dépasser "
-                            + MAX_PRICE_TEXT_LENGTH
-                            + " caractères");
-        }
-        packagePromoRepository.upsertPromo(
-                packageId, visible, displayOrder, priceText == null ? null : priceText.trim());
-        if (bedPrice != null) {
-            packagePromoRepository.upsertBedPrice(packageId, bedPrice);
-        }
-        if (privateRoomPrice != null) {
-            packagePromoRepository.upsertPrivateRoomPrice(packageId, privateRoomPrice);
-        }
-        if (room3Price != null) {
-            packagePromoRepository.upsertRoom3Price(packageId, room3Price);
-        }
-        if (room2Price != null) {
-            packagePromoRepository.upsertRoom2Price(packageId, room2Price);
-        }
+        packagePromoRepository.upsertPromo(packageId, visible, displayOrder);
         return packagePromoRepository.findByPackageId(packageId).orElseThrow();
     }
 
