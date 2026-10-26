@@ -17,6 +17,7 @@ import com.omraty.backend.repository.DeviceTokenRepository;
 import com.omraty.backend.repository.NotificationRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -127,5 +128,44 @@ class NotificationServiceTest {
 
         assertThatThrownBy(() -> notificationService().markAsRead(USER_ID, 1L))
                 .isInstanceOf(NotificationException.NotificationNotFoundException.class);
+    }
+
+    @Test
+    void createWithAction_sendsTheActionAndItsTargetInThePushData() {
+        Notification created =
+                new Notification(
+                        2L,
+                        USER_ID,
+                        "Titre",
+                        "Message",
+                        false,
+                        LocalDateTime.now(),
+                        Notification.ACTION_PAY_CUSTOM_OFFER,
+                        5L);
+        when(notificationRepository.insert(
+                        USER_ID, "Titre", "Message", Notification.ACTION_PAY_CUSTOM_OFFER, 5L))
+                .thenReturn(created);
+        when(deviceTokenRepository.findByUserId(USER_ID))
+                .thenReturn(
+                        Optional.of(
+                                new DeviceToken(
+                                        USER_ID,
+                                        "fcm-token",
+                                        Platform.ANDROID,
+                                        LocalDateTime.now())));
+
+        notificationService()
+                .create(USER_ID, "Titre", "Message", Notification.ACTION_PAY_CUSTOM_OFFER, 5L);
+
+        verify(pushSender)
+                .send(
+                        "fcm-token",
+                        "Titre",
+                        "Message",
+                        Map.of(
+                                "action",
+                                Notification.ACTION_PAY_CUSTOM_OFFER,
+                                "actionTargetId",
+                                "5"));
     }
 }

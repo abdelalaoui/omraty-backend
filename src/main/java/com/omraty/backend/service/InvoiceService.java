@@ -3,6 +3,7 @@ package com.omraty.backend.service;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
+import com.omraty.backend.entities.CustomOffer;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.User;
@@ -14,6 +15,7 @@ import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
 import com.omraty.backend.repository.BookingPaymentRepository;
+import com.omraty.backend.repository.CustomOfferRepository;
 import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.VipRequestRepository;
@@ -64,6 +66,7 @@ public class InvoiceService {
     private final BedRepository bedRepository;
     private final VipRequestRepository vipRequestRepository;
     private final PackageRepository packageRepository;
+    private final CustomOfferRepository customOfferRepository;
     private final FileStorageService fileStorageService;
     private final String letterheadBase64;
 
@@ -75,7 +78,8 @@ public class InvoiceService {
             BedRepository bedRepository,
             VipRequestRepository vipRequestRepository,
             PackageRepository packageRepository,
-            FileStorageService fileStorageService) {
+            FileStorageService fileStorageService,
+            CustomOfferRepository customOfferRepository) {
         this.bookingPaymentRepository = bookingPaymentRepository;
         this.bookingInstallmentRepository = bookingInstallmentRepository;
         this.authRepository = authRepository;
@@ -84,6 +88,7 @@ public class InvoiceService {
         this.vipRequestRepository = vipRequestRepository;
         this.packageRepository = packageRepository;
         this.fileStorageService = fileStorageService;
+        this.customOfferRepository = customOfferRepository;
         this.letterheadBase64 = loadLetterheadBase64();
     }
 
@@ -254,6 +259,17 @@ public class InvoiceService {
         // BookingPaymentService.createGroupPaymentPlan) — ses chambres vivent dans
         // booking_payment_room — ou groupe de lits de l'offre spéciale (voir migration V62),
         // dans booking_payment_bed.
+        // Proposition préparée par un admin (voir migration V69) : ni chambre ni lit.
+        Optional<CustomOffer> customOffer = customOfferRepository.findByPaymentId(payment.id());
+        if (customOffer.isPresent()) {
+            String label =
+                    customOffer.get().packageId() == null
+                            ? customOffer.get().title()
+                            : customOffer.get().title()
+                                    + " — "
+                                    + resolvePackageLabel(customOffer.get().packageId());
+            return new PurchaseDescription(customOffer.get().userId(), label);
+        }
         List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
         List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
         if (!groupBedIds.isEmpty() && !groupRoomIds.isEmpty()) {

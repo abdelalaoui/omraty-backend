@@ -20,7 +20,9 @@ public class NotificationRepository {
                             rs.getString("title"),
                             rs.getString("message"),
                             rs.getBoolean("read"),
-                            rs.getObject("created_at", LocalDateTime.class));
+                            rs.getObject("created_at", LocalDateTime.class),
+                            rs.getString("action"),
+                            (Long) rs.getObject("action_target_id", Long.class));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -29,13 +31,21 @@ public class NotificationRepository {
     }
 
     public Notification insert(UUID userId, String title, String message) {
+        return insert(userId, title, message, null, null);
+    }
+
+    /** action/actionTargetId : voir Notification (null pour une notification simple). */
+    public Notification insert(
+            UUID userId, String title, String message, String action, Long actionTargetId) {
         return jdbcTemplate
                 .query(
                         NotificationTable.INSERT_NOTIFICATION,
                         NOTIFICATION_ROW_MAPPER,
                         userId,
                         title,
-                        message)
+                        message,
+                        action,
+                        actionTargetId)
                 .stream()
                 .findFirst()
                 .orElseThrow(

@@ -14,7 +14,9 @@ public final class NotificationMapper {
                 notification.title(),
                 notification.message(),
                 notification.read(),
-                notification.createdAt());
+                notification.createdAt(),
+                notification.action(),
+                notification.actionTargetId());
     }
 
     public static List<NotificationResponse> toResponseList(List<Notification> notifications) {

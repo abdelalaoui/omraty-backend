@@ -51,7 +51,7 @@ public final class PurchaseMapper {
         return adminPurchases.stream().map(PurchaseMapper::toAdminResponse).toList();
     }
 
-    private static PurchasePaymentResponse toPaymentResponse(UserPurchasePayment payment) {
+    public static PurchasePaymentResponse toPaymentResponse(UserPurchasePayment payment) {
         if (payment == null) {
             return null;
         }

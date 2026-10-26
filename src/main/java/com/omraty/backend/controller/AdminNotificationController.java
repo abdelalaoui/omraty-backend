@@ -1,7 +1,11 @@
 package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.request.BroadcastNotificationRequest;
+import com.omraty.backend.dto.request.SendNotificationRequest;
 import com.omraty.backend.dto.response.BroadcastNotificationResponse;
+import com.omraty.backend.dto.response.NotificationResponse;
+import com.omraty.backend.mapper.NotificationMapper;
+import com.omraty.backend.service.CustomOfferService;
 import com.omraty.backend.service.NotificationService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -22,9 +26,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminNotificationController {
 
     private final NotificationService notificationService;
+    private final CustomOfferService customOfferService;
 
-    public AdminNotificationController(NotificationService notificationService) {
+    public AdminNotificationController(
+            NotificationService notificationService, CustomOfferService customOfferService) {
         this.notificationService = notificationService;
+        this.customOfferService = customOfferService;
+    }
+
+    /**
+     * Notification simple (sans action) au client de ce numéro — ex. réponse à une demande reçue
+     * sur WhatsApp. Pour lui proposer un paiement, voir AdminCustomOfferController.
+     */
+    @PostMapping("/send")
+    public ResponseEntity<NotificationResponse> sendToClient(
+            @Valid @RequestBody SendNotificationRequest request) {
+        return ResponseEntity.ok(
+                NotificationMapper.toResponse(
+                        customOfferService.notifyClient(
+                                request.phone(), request.title(), request.message())));
     }
 
     @PostMapping("/broadcast")

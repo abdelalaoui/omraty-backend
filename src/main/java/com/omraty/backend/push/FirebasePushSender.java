@@ -3,6 +3,7 @@ package com.omraty.backend.push;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -21,6 +22,11 @@ public class FirebasePushSender implements PushSender {
 
     @Override
     public void send(String fcmToken, String title, String body) {
+        send(fcmToken, title, body, Map.of());
+    }
+
+    @Override
+    public void send(String fcmToken, String title, String body, Map<String, String> data) {
         // FirebaseConfig ne fournit pas de bean si FIREBASE_SERVICE_ACCOUNT_KEY est
         // absent/invalide (fonctionnalité annexe rendue non bloquante) : on se contente de
         // logger dans ce cas, la notification reste visible dans l'app (voir NotificationService).
@@ -40,6 +46,7 @@ public class FirebasePushSender implements PushSender {
                                         .setTitle(title)
                                         .setBody(body)
                                         .build())
+                        .putAllData(data)
                         .build();
         try {
             messaging.send(message);
