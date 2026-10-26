@@ -116,27 +116,29 @@ public class OfferFormulaService {
     }
 
     /**
-     * Carte « chambre famille » d'une composition (voir RoomService.reserveOfferFamily) : la carte
-     * doit être visible, de type FAMILY_ROOM et avoir un prix pour ce départ (chambre entière pour
-     * 2/3 places, un lit pour 5). Le départ doit être proposé dans l'offre.
+     * Carte d'une composition (voir RoomService.reserveOfferFamily — familles et « أكثر من ذلك ») :
+     * la carte doit être visible, de type FAMILY_ROOM (chambre entière de 2/3 places, ou un lit en
+     * chambre de 5) ou PRIVATE_ROOM (chambre d'1 place), et avoir un prix pour ce départ. Le départ
+     * doit être proposé dans l'offre.
      *
      * @throws OfferFormulaException.OfferFormulaNotFoundException si la carte n'existe pas.
      * @throws OfferFormulaException.InvalidOfferFormulaRequestException si la carte est masquée ou
-     *     n'est pas une chambre de famille.
+     *     n'est ni une chambre de famille ni une chambre privée.
      * @throws BookingPaymentException.PriceNotConfiguredException si elle n'a pas de prix pour ce
      *     départ.
      */
     public PricedOfferFormula resolveFamilyFormula(long packageId, long formulaId) {
         OfferFormula formula =
                 offerFormulaRepository.findById(formulaId).orElseThrow(() -> notFound(formulaId));
-        if (!formula.visible() || formula.action() != OfferFormulaAction.FAMILY_ROOM) {
+        boolean composable =
+                formula.action() == OfferFormulaAction.FAMILY_ROOM
+                        || formula.action() == OfferFormulaAction.PRIVATE_ROOM;
+        if (!formula.visible() || !composable) {
             throw new OfferFormulaException.InvalidOfferFormulaRequestException(
-                    "Cette carte n'est pas une chambre de famille proposée");
+                    "Cette carte ne peut pas être réservée dans une composition");
         }
         return new PricedOfferFormula(
-                formula,
-                resolvePrice(
-                        packageId, formulaId, OfferFormulaAction.FAMILY_ROOM, formula.capacity()));
+                formula, resolvePrice(packageId, formulaId, formula.action(), formula.capacity()));
     }
 
     // --- Administration ---

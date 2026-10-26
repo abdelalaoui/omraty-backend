@@ -485,6 +485,49 @@ class RoomServiceTest {
     }
 
     @Test
+    void reserveOfferFamily_withPrivateRoom_createsAOneSeatWholeRoom() {
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 40, null, null);
+        when(packageRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(pkg));
+        when(roomRepository.sumReservedSeatsForPackage(1L)).thenReturn(0);
+        OfferFormula privateRoom =
+                new OfferFormula(
+                        11L,
+                        OfferParty.ALONE,
+                        OfferFormulaAction.PRIVATE_ROOM,
+                        1,
+                        "fr",
+                        "en",
+                        "ar",
+                        2,
+                        true,
+                        null);
+        when(offerFormulaService.resolveFamilyFormula(1L, 11L))
+                .thenReturn(new PricedOfferFormula(privateRoom, new BigDecimal("80000")));
+        when(roomRepository.insert(1, 1L, 1, 1, USER_ID))
+                .thenReturn(new Room(45L, 1, 1L, 1, 1, USER_ID, LocalDateTime.now()));
+        when(bookingPaymentService.createOfferFamilyGroupPaymentPlan(
+                        List.of(45L), List.of(), new BigDecimal("80000"), pkg, USER_ID, null))
+                .thenReturn(PAYMENT_STUB);
+        when(bookingPaymentService.attachAcceptedTerms(PAYMENT_STUB, null, null, null))
+                .thenReturn(PAYMENT_STUB);
+
+        BookingPayment result =
+                roomService()
+                        .reserveOfferFamily(
+                                1L,
+                                USER_ID,
+                                List.of(new FamilyItem(11L, 1)),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null);
+
+        assertThat(result).isEqualTo(PAYMENT_STUB);
+    }
+
+    @Test
     void reserveOfferFamily_withSameCardTwice_isRefusedBeforeLockingThePackage() {
         assertThatThrownBy(
                         () ->
