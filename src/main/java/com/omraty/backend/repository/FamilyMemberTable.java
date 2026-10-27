@@ -65,6 +65,14 @@ final class FamilyMemberTable {
                     + " family_member fm ON fm.id = bpm.family_member_id WHERE"
                     + " bpm.booking_payment_id = ANY (?) ORDER BY bpm.booking_payment_id, fm.id";
 
+    // Membres complets de chaque réservation, pour le détail admin (GET /admin/bookings).
+    static final String SELECT_MEMBERS_BY_PAYMENT_IDS =
+            "SELECT bpm.booking_payment_id, "
+                    + FAMILY_MEMBER_COLUMNS
+                    + " FROM booking_payment_member bpm JOIN family_member fm ON fm.id ="
+                    + " bpm.family_member_id WHERE bpm.booking_payment_id = ANY (?) ORDER BY"
+                    + " bpm.booking_payment_id, fm.id";
+
     static final String SELECT_PARTIES_BY_PAYMENT_IDS =
             "SELECT booking_payment_id, includes_owner FROM booking_payment_party WHERE"
                     + " booking_payment_id = ANY (?)";

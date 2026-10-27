@@ -2,7 +2,9 @@ package com.omraty.backend.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -10,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingPayment;
+import com.omraty.backend.entities.FamilyMember;
 import com.omraty.backend.entities.OfferFormula;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
@@ -874,6 +877,62 @@ class RoomServiceTest {
         assertThat(purchases.get(1).userPhone()).isEqualTo("+22211111111");
         assertThat(purchases.get(1).userNni()).isEqualTo("1234567890");
         assertThat(purchases.get(1).purchase().packageLabel()).isEqualTo("Omra Ramadan");
+        assertThat(purchases).allSatisfy(purchase -> assertThat(purchase.party()).isNull());
+    }
+
+    @Test
+    void getAllPurchases_groupsPlacesPaidTogetherIntoOneBookingWithItsMembers() {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 3, 1, 10, 0);
+        Room familyRoom = new Room(40L, 3, 1L, 3, 3, USER_ID, createdAt);
+        when(roomRepository.findAllPurchased()).thenReturn(List.of(familyRoom));
+        Bed secondBed = new Bed(102L, 2, true, 10L, USER_ID, createdAt);
+        Bed firstBed = new Bed(101L, 1, true, 10L, USER_ID, createdAt);
+        when(bedRepository.findAllReserved()).thenReturn(List.of(secondBed, firstBed));
+        when(roomRepository.findByIds(List.of(10L)))
+                .thenReturn(List.of(new Room(10L, 5, 1L, 5, 2, null, createdAt)));
+        when(packageRepository.findByIds(List.of(1L)))
+                .thenReturn(List.of(new OmraPackage(1L, "Omra Ramadan", 10, null, null)));
+        when(bookingPaymentService.findPaymentsByRoomIds(List.of(40L)))
+                .thenReturn(Map.of(40L, PAYMENT_STUB));
+        when(bookingPaymentService.findPaymentsByBedIds(List.of(102L, 101L)))
+                .thenReturn(Map.of(101L, PAYMENT_STUB, 102L, PAYMENT_STUB));
+        when(bookingPaymentService.findInstallmentsByPaymentIds(any())).thenReturn(Map.of());
+        UserPurchasePayment payment = mock(UserPurchasePayment.class);
+        when(payment.id()).thenReturn(1L);
+        when(bookingPaymentService.toPurchasePayment(PAYMENT_STUB, List.of())).thenReturn(payment);
+        when(familyMemberService.findTravelerNnis(any(), any())).thenReturn(Map.of());
+        when(authRepository.findByIds(any()))
+                .thenReturn(
+                        List.of(
+                                new User(
+                                        USER_ID,
+                                        "+22211111111",
+                                        null,
+                                        null,
+                                        "1234567890",
+                                        null,
+                                        false,
+                                        createdAt,
+                                        "USER",
+                                        null)));
+        FamilyMember member =
+                new FamilyMember(
+                        7L, USER_ID, "2222222222", "identity/m.jpg", false, createdAt, null);
+        when(familyMemberService.findMembersByPaymentIds(List.of(1L)))
+                .thenReturn(Map.of(1L, List.of(member)));
+        when(familyMemberService.findPartiesByPaymentIds(List.of(1L))).thenReturn(Map.of(1L, true));
+
+        List<AdminPurchase> purchases = roomService().getAllPurchases();
+
+        assertThat(purchases).hasSize(1);
+        AdminPurchase booking = purchases.get(0);
+        assertThat(booking.id()).isEqualTo("payment-1");
+        assertThat(booking.userPhone()).isEqualTo("+22211111111");
+        assertThat(booking.party().includesOwner()).isTrue();
+        assertThat(booking.party().items())
+                .extracting(AdminBookingParty.AdminBookingItem::id)
+                .containsExactly("room-40", "bed-101", "bed-102");
+        assertThat(booking.party().members()).containsExactly(member);
     }
 
     @Test

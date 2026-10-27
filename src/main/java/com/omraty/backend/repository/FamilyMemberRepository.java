@@ -143,6 +143,24 @@ public class FamilyMemberRepository {
         return result;
     }
 
+    /** Membres de chaque réservation, dans l'ordre de leur saisie. */
+    public Map<Long, List<FamilyMember>> findMembersByPaymentIds(List<Long> paymentIds) {
+        Map<Long, List<FamilyMember>> result = new HashMap<>();
+        if (paymentIds.isEmpty()) {
+            return result;
+        }
+        jdbcTemplate.query(
+                FamilyMemberTable.SELECT_MEMBERS_BY_PAYMENT_IDS,
+                (PreparedStatement ps) -> ps.setArray(1, bigintArray(ps, paymentIds)),
+                (RowCallbackHandler)
+                        rs ->
+                                result.computeIfAbsent(
+                                                rs.getLong("booking_payment_id"),
+                                                id -> new ArrayList<>())
+                                        .add(FAMILY_MEMBER_ROW_MAPPER.mapRow(rs, rs.getRow())));
+        return result;
+    }
+
     /** Type de chaque réservation de l'offre : le titulaire voyage-t-il aussi ? */
     public Map<Long, Boolean> findPartiesByPaymentIds(List<Long> paymentIds) {
         Map<Long, Boolean> result = new HashMap<>();

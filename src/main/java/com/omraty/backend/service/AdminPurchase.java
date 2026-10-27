@@ -1,5 +1,6 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.entities.CustomOffer;
 import java.util.UUID;
 
 /**
@@ -8,6 +9,20 @@ import java.util.UUID;
  * ("room-12" pour une chambre entière, "bed-34" pour un lit) et le téléphone et le NNI du
  * propriétaire. userPhone est null si le compte n'existe plus ; userNni est null si le compte
  * n'existe plus ou si le NNI n'a pas été renseigné.
+ *
+ * <p>party : renseigné pour plusieurs places payées ensemble (famille, autres personnes, plusieurs
+ * lits), regroupées en une seule réservation d'id "payment-{id du paiement}" ; purchase décrit
+ * alors la première place. null pour une chambre ou un lit seul.
+ *
+ * <p>customOffer : proposition de l'agence dont le client a lancé le paiement (id "offer-{id}",
+ * voir CustomOfferService.listAdminBookings) ; purchase n'en décrit alors que le départ (packageId
+ * 0 et packageLabel null sans départ), la date du paiement et le paiement. null sinon.
  */
 public record AdminPurchase(
-        String id, UUID userId, String userPhone, String userNni, UserPurchase purchase) {}
+        String id,
+        UUID userId,
+        String userPhone,
+        String userNni,
+        UserPurchase purchase,
+        AdminBookingParty party,
+        CustomOffer customOffer) {}

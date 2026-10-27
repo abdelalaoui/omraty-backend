@@ -15,8 +15,10 @@ import com.omraty.backend.repository.CustomOfferRepository;
 import com.omraty.backend.repository.PackageRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +35,13 @@ public class CustomOfferService {
 
     private static final int MAX_TITLE_LENGTH = 255;
     private static final int MAX_DESCRIPTION_LENGTH = 2000;
+
+    /** Paiement lancé et pas abandonné : la proposition compte parmi les réservations. */
+    private static final Set<PaymentStatus> BOOKED_PAYMENT_STATUSES =
+            Set.of(
+                    PaymentStatus.PENDING,
+                    PaymentStatus.PENDING_VERIFICATION,
+                    PaymentStatus.CONFIRMED);
 
     private final CustomOfferRepository customOfferRepository;
     private final AuthRepository authRepository;
@@ -178,6 +187,49 @@ public class CustomOfferService {
 
     public List<CustomOffer> listAll() {
         return customOfferRepository.findAll();
+    }
+
+    /**
+     * Propositions à afficher parmi les réservations de l'admin (GET /admin/bookings) : celles dont
+     * le client a lancé le paiement, tant que cette tentative est en attente, à vérifier ou
+     * confirmée — comme une chambre ou un lit, elle disparaît si le paiement expire (la proposition
+     * reste dans « Propositions »). Datées du lancement du paiement.
+     */
+    public List<AdminPurchase> listAdminBookings() {
+        List<AdminPurchase> bookings = new ArrayList<>();
+        for (CustomOffer offer : customOfferRepository.findAll()) {
+            Optional<BookingPayment> payment = findPayment(offer);
+            if (payment.isEmpty() || !BOOKED_PAYMENT_STATUSES.contains(payment.get().status())) {
+                continue;
+            }
+            User client = authRepository.findById(offer.userId()).orElse(null);
+            String packageLabel =
+                    offer.packageId() == null
+                            ? null
+                            : packageRepository
+                                    .findById(offer.packageId())
+                                    .map(OmraPackage::label)
+                                    .orElse(null);
+            bookings.add(
+                    new AdminPurchase(
+                            "offer-" + offer.id(),
+                            offer.userId(),
+                            client == null ? null : client.phone(),
+                            client == null ? null : client.nni(),
+                            new UserPurchase(
+                                    0,
+                                    0,
+                                    offer.packageId() == null ? 0 : offer.packageId(),
+                                    packageLabel,
+                                    payment.get().createdAt(),
+                                    null,
+                                    bookingPaymentService.toPurchasePayment(
+                                            payment.get(), List.of()),
+                                    List.of()),
+                            null,
+                            offer));
+        }
+        return bookings;
     }
 
     /**
