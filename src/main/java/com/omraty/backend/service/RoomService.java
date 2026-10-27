@@ -3,6 +3,7 @@ package com.omraty.backend.service;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
+import com.omraty.backend.entities.FamilyMember;
 import com.omraty.backend.entities.OmraPackage;
 import com.omraty.backend.entities.Room;
 import com.omraty.backend.entities.User;
@@ -19,8 +20,10 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -916,6 +919,10 @@ public class RoomService {
      * et le téléphone et le NNI de son propriétaire. Les réservations libérées (expiration du
      * paiement, voir {@link #releaseReservation}) n'ont plus de user_id et n'apparaissent donc pas
      * ici.
+     *
+     * <p>Les places payées ensemble (réservation de l'offre pour la famille ou d'autres personnes,
+     * plusieurs lits) forment une seule réservation (voir {@link AdminPurchase#party()}), avec les
+     * personnes saisies : l'admin la traite en une fois.
      */
     public List<AdminPurchase> getAllPurchases() {
         List<OwnedPurchase> purchases =
@@ -928,17 +935,76 @@ public class RoomService {
                                 purchases.stream().map(OwnedPurchase::userId).distinct().toList())
                         .stream()
                         .collect(Collectors.toMap(User::id, user -> user));
-        return purchases.stream()
+        // Places regroupées par paiement, dans l'ordre (le plus récent d'abord) ; une place sans
+        // paiement suivi (achat antérieur à V25) reste seule.
+        Map<String, List<OwnedPurchase>> byBooking = new LinkedHashMap<>();
+        for (OwnedPurchase owned : purchases) {
+            UserPurchasePayment payment = owned.purchase().payment();
+            String key = payment == null ? owned.id() : "payment-" + payment.id();
+            byBooking.computeIfAbsent(key, k -> new ArrayList<>()).add(owned);
+        }
+        List<Long> paymentIds =
+                purchases.stream()
+                        .map(owned -> owned.purchase().payment())
+                        .filter(Objects::nonNull)
+                        .map(UserPurchasePayment::id)
+                        .distinct()
+                        .toList();
+        Map<Long, List<FamilyMember>> membersByPaymentId =
+                familyMemberService.findMembersByPaymentIds(paymentIds);
+        Map<Long, Boolean> partiesByPaymentId =
+                familyMemberService.findPartiesByPaymentIds(paymentIds);
+
+        List<AdminPurchase> result = new ArrayList<>();
+        for (Map.Entry<String, List<OwnedPurchase>> booking : byBooking.entrySet()) {
+            List<OwnedPurchase> places = booking.getValue();
+            OwnedPurchase first = places.get(0);
+            User owner = usersById.get(first.userId());
+            UserPurchasePayment payment = first.purchase().payment();
+            Long paymentId = payment == null ? null : payment.id();
+            boolean grouped =
+                    paymentId != null
+                            && (places.size() > 1
+                                    || partiesByPaymentId.containsKey(paymentId)
+                                    || membersByPaymentId.containsKey(paymentId));
+            result.add(
+                    new AdminPurchase(
+                            grouped ? booking.getKey() : first.id(),
+                            first.userId(),
+                            owner == null ? null : owner.phone(),
+                            owner == null ? null : owner.nni(),
+                            first.purchase(),
+                            grouped
+                                    ? new AdminBookingParty(
+                                            partiesByPaymentId.get(paymentId),
+                                            toBookingItems(places),
+                                            membersByPaymentId.getOrDefault(paymentId, List.of()))
+                                    : null));
+        }
+        return result;
+    }
+
+    /** Chambres entières d'abord (les plus grandes en premier), puis lits par numéro. */
+    private static List<AdminBookingParty.AdminBookingItem> toBookingItems(
+            List<OwnedPurchase> places) {
+        return places.stream()
                 .map(
-                        owned -> {
-                            User owner = usersById.get(owned.userId());
-                            return new AdminPurchase(
-                                    owned.id(),
-                                    owned.userId(),
-                                    owner == null ? null : owner.phone(),
-                                    owner == null ? null : owner.nni(),
-                                    owned.purchase());
-                        })
+                        owned ->
+                                new AdminBookingParty.AdminBookingItem(
+                                        owned.id(),
+                                        owned.purchase().type(),
+                                        owned.purchase().totalCapacity(),
+                                        owned.purchase().bedNumber()))
+                .sorted(
+                        Comparator.comparing(
+                                        (AdminBookingParty.AdminBookingItem item) ->
+                                                item.bedNumber() != null)
+                                .thenComparing(
+                                        AdminBookingParty.AdminBookingItem::totalCapacity,
+                                        Comparator.reverseOrder())
+                                .thenComparing(
+                                        AdminBookingParty.AdminBookingItem::bedNumber,
+                                        Comparator.nullsFirst(Comparator.naturalOrder())))
                 .toList();
     }
 

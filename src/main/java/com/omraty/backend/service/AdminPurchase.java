@@ -8,6 +8,15 @@ import java.util.UUID;
  * ("room-12" pour une chambre entière, "bed-34" pour un lit) et le téléphone et le NNI du
  * propriétaire. userPhone est null si le compte n'existe plus ; userNni est null si le compte
  * n'existe plus ou si le NNI n'a pas été renseigné.
+ *
+ * <p>party : renseigné pour plusieurs places payées ensemble (famille, autres personnes, plusieurs
+ * lits), regroupées en une seule réservation d'id "payment-{id du paiement}" ; purchase décrit
+ * alors la première place. null pour une chambre ou un lit seul.
  */
 public record AdminPurchase(
-        String id, UUID userId, String userPhone, String userNni, UserPurchase purchase) {}
+        String id,
+        UUID userId,
+        String userPhone,
+        String userNni,
+        UserPurchase purchase,
+        AdminBookingParty party) {}

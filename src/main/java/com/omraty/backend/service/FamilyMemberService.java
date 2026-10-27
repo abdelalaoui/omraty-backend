@@ -139,6 +139,22 @@ public class FamilyMemberService {
         return result;
     }
 
+    /**
+     * Membres de chaque réservation (voir migration V68), en attente de paiement ou non, pour le
+     * détail admin d'une réservation (GET /admin/bookings).
+     */
+    public Map<Long, List<FamilyMember>> findMembersByPaymentIds(List<Long> paymentIds) {
+        return familyMemberRepository.findMembersByPaymentIds(paymentIds);
+    }
+
+    /**
+     * Type de chaque réservation de l'offre (voir {@link #recordParty}) : absente pour une
+     * réservation sans type enregistré.
+     */
+    public Map<Long, Boolean> findPartiesByPaymentIds(List<Long> paymentIds) {
+        return familyMemberRepository.findPartiesByPaymentIds(paymentIds);
+    }
+
     /** Paiement de la réservation confirmé : ses membres deviennent actifs. */
     public void activateForPayment(long paymentId) {
         familyMemberRepository.activateForPayment(paymentId);
