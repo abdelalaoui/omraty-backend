@@ -979,7 +979,8 @@ public class RoomService {
                                             partiesByPaymentId.get(paymentId),
                                             toBookingItems(places),
                                             membersByPaymentId.getOrDefault(paymentId, List.of()))
-                                    : null));
+                                    : null,
+                            null));
         }
         return result;
     }

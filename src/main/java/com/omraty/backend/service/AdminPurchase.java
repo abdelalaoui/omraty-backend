@@ -1,5 +1,6 @@
 package com.omraty.backend.service;
 
+import com.omraty.backend.entities.CustomOffer;
 import java.util.UUID;
 
 /**
@@ -12,6 +13,10 @@ import java.util.UUID;
  * <p>party : renseigné pour plusieurs places payées ensemble (famille, autres personnes, plusieurs
  * lits), regroupées en une seule réservation d'id "payment-{id du paiement}" ; purchase décrit
  * alors la première place. null pour une chambre ou un lit seul.
+ *
+ * <p>customOffer : proposition de l'agence dont le client a lancé le paiement (id "offer-{id}",
+ * voir CustomOfferService.listAdminBookings) ; purchase n'en décrit alors que le départ (packageId
+ * 0 et packageLabel null sans départ), la date du paiement et le paiement. null sinon.
  */
 public record AdminPurchase(
         String id,
@@ -19,4 +24,5 @@ public record AdminPurchase(
         String userPhone,
         String userNni,
         UserPurchase purchase,
-        AdminBookingParty party) {}
+        AdminBookingParty party,
+        CustomOffer customOffer) {}

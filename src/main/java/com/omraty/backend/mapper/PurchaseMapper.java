@@ -52,7 +52,13 @@ public final class PurchaseMapper {
                 purchase.createdAt(),
                 purchase.bedNumber(),
                 toPaymentResponse(purchase.payment()),
-                toPartyResponse(adminPurchase.party(), photoUrl));
+                toPartyResponse(adminPurchase.party(), photoUrl),
+                adminPurchase.customOffer() == null
+                        ? null
+                        : new AdminPurchaseResponse.CustomOfferInfo(
+                                adminPurchase.customOffer().id(),
+                                adminPurchase.customOffer().title(),
+                                adminPurchase.customOffer().description()));
     }
 
     public static List<AdminPurchaseResponse> toAdminResponseList(

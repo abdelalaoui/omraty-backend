@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,6 +24,7 @@ import com.omraty.backend.repository.CustomOfferRepository;
 import com.omraty.backend.repository.PackageRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -190,6 +192,53 @@ class CustomOfferServiceTest {
         customOfferService.pay(USER_ID, 5L, "MOOV", null, null, null);
 
         verify(bookingPaymentRepository).markExpiredIfPending(60L);
+    }
+
+    @Test
+    void listAdminBookings_keepsOffersWhosePaymentIsLaunchedAndNotAbandoned() {
+        CustomOffer paid = offer(CustomOfferStatus.PAID, LocalDateTime.now().plusDays(1), 60L);
+        CustomOffer abandoned =
+                new CustomOffer(
+                        6L,
+                        USER_ID,
+                        "Abandonnée",
+                        null,
+                        AMOUNT,
+                        null,
+                        LocalDateTime.now().plusDays(1),
+                        CustomOfferStatus.PENDING,
+                        61L,
+                        LocalDateTime.now());
+        CustomOffer notStarted =
+                new CustomOffer(
+                        7L,
+                        USER_ID,
+                        "Pas lancée",
+                        null,
+                        AMOUNT,
+                        null,
+                        LocalDateTime.now().plusDays(1),
+                        CustomOfferStatus.PENDING,
+                        null,
+                        LocalDateTime.now());
+        when(customOfferRepository.findAll()).thenReturn(List.of(paid, abandoned, notStarted));
+        BookingPayment confirmed = payment(60L, PaymentStatus.CONFIRMED);
+        when(bookingPaymentRepository.findById(60L)).thenReturn(Optional.of(confirmed));
+        when(bookingPaymentRepository.findById(61L))
+                .thenReturn(Optional.of(payment(61L, PaymentStatus.EXPIRED)));
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(client()));
+        UserPurchasePayment purchasePayment = mock(UserPurchasePayment.class);
+        when(bookingPaymentService.toPurchasePayment(confirmed, List.of()))
+                .thenReturn(purchasePayment);
+
+        List<AdminPurchase> bookings = customOfferService.listAdminBookings();
+
+        assertThat(bookings).hasSize(1);
+        assertThat(bookings.get(0).id()).isEqualTo("offer-5");
+        assertThat(bookings.get(0).userPhone()).isEqualTo("+22236000000");
+        assertThat(bookings.get(0).customOffer()).isEqualTo(paid);
+        assertThat(bookings.get(0).purchase().payment()).isSameAs(purchasePayment);
+        assertThat(bookings.get(0).purchase().createdAt()).isEqualTo(confirmed.createdAt());
     }
 
     @Test
