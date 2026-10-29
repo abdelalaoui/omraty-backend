@@ -13,6 +13,7 @@ public final class AgencyCodeMapper {
                 agencyCode.id(),
                 agencyCode.agencyName(),
                 agencyCode.phoneNumber(),
+                agencyCode.nif(),
                 agencyCode.discountPercentage(),
                 agencyCode.code(),
                 agencyCode.used(),

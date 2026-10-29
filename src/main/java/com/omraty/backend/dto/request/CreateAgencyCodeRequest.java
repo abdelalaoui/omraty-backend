@@ -8,5 +8,6 @@ import java.math.BigDecimal;
 public record CreateAgencyCodeRequest(
         @NotBlank(message = "Le nom de l'agence est requis") String agencyName,
         @NotBlank(message = "Le numéro de téléphone est requis") String phoneNumber,
+        @NotBlank(message = "Le NIF est requis") String nif,
         @NotNull(message = "Le pourcentage de réduction est requis")
                 BigDecimal discountPercentage) {}

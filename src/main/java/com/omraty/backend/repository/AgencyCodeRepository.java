@@ -19,6 +19,7 @@ public class AgencyCodeRepository {
                             rs.getLong("id"),
                             rs.getString("agency_name"),
                             rs.getString("phone_number"),
+                            rs.getString("nif"),
                             rs.getBigDecimal("discount_percentage"),
                             rs.getString("code"),
                             rs.getBoolean("used"),
@@ -63,13 +64,18 @@ public class AgencyCodeRepository {
     }
 
     public AgencyCode insert(
-            String agencyName, String phoneNumber, BigDecimal discountPercentage, String code) {
+            String agencyName,
+            String phoneNumber,
+            String nif,
+            BigDecimal discountPercentage,
+            String code) {
         return jdbcTemplate
                 .query(
                         AgencyCodeTable.INSERT_AGENCY_CODE,
                         AGENCY_CODE_ROW_MAPPER,
                         agencyName,
                         phoneNumber,
+                        nif,
                         discountPercentage,
                         code)
                 .stream()

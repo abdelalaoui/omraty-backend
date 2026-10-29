@@ -44,6 +44,7 @@ public class AdminAgencyCodeController {
                         agencyCodeService.createAgencyCode(
                                 request.agencyName(),
                                 request.phoneNumber(),
+                                request.nif(),
                                 request.discountPercentage()));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }

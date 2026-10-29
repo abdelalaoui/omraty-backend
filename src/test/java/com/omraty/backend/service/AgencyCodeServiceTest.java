@@ -10,8 +10,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.omraty.backend.entities.AgencyCode;
+import com.omraty.backend.entities.User;
 import com.omraty.backend.exception.AgencyCodeException;
 import com.omraty.backend.repository.AgencyCodeRepository;
+import com.omraty.backend.repository.AuthRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -27,18 +29,35 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class AgencyCodeServiceTest {
 
     private static final UUID ACCOUNT_ID = UUID.randomUUID();
+    private static final String PHONE = "+22236000000";
+
+    private static User client(String phone) {
+        return new User(
+                ACCOUNT_ID,
+                phone,
+                "hash",
+                "M",
+                null,
+                null,
+                false,
+                LocalDateTime.now(),
+                "USER",
+                null);
+    }
 
     @Mock private AgencyCodeRepository agencyCodeRepository;
+    @Mock private AuthRepository authRepository;
 
     private AgencyCodeService agencyCodeService() {
-        return new AgencyCodeService(agencyCodeRepository);
+        return new AgencyCodeService(agencyCodeRepository, authRepository);
     }
 
     private AgencyCode agencyCode(String code, boolean used, UUID accountId) {
         return new AgencyCode(
                 1L,
                 "Agence Test",
-                "+2223456789",
+                PHONE,
+                "NIF123",
                 new BigDecimal("10.00"),
                 code,
                 used,
@@ -62,7 +81,8 @@ class AgencyCodeServiceTest {
         assertThatThrownBy(
                         () ->
                                 agencyCodeService()
-                                        .createAgencyCode(" ", "+2223456789", new BigDecimal("10")))
+                                        .createAgencyCode(
+                                                " ", PHONE, "NIF123", new BigDecimal("10")))
                 .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
     }
 
@@ -72,7 +92,7 @@ class AgencyCodeServiceTest {
                         () ->
                                 agencyCodeService()
                                         .createAgencyCode(
-                                                "Agence Test", "+2223456789", BigDecimal.ZERO))
+                                                "Agence Test", PHONE, "NIF123", BigDecimal.ZERO))
                 .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
     }
 
@@ -83,25 +103,30 @@ class AgencyCodeServiceTest {
                                 agencyCodeService()
                                         .createAgencyCode(
                                                 "Agence Test",
-                                                "+2223456789",
+                                                PHONE,
+                                                "NIF123",
                                                 new BigDecimal("100.01")))
                 .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
     }
 
     @Test
     void createAgencyCode_generatesAnUnusedUppercaseCodeAndDelegatesToRepository() {
+        // Numéro saisi sans indicatif : ramené au format enregistré du compte.
+        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(client(PHONE)));
         when(agencyCodeRepository.existsByCode(anyString())).thenReturn(false);
         AgencyCode created = agencyCode("ABCD2345", false, null);
         when(agencyCodeRepository.insert(
                         eq("Agence Test"),
-                        eq("+2223456789"),
+                        eq(PHONE),
+                        eq("NIF123"),
                         eq(new BigDecimal("10.00")),
                         anyString()))
                 .thenReturn(created);
 
         AgencyCode result =
                 agencyCodeService()
-                        .createAgencyCode("Agence Test", "+2223456789", new BigDecimal("10.00"));
+                        .createAgencyCode(
+                                "Agence Test", "36 00 00 00", "NIF123", new BigDecimal("10.00"));
 
         assertThat(result.code()).isEqualTo("ABCD2345");
         assertThat(result.used()).isFalse();
@@ -110,7 +135,8 @@ class AgencyCodeServiceTest {
         verify(agencyCodeRepository)
                 .insert(
                         eq("Agence Test"),
-                        eq("+2223456789"),
+                        eq(PHONE),
+                        eq("NIF123"),
                         eq(new BigDecimal("10.00")),
                         codeCaptor.capture());
         String generatedCode = codeCaptor.getValue();
@@ -120,14 +146,67 @@ class AgencyCodeServiceTest {
 
     @Test
     void createAgencyCode_whenFirstCandidateCollides_retriesUntilAnUnusedCodeIsFound() {
+        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(client(PHONE)));
         when(agencyCodeRepository.existsByCode(anyString())).thenReturn(true, false);
         when(agencyCodeRepository.insert(
-                        anyString(), anyString(), org.mockito.ArgumentMatchers.any(), anyString()))
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        org.mockito.ArgumentMatchers.any(),
+                        anyString()))
                 .thenReturn(agencyCode("EFGH6789", false, null));
 
-        agencyCodeService().createAgencyCode("Agence Test", "+2223456789", new BigDecimal("10"));
+        agencyCodeService().createAgencyCode("Agence Test", PHONE, "NIF123", new BigDecimal("10"));
 
         verify(agencyCodeRepository, times(2)).existsByCode(anyString());
+    }
+
+    @Test
+    void createAgencyCode_withBlankNif_throwsException() {
+        assertThatThrownBy(
+                        () ->
+                                agencyCodeService()
+                                        .createAgencyCode(
+                                                "Agence Test", PHONE, " ", new BigDecimal("10")))
+                .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
+    }
+
+    @Test
+    void createAgencyCode_withoutClientAccountForPhone_throwsExceptionWithoutInserting() {
+        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(
+                        () ->
+                                agencyCodeService()
+                                        .createAgencyCode(
+                                                "Agence Test",
+                                                PHONE,
+                                                "NIF123",
+                                                new BigDecimal("10")))
+                .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
+
+        verify(agencyCodeRepository, never())
+                .insert(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        org.mockito.ArgumentMatchers.any(),
+                        anyString());
+    }
+
+    @Test
+    void verifyCode_fromAnotherAccount_throwsNotFoundWithoutLinking() {
+        // Code créé pour PHONE : un autre compte ne peut pas le valider.
+        when(agencyCodeRepository.findByCodeForUpdate("ABCD2345"))
+                .thenReturn(Optional.of(agencyCode("ABCD2345", false, null)));
+        when(authRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(client("+22244000000")));
+
+        assertThatThrownBy(() -> agencyCodeService().verifyCode(ACCOUNT_ID, "ABCD2345"))
+                .isInstanceOf(AgencyCodeException.AgencyCodeNotFoundException.class);
+
+        verify(agencyCodeRepository, never())
+                .updateVerify(
+                        org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -155,6 +234,7 @@ class AgencyCodeServiceTest {
     void verifyCode_normalizesInputAndLinksAccountOnSuccess() {
         when(agencyCodeRepository.findByCodeForUpdate("ABCD2345"))
                 .thenReturn(Optional.of(agencyCode("ABCD2345", false, null)));
+        when(authRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(client(PHONE)));
         when(agencyCodeRepository.updateVerify(1L, ACCOUNT_ID))
                 .thenReturn(agencyCode("ABCD2345", true, ACCOUNT_ID));
 

@@ -8,6 +8,7 @@ public record AgencyCodeResponse(
         long id,
         String agencyName,
         String phoneNumber,
+        String nif,
         BigDecimal discountPercentage,
         String code,
         boolean used,
