@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -195,17 +196,30 @@ class AgencyCodeServiceTest {
     }
 
     @Test
-    void createAgencyCode_withBlankNif_throwsException() {
-        assertThatThrownBy(
-                        () ->
-                                agencyCodeService()
-                                        .createAgencyCode(
-                                                "Agence Test",
-                                                "Client Test",
-                                                PHONE,
-                                                " ",
-                                                new BigDecimal("10")))
-                .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
+    void createAgencyCode_withBlankNif_storesNoNif() {
+        // NIF facultatif : vide = pas de NIF.
+        when(authRepository.findByPhone(PHONE)).thenReturn(Optional.of(client(PHONE)));
+        when(agencyCodeRepository.existsByCode(anyString())).thenReturn(false);
+        when(agencyCodeRepository.insert(
+                        eq("Agence Test"),
+                        eq("Client Test"),
+                        eq(PHONE),
+                        isNull(),
+                        eq(new BigDecimal("10")),
+                        anyString()))
+                .thenReturn(agencyCode("ABCD2345", false, null));
+
+        agencyCodeService()
+                .createAgencyCode("Agence Test", "Client Test", PHONE, " ", new BigDecimal("10"));
+
+        verify(agencyCodeRepository)
+                .insert(
+                        eq("Agence Test"),
+                        eq("Client Test"),
+                        eq(PHONE),
+                        isNull(),
+                        eq(new BigDecimal("10")),
+                        anyString());
     }
 
     @Test

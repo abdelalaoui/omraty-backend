@@ -74,7 +74,7 @@ public class AgencyCodeService {
                 agencyName.trim(),
                 clientName.trim(),
                 normalizedPhone,
-                nif.trim(),
+                nif == null || nif.isBlank() ? null : nif.trim(),
                 discountPercentage,
                 generateUniqueCode());
     }
@@ -200,12 +200,9 @@ public class AgencyCodeService {
         }
     }
 
+    /** NIF facultatif : seule sa longueur est contrôlée. */
     private void validateNif(String nif) {
-        if (nif == null || nif.isBlank()) {
-            throw new AgencyCodeException.InvalidAgencyCodeRequestException(
-                    "Le NIF ne peut pas être vide");
-        }
-        if (nif.trim().length() > MAX_NIF_LENGTH) {
+        if (nif != null && nif.trim().length() > MAX_NIF_LENGTH) {
             throw new AgencyCodeException.InvalidAgencyCodeRequestException(
                     "Le NIF dépasse la longueur maximale autorisée (" + MAX_NIF_LENGTH + ")");
         }
