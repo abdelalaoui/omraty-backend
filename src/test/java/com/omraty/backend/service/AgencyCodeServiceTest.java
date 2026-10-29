@@ -169,8 +169,7 @@ class AgencyCodeServiceTest {
         when(agencyCodeRepository.findDiscountPercentageForAccount(ACCOUNT_ID))
                 .thenReturn(Optional.of(new BigDecimal("5.00")));
 
-        assertThat(agencyCodeService().getDiscountPercentage(ACCOUNT_ID))
-                .isEqualByComparingTo("5");
+        assertThat(agencyCodeService().getDiscountPercentage(ACCOUNT_ID)).isEqualByComparingTo("5");
     }
 
     @Test
@@ -178,7 +177,6 @@ class AgencyCodeServiceTest {
         when(agencyCodeRepository.findDiscountPercentageForAccount(ACCOUNT_ID))
                 .thenReturn(Optional.empty());
 
-        assertThat(agencyCodeService().getDiscountPercentage(ACCOUNT_ID))
-                .isEqualByComparingTo("0");
+        assertThat(agencyCodeService().getDiscountPercentage(ACCOUNT_ID)).isEqualByComparingTo("0");
     }
 }
