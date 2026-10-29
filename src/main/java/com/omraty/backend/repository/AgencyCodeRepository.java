@@ -53,6 +53,15 @@ public class AgencyCodeRepository {
                 .findFirst();
     }
 
+    /** Remise agence du compte, vide s'il n'a validé aucun code. */
+    public Optional<BigDecimal> findDiscountPercentageForAccount(UUID accountId) {
+        return Optional.ofNullable(
+                jdbcTemplate.queryForObject(
+                        AgencyCodeTable.SELECT_MAX_DISCOUNT_FOR_ACCOUNT,
+                        BigDecimal.class,
+                        accountId));
+    }
+
     public AgencyCode insert(
             String agencyName, String phoneNumber, BigDecimal discountPercentage, String code) {
         return jdbcTemplate

@@ -29,6 +29,7 @@ import com.omraty.backend.mapper.PaymentMethodMapper;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
 import com.omraty.backend.payment.PaymentReferenceGenerator;
+import com.omraty.backend.repository.AgencyCodeRepository;
 import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
@@ -122,6 +123,7 @@ public class BookingPaymentService {
     private final ObjectMapper objectMapper;
     private final FamilyMemberService familyMemberService;
     private final CustomOfferRepository customOfferRepository;
+    private final AgencyCodeRepository agencyCodeRepository;
     private final String bpayMethodCode;
 
     static final String FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY = "full_payment_discount_percentage";
@@ -146,6 +148,7 @@ public class BookingPaymentService {
             ObjectMapper objectMapper,
             FamilyMemberService familyMemberService,
             CustomOfferRepository customOfferRepository,
+            AgencyCodeRepository agencyCodeRepository,
             @Value("${payment.bpay.method-code:BANKILY}") String bpayMethodCode) {
         this.serviceTierRepository = serviceTierRepository;
         this.bookingPaymentRepository = bookingPaymentRepository;
@@ -166,6 +169,7 @@ public class BookingPaymentService {
         this.objectMapper = objectMapper;
         this.familyMemberService = familyMemberService;
         this.customOfferRepository = customOfferRepository;
+        this.agencyCodeRepository = agencyCodeRepository;
         this.bpayMethodCode = bpayMethodCode;
     }
 
@@ -195,9 +199,9 @@ public class BookingPaymentService {
     }
 
     /**
-     * Pourcentage de réduction réellement appliqué par {@link #applyFullPaymentDiscount} (voir
-     * migration V41) — exposé pour que l'app puisse prévisualiser le montant exact avant de créer
-     * le paiement (voir GET /payments/full-payment-discount-percentage, PaymentController).
+     * Pourcentage de réduction réellement appliqué par {@link #applyDiscounts} (voir migration V41)
+     * — exposé pour que l'app puisse prévisualiser le montant exact avant de créer le paiement
+     * (voir GET /payments/full-payment-discount-percentage, PaymentController).
      */
     public BigDecimal getFullPaymentDiscountPercentage() {
         return appSettingService.getDecimalValue(FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY);
@@ -251,9 +255,16 @@ public class BookingPaymentService {
             OmraPackage pkg,
             UUID userId,
             String paymentMethodCode) {
-        BigDecimal amount =
-                plan == PaymentPlan.FULL ? applyFullPaymentDiscount(totalAmount) : totalAmount;
-        return createPaymentPlan(roomId, bedId, null, plan, amount, pkg, userId, paymentMethodCode);
+        return createPaymentPlan(
+                roomId,
+                bedId,
+                null,
+                plan,
+                totalAmount,
+                pkg,
+                userId,
+                paymentMethodCode,
+                plan == PaymentPlan.FULL);
     }
 
     /**
@@ -281,28 +292,49 @@ public class BookingPaymentService {
     }
 
     /**
-     * Réduction appliquée au paiement complet d'une chambre/d'un lit (voir migration V41, réglage
-     * {@code full_payment_discount_percentage}) : jusqu'ici affichée côté app
-     * (payment_plan_screen.dart) mais jamais réellement appliquée par le backend — le client voyait
-     * un montant réduit à l'écran mais payait le montant plein. Non appliquée à un paiement VIP
-     * (voir {@link #createVipPaymentPlan}) : proposedPrice est un montant déjà négocié par l'admin,
-     * pas un tarif catalogue.
+     * Réductions appliquées au montant d'un paiement, qui s'additionnent :
+     *
+     * <ul>
+     *   <li>paiement complet d'une chambre/d'un lit (voir migration V41, réglage {@code
+     *       full_payment_discount_percentage}) si fullPaymentDiscount — jamais sur une offre, un
+     *       VIP ou une proposition, dont le prix est déjà final ;
+     *   <li>remise agence (voir AgencyCodeService) : tout compte lié à un code agence en bénéficie
+     *       sur tous ses paiements, sans exception.
+     * </ul>
+     *
+     * Ex. 5 % + 5 % = 10 % du montant brut (et non 5 % puis 5 % du reste).
      */
-    private BigDecimal applyFullPaymentDiscount(BigDecimal totalAmount) {
+    private BigDecimal applyDiscounts(
+            BigDecimal grossAmount, boolean fullPaymentDiscount, UUID userId) {
         BigDecimal discountPercentage =
-                appSettingService.getDecimalValue(FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY);
+                fullPaymentDiscount
+                        ? appSettingService.getDecimalValue(FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY)
+                        : BigDecimal.ZERO;
+        if (userId != null) {
+            discountPercentage =
+                    discountPercentage.add(
+                            agencyCodeRepository
+                                    .findDiscountPercentageForAccount(userId)
+                                    .orElse(BigDecimal.ZERO));
+        }
+        if (discountPercentage.signum() == 0) {
+            return grossAmount;
+        }
+        // Jamais de montant négatif, même si les deux remises dépassent 100 %.
         BigDecimal multiplier =
-                BigDecimal.ONE.subtract(
-                        discountPercentage.divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP));
-        return totalAmount.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal.ONE
+                        .subtract(
+                                discountPercentage.divide(
+                                        new BigDecimal("100"), 4, RoundingMode.HALF_UP))
+                        .max(BigDecimal.ZERO);
+        return grossAmount.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**
      * Crée le paiement d'un lit réservé au prix de l'offre spéciale en cours (bedId renseigné, voir
      * RoomService.reserveOfferBed, PromoPackageService) : toujours en plan FULL, sans jamais
-     * appliquer {@link #applyFullPaymentDiscount} — même raisonnement que {@link
-     * #createVipPaymentPlan} : offerPrice est déjà le prix final de l'offre, pas un tarif catalogue
-     * à réduire davantage.
+     * appliquer {@link #applyDiscounts} — même raisonnement que {@link #createVipPaymentPlan} :
+     * offerPrice est déjà le prix final de l'offre, pas un tarif catalogue à réduire davantage.
      */
     public BookingPayment createOfferPaymentPlan(
             long bedId, BigDecimal offerPrice, OmraPackage pkg, UUID userId) {
@@ -321,7 +353,15 @@ public class BookingPaymentService {
             UUID userId,
             String paymentMethodCode) {
         return createPaymentPlan(
-                null, bedId, null, PaymentPlan.FULL, offerPrice, pkg, userId, paymentMethodCode);
+                null,
+                bedId,
+                null,
+                PaymentPlan.FULL,
+                offerPrice,
+                pkg,
+                userId,
+                paymentMethodCode,
+                false);
     }
 
     /**
@@ -366,7 +406,8 @@ public class BookingPaymentService {
                 proposedPrice,
                 null,
                 userId,
-                paymentMethodCode);
+                paymentMethodCode,
+                false);
     }
 
     /**
@@ -400,10 +441,17 @@ public class BookingPaymentService {
             OmraPackage pkg,
             UUID userId,
             String paymentMethodCode) {
-        BigDecimal amount =
-                plan == PaymentPlan.FULL ? applyFullPaymentDiscount(totalAmount) : totalAmount;
         BookingPayment payment =
-                createPaymentPlan(null, null, null, plan, amount, pkg, userId, paymentMethodCode);
+                createPaymentPlan(
+                        null,
+                        null,
+                        null,
+                        plan,
+                        totalAmount,
+                        pkg,
+                        userId,
+                        paymentMethodCode,
+                        plan == PaymentPlan.FULL);
         bookingPaymentRepository.linkRoomsToGroupPayment(payment.id(), roomIds);
         return payment;
     }
@@ -430,7 +478,7 @@ public class BookingPaymentService {
      * Crée le paiement de la chambre privée d'1 place de l'offre spéciale (roomId renseigné, voir
      * RoomService.reserveOfferPrivateRoom, migration V63) : mêmes règles que {@link
      * #createOfferPaymentPlan(long, BigDecimal, OmraPackage, UUID, String)} — plan FULL, sans
-     * {@link #applyFullPaymentDiscount}, offerPrice étant déjà le prix final de l'offre.
+     * {@link #applyDiscounts}, offerPrice étant déjà le prix final de l'offre.
      */
     public BookingPayment createOfferRoomPaymentPlan(
             long roomId,
@@ -439,7 +487,15 @@ public class BookingPaymentService {
             UUID userId,
             String paymentMethodCode) {
         return createPaymentPlan(
-                roomId, null, null, PaymentPlan.FULL, offerPrice, pkg, userId, paymentMethodCode);
+                roomId,
+                null,
+                null,
+                PaymentPlan.FULL,
+                offerPrice,
+                pkg,
+                userId,
+                paymentMethodCode,
+                false);
     }
 
     /**
@@ -465,7 +521,8 @@ public class BookingPaymentService {
                         totalAmount,
                         pkg,
                         userId,
-                        paymentMethodCode);
+                        paymentMethodCode,
+                        false);
         bookingPaymentRepository.linkBedsToGroupPayment(payment.id(), bedIds);
         return payment;
     }
@@ -479,7 +536,7 @@ public class BookingPaymentService {
     public BookingPayment createCustomOfferPaymentPlan(
             BigDecimal amount, OmraPackage pkg, UUID userId, String paymentMethodCode) {
         return createPaymentPlan(
-                null, null, null, PaymentPlan.FULL, amount, pkg, userId, paymentMethodCode);
+                null, null, null, PaymentPlan.FULL, amount, pkg, userId, paymentMethodCode, false);
     }
 
     /**
@@ -505,21 +562,28 @@ public class BookingPaymentService {
                         totalAmount,
                         pkg,
                         userId,
-                        paymentMethodCode);
+                        paymentMethodCode,
+                        false);
         bookingPaymentRepository.linkRoomsToGroupPayment(payment.id(), roomIds);
         bookingPaymentRepository.linkBedsToGroupPayment(payment.id(), bedIds);
         return payment;
     }
 
+    /**
+     * fullPaymentDiscount : appliquer aussi la réduction du paiement complet (voir {@link
+     * #applyDiscounts}) — uniquement pour un tarif catalogue payé en une fois ; les offres, VIP et
+     * propositions ont déjà leur prix final et ne reçoivent que la remise agence.
+     */
     private BookingPayment createPaymentPlan(
             Long roomId,
             Long bedId,
             Long vipRequestId,
             PaymentPlan plan,
-            BigDecimal totalAmount,
+            BigDecimal grossAmount,
             OmraPackage pkg,
             UUID userId,
-            String paymentMethodCode) {
+            String paymentMethodCode,
+            boolean fullPaymentDiscount) {
         if (plan == PaymentPlan.INSTALLMENTS && pkg.endDate() == null) {
             throw new BookingPaymentException.PackageDatesMissingException(
                     "Le paiement en 3 tranches nécessite une date de fin (endDate) sur le package"
@@ -527,6 +591,7 @@ public class BookingPaymentService {
                             + pkg.id()
                             + ")");
         }
+        BigDecimal totalAmount = applyDiscounts(grossAmount, fullPaymentDiscount, userId);
         BookingPayment payment =
                 bookingPaymentRepository.insert(
                         roomId, bedId, vipRequestId, plan, PaymentStatus.PENDING, totalAmount);

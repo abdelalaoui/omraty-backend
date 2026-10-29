@@ -34,6 +34,7 @@ import com.omraty.backend.exception.PaymentMethodException;
 import com.omraty.backend.payment.PaymentGatewayClient;
 import com.omraty.backend.payment.PaymentGatewayResult;
 import com.omraty.backend.payment.PaymentReferenceGenerator;
+import com.omraty.backend.repository.AgencyCodeRepository;
 import com.omraty.backend.repository.AuthRepository;
 import com.omraty.backend.repository.BedRepository;
 import com.omraty.backend.repository.BookingInstallmentRepository;
@@ -83,6 +84,7 @@ class BookingPaymentServiceTest {
     @Mock private PackageRepository packageRepository;
     @Mock private FamilyMemberService familyMemberService;
     @Mock private CustomOfferRepository customOfferRepository;
+    @Mock private AgencyCodeRepository agencyCodeRepository;
 
     private BookingPaymentService bookingPaymentService() {
         return new BookingPaymentService(
@@ -105,6 +107,7 @@ class BookingPaymentServiceTest {
                 objectMapper,
                 familyMemberService,
                 customOfferRepository,
+                agencyCodeRepository,
                 "BANKILY");
     }
 
@@ -658,6 +661,113 @@ class BookingPaymentServiceTest {
         bookingPaymentService().createOfferPaymentPlan(100L, new BigDecimal("45000"), pkg, USER_ID);
 
         verifyNoInteractions(appSettingService);
+    }
+
+    @Test
+    void createOfferPaymentPlan_appliesAgencyDiscount() {
+        // Compte lié à un code agence (voir AgencyCodeService) : sa remise s'applique à tous ses
+        // paiements, même au prix final d'une offre : 45000 - 5% = 42750.00.
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(agencyCodeRepository.findDiscountPercentageForAccount(USER_ID))
+                .thenReturn(Optional.of(new BigDecimal("5")));
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        null,
+                        100L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("42750.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        null,
+                        100L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("42750.00")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("42750.00")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+
+        bookingPaymentService().createOfferPaymentPlan(100L, new BigDecimal("45000"), pkg, USER_ID);
+
+        verify(bookingPaymentRepository)
+                .insert(
+                        null,
+                        100L,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("42750.00"));
+    }
+
+    @Test
+    void createPaymentPlan_full_addsAgencyDiscountToFullPaymentDiscount() {
+        // Les deux remises s'additionnent : 5% + 5% = 10% de 90000 = 81000.00 (et non 81225.00,
+        // 5% puis 5% du reste).
+        OmraPackage pkg = new OmraPackage(1L, "Omra Test", 10, null, null);
+        when(appSettingService.getDecimalValue(
+                        BookingPaymentService.FULL_PAYMENT_DISCOUNT_PERCENTAGE_KEY))
+                .thenReturn(new BigDecimal("5"));
+        when(agencyCodeRepository.findDiscountPercentageForAccount(USER_ID))
+                .thenReturn(Optional.of(new BigDecimal("5")));
+        BookingPayment inserted =
+                new BookingPayment(
+                        10L,
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("81000.00"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
+        when(bookingPaymentRepository.insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("81000.00")))
+                .thenReturn(inserted);
+        when(authRepository.findById(USER_ID)).thenReturn(Optional.of(user("+22890000000")));
+        when(paymentGatewayClient.createPayment(
+                        eq("+22890000000"), eq(new BigDecimal("81000.00")), anyString()))
+                .thenReturn(
+                        new PaymentGatewayResult(
+                                "CODE123", "txn-1", LocalDateTime.now().plusMinutes(15)));
+        when(bookingPaymentRepository.attachGatewayResult(
+                        anyLongV(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(inserted);
+
+        bookingPaymentService()
+                .createPaymentPlan(
+                        30L, null, PaymentPlan.FULL, new BigDecimal("90000"), pkg, USER_ID);
+
+        verify(bookingPaymentRepository)
+                .insert(
+                        30L,
+                        null,
+                        null,
+                        PaymentPlan.FULL,
+                        PaymentStatus.PENDING,
+                        new BigDecimal("81000.00"));
     }
 
     @Test

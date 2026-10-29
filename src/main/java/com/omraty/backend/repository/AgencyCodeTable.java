@@ -25,6 +25,13 @@ final class AgencyCodeTable {
                     + " (?, ?, ?, ?) RETURNING "
                     + AGENCY_CODE_COLUMNS;
 
+    /**
+     * Remise agence d'un compte (voir BookingPaymentService.applyDiscounts) : la plus forte si le
+     * compte a validé plusieurs codes, NULL s'il n'en a aucun.
+     */
+    static final String SELECT_MAX_DISCOUNT_FOR_ACCOUNT =
+            "SELECT MAX(discount_percentage) FROM agency_code WHERE account_id = ? AND used";
+
     static final String UPDATE_VERIFY =
             "UPDATE agency_code SET used = TRUE, account_id = ? WHERE id = ? RETURNING "
                     + AGENCY_CODE_COLUMNS;
