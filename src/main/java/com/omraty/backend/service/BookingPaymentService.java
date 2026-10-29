@@ -317,7 +317,9 @@ public class BookingPaymentService {
                                     .findDiscountPercentageForAccount(userId)
                                     .orElse(BigDecimal.ZERO));
         }
-        if (discountPercentage.signum() == 0) {
+        // Sans remise agence, une offre/VIP/proposition garde son montant tel quel ; un tarif
+        // catalogue passe toujours par le calcul (arrondi à 2 décimales), même à 0 %, comme avant.
+        if (!fullPaymentDiscount && discountPercentage.signum() == 0) {
             return grossAmount;
         }
         // Jamais de montant négatif, même si les deux remises dépassent 100 %.
