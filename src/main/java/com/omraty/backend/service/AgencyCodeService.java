@@ -3,6 +3,7 @@ package com.omraty.backend.service;
 import com.omraty.backend.entities.AgencyCode;
 import com.omraty.backend.exception.AgencyCodeException;
 import com.omraty.backend.repository.AgencyCodeRepository;
+import com.omraty.backend.repository.AuthRepository;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.util.List;
@@ -12,9 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Codes d'accès agence : quand un propriétaire d'agence contacte l'agence hors app (WhatsApp),
- * l'admin enregistre ses infos ({@link #createAgencyCode}) et le système génère un code unique que
- * l'admin lui transmet. Une fois ce code saisi côté client ({@link #verifyCode}), le compte est lié
- * et bénéficie de discountPercentage sur ses futures réservations.
+ * l'admin enregistre le nom de l'agence, le nom du client, le NIF et le numéro de téléphone de son
+ * compte ({@link #createAgencyCode}) et le système génère un code unique que l'admin lui transmet.
+ * Seul le compte de ce numéro peut le valider ({@link #verifyCode}) : il est alors lié et bénéficie
+ * de discountPercentage sur tous ses paiements.
  */
 @Service
 public class AgencyCodeService {
@@ -27,26 +29,54 @@ public class AgencyCodeService {
 
     private static final int MAX_AGENCY_NAME_LENGTH = 255;
     private static final int MAX_PHONE_NUMBER_LENGTH = 20;
+    private static final int MAX_NIF_LENGTH = 30;
     private static final BigDecimal MAX_DISCOUNT_PERCENTAGE = new BigDecimal("100");
 
     private final AgencyCodeRepository agencyCodeRepository;
+    private final AuthRepository authRepository;
     private final SecureRandom random = new SecureRandom();
 
-    public AgencyCodeService(AgencyCodeRepository agencyCodeRepository) {
+    public AgencyCodeService(
+            AgencyCodeRepository agencyCodeRepository, AuthRepository authRepository) {
         this.agencyCodeRepository = agencyCodeRepository;
+        this.authRepository = authRepository;
     }
 
     /**
      * L'admin enregistre l'agence ; le code n'est jamais saisi par l'admin, il est généré par le
-     * système et renvoyé dans la réponse pour être transmis à l'agence.
+     * système et renvoyé dans la réponse pour être transmis à l'agence. phoneNumber doit être celui
+     * d'un compte client existant (enregistré au format +222XXXXXXXX, voir PhoneNumbers) : c'est le
+     * seul compte qui pourra valider le code.
+     *
+     * @throws AgencyCodeException.InvalidAgencyCodeRequestException si un champ est invalide ou si
+     *     aucun compte n'a ce numéro.
      */
     public AgencyCode createAgencyCode(
-            String agencyName, String phoneNumber, BigDecimal discountPercentage) {
+            String agencyName,
+            String clientName,
+            String phoneNumber,
+            String nif,
+            BigDecimal discountPercentage) {
         validateAgencyName(agencyName);
+        validateClientName(clientName);
         validatePhoneNumber(phoneNumber);
+        validateNif(nif);
         validateDiscountPercentage(discountPercentage);
+        String normalizedPhone = PhoneNumbers.normalize(phoneNumber);
+        if (authRepository
+                .findByPhone(normalizedPhone)
+                .filter(user -> user.deletedAt() == null)
+                .isEmpty()) {
+            throw new AgencyCodeException.InvalidAgencyCodeRequestException(
+                    "Aucun compte client avec ce numéro de téléphone");
+        }
         return agencyCodeRepository.insert(
-                agencyName, phoneNumber, discountPercentage, generateUniqueCode());
+                agencyName.trim(),
+                clientName.trim(),
+                normalizedPhone,
+                nif == null || nif.isBlank() ? null : nif.trim(),
+                discountPercentage,
+                generateUniqueCode());
     }
 
     /**
@@ -77,7 +107,33 @@ public class AgencyCodeService {
             throw new AgencyCodeException.AgencyCodeAlreadyUsedException(
                     "Ce code d'accès agence a déjà été utilisé");
         }
+        // Code réservé au compte du numéro saisi par l'admin : même réponse qu'un code inexistant,
+        // pour ne pas confirmer à un autre compte que ce code existe.
+        boolean ownPhone =
+                authRepository
+                        .findById(accountId)
+                        .map(
+                                user ->
+                                        PhoneNumbers.normalize(user.phone())
+                                                .equals(
+                                                        PhoneNumbers.normalize(
+                                                                agencyCode.phoneNumber())))
+                        .orElse(false);
+        if (!ownPhone) {
+            throw new AgencyCodeException.AgencyCodeNotFoundException(
+                    "Code d'accès agence invalide");
+        }
         return agencyCodeRepository.updateVerify(agencyCode.id(), accountId);
+    }
+
+    /**
+     * Remise agence du compte (voir BookingPaymentService.applyDiscounts), 0 s'il n'a validé aucun
+     * code.
+     */
+    public BigDecimal getDiscountPercentage(UUID accountId) {
+        return agencyCodeRepository
+                .findDiscountPercentageForAccount(accountId)
+                .orElse(BigDecimal.ZERO);
     }
 
     private String generateUniqueCode() {
@@ -128,6 +184,27 @@ public class AgencyCodeService {
                     "Le numéro de téléphone dépasse la longueur maximale autorisée ("
                             + MAX_PHONE_NUMBER_LENGTH
                             + ")");
+        }
+    }
+
+    private void validateClientName(String clientName) {
+        if (clientName == null || clientName.isBlank()) {
+            throw new AgencyCodeException.InvalidAgencyCodeRequestException(
+                    "Le nom du client ne peut pas être vide");
+        }
+        if (clientName.trim().length() > MAX_AGENCY_NAME_LENGTH) {
+            throw new AgencyCodeException.InvalidAgencyCodeRequestException(
+                    "Le nom du client dépasse la longueur maximale autorisée ("
+                            + MAX_AGENCY_NAME_LENGTH
+                            + ")");
+        }
+    }
+
+    /** NIF facultatif : seule sa longueur est contrôlée. */
+    private void validateNif(String nif) {
+        if (nif != null && nif.trim().length() > MAX_NIF_LENGTH) {
+            throw new AgencyCodeException.InvalidAgencyCodeRequestException(
+                    "Le NIF dépasse la longueur maximale autorisée (" + MAX_NIF_LENGTH + ")");
         }
     }
 

@@ -2,12 +2,14 @@ package com.omraty.backend.controller;
 
 import com.omraty.backend.dto.request.VerifyAgencyCodeRequest;
 import com.omraty.backend.dto.response.AgencyCodeResponse;
+import com.omraty.backend.dto.response.AgencyDiscountResponse;
 import com.omraty.backend.mapper.AgencyCodeMapper;
 import com.omraty.backend.service.AgencyCodeService;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,6 +26,14 @@ public class AgencyController {
 
     public AgencyController(AgencyCodeService agencyCodeService) {
         this.agencyCodeService = agencyCodeService;
+    }
+
+    /** Remise agence du compte connecté, 0 s'il n'est lié à aucune agence. */
+    @GetMapping("/agency/my-discount")
+    public ResponseEntity<AgencyDiscountResponse> getMyDiscount(
+            @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(
+                new AgencyDiscountResponse(agencyCodeService.getDiscountPercentage(userId)));
     }
 
     @PostMapping("/agency/verify-code")

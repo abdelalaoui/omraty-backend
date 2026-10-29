@@ -5,7 +5,8 @@ final class AgencyCodeTable {
     private AgencyCodeTable() {}
 
     static final String AGENCY_CODE_COLUMNS =
-            "id, agency_name, phone_number, discount_percentage, code, used, account_id, created_at";
+            "id, agency_name, client_name, phone_number, nif, discount_percentage, code, used,"
+                    + " account_id, created_at";
 
     static final String EXISTS_BY_CODE = "SELECT EXISTS(SELECT 1 FROM agency_code WHERE code = ?)";
 
@@ -21,9 +22,16 @@ final class AgencyCodeTable {
             "SELECT " + AGENCY_CODE_COLUMNS + " FROM agency_code WHERE code = ? FOR UPDATE";
 
     static final String INSERT_AGENCY_CODE =
-            "INSERT INTO agency_code (agency_name, phone_number, discount_percentage, code) VALUES"
-                    + " (?, ?, ?, ?) RETURNING "
+            "INSERT INTO agency_code (agency_name, client_name, phone_number, nif,"
+                    + " discount_percentage, code) VALUES (?, ?, ?, ?, ?, ?) RETURNING "
                     + AGENCY_CODE_COLUMNS;
+
+    /**
+     * Remise agence d'un compte (voir BookingPaymentService.applyDiscounts) : la plus forte si le
+     * compte a validé plusieurs codes, NULL s'il n'en a aucun.
+     */
+    static final String SELECT_MAX_DISCOUNT_FOR_ACCOUNT =
+            "SELECT MAX(discount_percentage) FROM agency_code WHERE account_id = ? AND used";
 
     static final String UPDATE_VERIFY =
             "UPDATE agency_code SET used = TRUE, account_id = ? WHERE id = ? RETURNING "

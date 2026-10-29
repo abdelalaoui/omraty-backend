@@ -18,7 +18,9 @@ public class AgencyCodeRepository {
                     new AgencyCode(
                             rs.getLong("id"),
                             rs.getString("agency_name"),
+                            rs.getString("client_name"),
                             rs.getString("phone_number"),
+                            rs.getString("nif"),
                             rs.getBigDecimal("discount_percentage"),
                             rs.getString("code"),
                             rs.getBoolean("used"),
@@ -53,14 +55,30 @@ public class AgencyCodeRepository {
                 .findFirst();
     }
 
+    /** Remise agence du compte, vide s'il n'a validé aucun code. */
+    public Optional<BigDecimal> findDiscountPercentageForAccount(UUID accountId) {
+        return Optional.ofNullable(
+                jdbcTemplate.queryForObject(
+                        AgencyCodeTable.SELECT_MAX_DISCOUNT_FOR_ACCOUNT,
+                        BigDecimal.class,
+                        accountId));
+    }
+
     public AgencyCode insert(
-            String agencyName, String phoneNumber, BigDecimal discountPercentage, String code) {
+            String agencyName,
+            String clientName,
+            String phoneNumber,
+            String nif,
+            BigDecimal discountPercentage,
+            String code) {
         return jdbcTemplate
                 .query(
                         AgencyCodeTable.INSERT_AGENCY_CODE,
                         AGENCY_CODE_ROW_MAPPER,
                         agencyName,
+                        clientName,
                         phoneNumber,
+                        nif,
                         discountPercentage,
                         code)
                 .stream()
