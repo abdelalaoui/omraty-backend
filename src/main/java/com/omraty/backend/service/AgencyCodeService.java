@@ -13,10 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Codes d'accès agence : quand un propriétaire d'agence contacte l'agence hors app (WhatsApp),
- * l'admin enregistre son nom, son NIF et le numéro de téléphone de son compte ({@link
- * #createAgencyCode}) et le système génère un code unique que l'admin lui transmet. Seul le compte
- * de ce numéro peut le valider ({@link #verifyCode}) : il est alors lié et bénéficie de
- * discountPercentage sur tous ses paiements.
+ * l'admin enregistre le nom de l'agence, le nom du client, le NIF et le numéro de téléphone de son
+ * compte ({@link #createAgencyCode}) et le système génère un code unique que l'admin lui transmet.
+ * Seul le compte de ce numéro peut le valider ({@link #verifyCode}) : il est alors lié et bénéficie
+ * de discountPercentage sur tous ses paiements.
  */
 @Service
 public class AgencyCodeService {
@@ -52,8 +52,13 @@ public class AgencyCodeService {
      *     aucun compte n'a ce numéro.
      */
     public AgencyCode createAgencyCode(
-            String agencyName, String phoneNumber, String nif, BigDecimal discountPercentage) {
+            String agencyName,
+            String clientName,
+            String phoneNumber,
+            String nif,
+            BigDecimal discountPercentage) {
         validateAgencyName(agencyName);
+        validateClientName(clientName);
         validatePhoneNumber(phoneNumber);
         validateNif(nif);
         validateDiscountPercentage(discountPercentage);
@@ -67,6 +72,7 @@ public class AgencyCodeService {
         }
         return agencyCodeRepository.insert(
                 agencyName.trim(),
+                clientName.trim(),
                 normalizedPhone,
                 nif.trim(),
                 discountPercentage,
@@ -177,6 +183,19 @@ public class AgencyCodeService {
             throw new AgencyCodeException.InvalidAgencyCodeRequestException(
                     "Le numéro de téléphone dépasse la longueur maximale autorisée ("
                             + MAX_PHONE_NUMBER_LENGTH
+                            + ")");
+        }
+    }
+
+    private void validateClientName(String clientName) {
+        if (clientName == null || clientName.isBlank()) {
+            throw new AgencyCodeException.InvalidAgencyCodeRequestException(
+                    "Le nom du client ne peut pas être vide");
+        }
+        if (clientName.trim().length() > MAX_AGENCY_NAME_LENGTH) {
+            throw new AgencyCodeException.InvalidAgencyCodeRequestException(
+                    "Le nom du client dépasse la longueur maximale autorisée ("
+                            + MAX_AGENCY_NAME_LENGTH
                             + ")");
         }
     }

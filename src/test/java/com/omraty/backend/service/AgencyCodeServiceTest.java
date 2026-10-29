@@ -56,6 +56,7 @@ class AgencyCodeServiceTest {
         return new AgencyCode(
                 1L,
                 "Agence Test",
+                "Client Test",
                 PHONE,
                 "NIF123",
                 new BigDecimal("10.00"),
@@ -82,7 +83,11 @@ class AgencyCodeServiceTest {
                         () ->
                                 agencyCodeService()
                                         .createAgencyCode(
-                                                " ", PHONE, "NIF123", new BigDecimal("10")))
+                                                " ",
+                                                "Client Test",
+                                                PHONE,
+                                                "NIF123",
+                                                new BigDecimal("10")))
                 .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
     }
 
@@ -92,7 +97,11 @@ class AgencyCodeServiceTest {
                         () ->
                                 agencyCodeService()
                                         .createAgencyCode(
-                                                "Agence Test", PHONE, "NIF123", BigDecimal.ZERO))
+                                                "Agence Test",
+                                                "Client Test",
+                                                PHONE,
+                                                "NIF123",
+                                                BigDecimal.ZERO))
                 .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
     }
 
@@ -103,6 +112,7 @@ class AgencyCodeServiceTest {
                                 agencyCodeService()
                                         .createAgencyCode(
                                                 "Agence Test",
+                                                "Client Test",
                                                 PHONE,
                                                 "NIF123",
                                                 new BigDecimal("100.01")))
@@ -117,6 +127,7 @@ class AgencyCodeServiceTest {
         AgencyCode created = agencyCode("ABCD2345", false, null);
         when(agencyCodeRepository.insert(
                         eq("Agence Test"),
+                        eq("Client Test"),
                         eq(PHONE),
                         eq("NIF123"),
                         eq(new BigDecimal("10.00")),
@@ -126,7 +137,11 @@ class AgencyCodeServiceTest {
         AgencyCode result =
                 agencyCodeService()
                         .createAgencyCode(
-                                "Agence Test", "36 00 00 00", "NIF123", new BigDecimal("10.00"));
+                                "Agence Test",
+                                "Client Test",
+                                "36 00 00 00",
+                                "NIF123",
+                                new BigDecimal("10.00"));
 
         assertThat(result.code()).isEqualTo("ABCD2345");
         assertThat(result.used()).isFalse();
@@ -135,6 +150,7 @@ class AgencyCodeServiceTest {
         verify(agencyCodeRepository)
                 .insert(
                         eq("Agence Test"),
+                        eq("Client Test"),
                         eq(PHONE),
                         eq("NIF123"),
                         eq(new BigDecimal("10.00")),
@@ -152,13 +168,30 @@ class AgencyCodeServiceTest {
                         anyString(),
                         anyString(),
                         anyString(),
+                        anyString(),
                         org.mockito.ArgumentMatchers.any(),
                         anyString()))
                 .thenReturn(agencyCode("EFGH6789", false, null));
 
-        agencyCodeService().createAgencyCode("Agence Test", PHONE, "NIF123", new BigDecimal("10"));
+        agencyCodeService()
+                .createAgencyCode(
+                        "Agence Test", "Client Test", PHONE, "NIF123", new BigDecimal("10"));
 
         verify(agencyCodeRepository, times(2)).existsByCode(anyString());
+    }
+
+    @Test
+    void createAgencyCode_withBlankClientName_throwsException() {
+        assertThatThrownBy(
+                        () ->
+                                agencyCodeService()
+                                        .createAgencyCode(
+                                                "Agence Test",
+                                                " ",
+                                                PHONE,
+                                                "NIF123",
+                                                new BigDecimal("10")))
+                .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
     }
 
     @Test
@@ -167,7 +200,11 @@ class AgencyCodeServiceTest {
                         () ->
                                 agencyCodeService()
                                         .createAgencyCode(
-                                                "Agence Test", PHONE, " ", new BigDecimal("10")))
+                                                "Agence Test",
+                                                "Client Test",
+                                                PHONE,
+                                                " ",
+                                                new BigDecimal("10")))
                 .isInstanceOf(AgencyCodeException.InvalidAgencyCodeRequestException.class);
     }
 
@@ -180,6 +217,7 @@ class AgencyCodeServiceTest {
                                 agencyCodeService()
                                         .createAgencyCode(
                                                 "Agence Test",
+                                                "Client Test",
                                                 PHONE,
                                                 "NIF123",
                                                 new BigDecimal("10")))
@@ -187,6 +225,7 @@ class AgencyCodeServiceTest {
 
         verify(agencyCodeRepository, never())
                 .insert(
+                        anyString(),
                         anyString(),
                         anyString(),
                         anyString(),

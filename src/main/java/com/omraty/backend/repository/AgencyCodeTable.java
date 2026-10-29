@@ -5,8 +5,8 @@ final class AgencyCodeTable {
     private AgencyCodeTable() {}
 
     static final String AGENCY_CODE_COLUMNS =
-            "id, agency_name, phone_number, nif, discount_percentage, code, used, account_id,"
-                    + " created_at";
+            "id, agency_name, client_name, phone_number, nif, discount_percentage, code, used,"
+                    + " account_id, created_at";
 
     static final String EXISTS_BY_CODE = "SELECT EXISTS(SELECT 1 FROM agency_code WHERE code = ?)";
 
@@ -22,8 +22,8 @@ final class AgencyCodeTable {
             "SELECT " + AGENCY_CODE_COLUMNS + " FROM agency_code WHERE code = ? FOR UPDATE";
 
     static final String INSERT_AGENCY_CODE =
-            "INSERT INTO agency_code (agency_name, phone_number, nif, discount_percentage, code)"
-                    + " VALUES (?, ?, ?, ?, ?) RETURNING "
+            "INSERT INTO agency_code (agency_name, client_name, phone_number, nif,"
+                    + " discount_percentage, code) VALUES (?, ?, ?, ?, ?, ?) RETURNING "
                     + AGENCY_CODE_COLUMNS;
 
     /**

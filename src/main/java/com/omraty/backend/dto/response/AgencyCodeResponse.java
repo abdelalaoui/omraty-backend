@@ -7,6 +7,7 @@ import java.util.UUID;
 public record AgencyCodeResponse(
         long id,
         String agencyName,
+        String clientName,
         String phoneNumber,
         String nif,
         BigDecimal discountPercentage,

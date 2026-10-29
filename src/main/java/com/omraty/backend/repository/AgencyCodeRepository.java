@@ -18,6 +18,7 @@ public class AgencyCodeRepository {
                     new AgencyCode(
                             rs.getLong("id"),
                             rs.getString("agency_name"),
+                            rs.getString("client_name"),
                             rs.getString("phone_number"),
                             rs.getString("nif"),
                             rs.getBigDecimal("discount_percentage"),
@@ -65,6 +66,7 @@ public class AgencyCodeRepository {
 
     public AgencyCode insert(
             String agencyName,
+            String clientName,
             String phoneNumber,
             String nif,
             BigDecimal discountPercentage,
@@ -74,6 +76,7 @@ public class AgencyCodeRepository {
                         AgencyCodeTable.INSERT_AGENCY_CODE,
                         AGENCY_CODE_ROW_MAPPER,
                         agencyName,
+                        clientName,
                         phoneNumber,
                         nif,
                         discountPercentage,

@@ -43,6 +43,7 @@ public class AdminAgencyCodeController {
                 AgencyCodeMapper.toResponse(
                         agencyCodeService.createAgencyCode(
                                 request.agencyName(),
+                                request.clientName(),
                                 request.phoneNumber(),
                                 request.nif(),
                                 request.discountPercentage()));

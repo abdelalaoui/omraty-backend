@@ -12,6 +12,7 @@ public final class AgencyCodeMapper {
         return new AgencyCodeResponse(
                 agencyCode.id(),
                 agencyCode.agencyName(),
+                agencyCode.clientName(),
                 agencyCode.phoneNumber(),
                 agencyCode.nif(),
                 agencyCode.discountPercentage(),

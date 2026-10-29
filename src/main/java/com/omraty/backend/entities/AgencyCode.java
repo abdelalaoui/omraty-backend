@@ -15,6 +15,7 @@ import java.util.UUID;
 public record AgencyCode(
         long id,
         String agencyName,
+        String clientName,
         String phoneNumber,
         String nif,
         BigDecimal discountPercentage,
