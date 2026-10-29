@@ -221,6 +221,57 @@ class InvoiceServiceTest {
     }
 
     @Test
+    void generateIfFullyPaid_withArabicAcceptedTerms_rendersAndStoresInvoice() {
+        // Conditions acceptées en arabe (copie figée V55) en fin de facture : police Amiri et
+        // bidi ICU (voir InvoiceService.appendAcceptedTerms) — generateIfFullyPaid avale les
+        // erreurs, le stockage prouve que le rendu a abouti.
+        BookingPayment base = payment(10L, PaymentPlan.FULL, PaymentStatus.CONFIRMED);
+        BookingPayment withTerms =
+                new BookingPayment(
+                        base.id(),
+                        base.roomId(),
+                        base.bedId(),
+                        base.vipRequestId(),
+                        base.plan(),
+                        base.status(),
+                        base.totalAmount(),
+                        base.moovPaymentCode(),
+                        base.moovTransactionId(),
+                        base.payerPhone(),
+                        base.expiresAt(),
+                        base.createdAt(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "2026-10-12",
+                        LocalDateTime.now(),
+                        "[{\"id\":1,\"text\":\"يجب دفع المبلغ كاملاً قبل موعد السفر.\"},"
+                                + "{\"id\":2,\"text\":\"الحجز شخصي ولا يمكن نقله.\"}]");
+        when(bookingPaymentRepository.findById(10L)).thenReturn(Optional.of(withTerms));
+        when(bookingInstallmentRepository.findByBookingPaymentIds(List.of(10L)))
+                .thenReturn(List.of());
+        when(bookingPaymentRepository.hasInvoiceGenerated(10L)).thenReturn(false);
+        when(bookingPaymentRepository.nextInvoiceNumberSequenceValue()).thenReturn(100115L);
+        stubRoomAndOwner();
+        when(fileStorageService.store(
+                        any(byte[].class), anyString(), eq("application/pdf"), eq("invoices")))
+                .thenReturn("invoices/FACT-2.pdf");
+        when(bookingPaymentRepository.markInvoiceGenerated(eq(10L), anyString(), anyString()))
+                .thenReturn(true);
+
+        invoiceService().generateIfFullyPaid(10L);
+
+        verify(fileStorageService)
+                .store(any(byte[].class), anyString(), eq("application/pdf"), eq("invoices"));
+    }
+
+    @Test
     void generateIfFullyPaid_whenInstallmentsWithOnlyFirstPaid_doesNothing() {
         when(bookingPaymentRepository.findById(10L))
                 .thenReturn(

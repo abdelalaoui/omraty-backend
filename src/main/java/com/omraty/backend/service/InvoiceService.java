@@ -1,5 +1,9 @@
 package com.omraty.backend.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.omraty.backend.dto.response.BookingTermItemResponse;
 import com.omraty.backend.entities.Bed;
 import com.omraty.backend.entities.BookingInstallment;
 import com.omraty.backend.entities.BookingPayment;
@@ -20,6 +24,8 @@ import com.omraty.backend.repository.PackageRepository;
 import com.omraty.backend.repository.RoomRepository;
 import com.omraty.backend.repository.VipRequestRepository;
 import com.omraty.backend.storage.FileStorageService;
+import com.openhtmltopdf.bidi.support.ICUBidiReorderer;
+import com.openhtmltopdf.bidi.support.ICUBidiSplitter;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -58,6 +64,11 @@ public class InvoiceService {
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final String CURRENCY = "MRU";
     private static final String INVOICE_SUBDIR = "invoices";
+    // Police des conditions acceptées (souvent en arabe, que Helvetica n'a pas) : Amiri, licence
+    // OFL (voir resources/fonts/Amiri-OFL.txt).
+    private static final String TERMS_FONT_RESOURCE = "/fonts/Amiri-Regular.ttf";
+    private static final String TERMS_FONT_FAMILY = "Amiri";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final BookingPaymentRepository bookingPaymentRepository;
     private final BookingInstallmentRepository bookingInstallmentRepository;
@@ -394,6 +405,11 @@ public class InvoiceService {
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
+            builder.useFont(
+                    () -> InvoiceService.class.getResourceAsStream(TERMS_FONT_RESOURCE),
+                    TERMS_FONT_FAMILY);
+            builder.useUnicodeBidiSplitter(new ICUBidiSplitter.ICUBidiSplitterFactory());
+            builder.useUnicodeBidiReorderer(new ICUBidiReorderer());
             builder.withHtmlContent(html, null);
             builder.toStream(os);
             builder.run();
@@ -428,7 +444,13 @@ public class InvoiceService {
                                 + " left; font-size: 10pt; }"
                                 + " th { background-color: rgba(255,255,255,0.6); }"
                                 + " .totals td { border: none; padding: 1mm 3mm; }"
-                                + " .totals .label { text-align: right; font-weight: bold; }")
+                                + " .totals .label { text-align: right; font-weight: bold; }"
+                                + " .terms { margin-top: 4mm; font-size: 8.5pt; }"
+                                + " .terms h2 { font-size: 11pt; margin: 0 0 2mm 0; }"
+                                + " .terms .term { margin: 0 0 1mm 0; }"
+                                + " .terms .rtl { direction: rtl; text-align: right; font-family: "
+                                + TERMS_FONT_FAMILY
+                                + "; font-size: 10pt; }")
                 .append("</style></head><body><div class=\"content\">");
 
         html.append("<h1>Facture ").append(escape(invoiceNumber)).append("</h1>");
@@ -474,8 +496,69 @@ public class InvoiceService {
             html.append("</table>");
         }
 
+        appendAcceptedTerms(html, payment);
+
         html.append("</div></body></html>");
         return html.toString();
+    }
+
+    /**
+     * Conditions acceptées par le client à la réservation, en fin de facture : la copie figée
+     * enregistrée à ce moment-là (booking_payment.accepted_terms_snapshot, migration V55), jamais
+     * les conditions actuelles. Rien pour un achat sans copie (antérieur à V55, VIP) ou si elle est
+     * illisible — la facture reste générée.
+     */
+    private static void appendAcceptedTerms(StringBuilder html, BookingPayment payment) {
+        List<BookingTermItemResponse> terms = parseAcceptedTerms(payment.acceptedTermsSnapshot());
+        if (terms.isEmpty()) {
+            return;
+        }
+        html.append("<div class=\"terms\"><h2>Conditions acceptées</h2>");
+        if (payment.acceptedTermsAt() != null) {
+            html.append("<p>Acceptées le ")
+                    .append(payment.acceptedTermsAt().toLocalDate().format(DATE_FORMAT));
+            if (payment.acceptedTermsVersion() != null) {
+                html.append(" (version ")
+                        .append(escape(payment.acceptedTermsVersion()))
+                        .append(")");
+            }
+            html.append("</p>");
+        }
+        // Numérotation écrite dans le texte plutôt qu'une liste <ol> : le moteur PDF place les
+        // numéros d'une liste à gauche même en arabe ; dans un paragraphe dir="rtl", le numéro en
+        // tête de texte reste bien à droite.
+        boolean rtl = terms.stream().anyMatch(term -> containsArabic(term.text()));
+        html.append(rtl ? "<div class=\"rtl\" dir=\"rtl\">" : "<div>");
+        for (int i = 0; i < terms.size(); i++) {
+            html.append("<p class=\"term\">")
+                    .append(i + 1)
+                    .append(". ")
+                    .append(escape(terms.get(i).text()))
+                    .append("</p>");
+        }
+        html.append("</div></div>");
+    }
+
+    private static List<BookingTermItemResponse> parseAcceptedTerms(String snapshotJson) {
+        if (snapshotJson == null || snapshotJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return OBJECT_MAPPER.readValue(
+                    snapshotJson, new TypeReference<List<BookingTermItemResponse>>() {});
+        } catch (JsonProcessingException e) {
+            log.error("Conditions acceptées illisibles : facture générée sans elles", e);
+            return List.of();
+        }
+    }
+
+    private static boolean containsArabic(String text) {
+        return text != null
+                && text.codePoints()
+                        .anyMatch(
+                                codePoint ->
+                                        Character.UnicodeScript.of(codePoint)
+                                                == Character.UnicodeScript.ARABIC);
     }
 
     private static String formatAmount(BigDecimal amount) {

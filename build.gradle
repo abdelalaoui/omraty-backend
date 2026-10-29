@@ -41,6 +41,9 @@ dependencies {
 	// Génération des factures PDF (voir InvoiceService) à partir d'un gabarit HTML/CSS : moteur de
 	// rendu simple, mise en page sans flexbox/grid (non supportés).
 	implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
+	// Texte arabe dans la facture (conditions acceptées, voir InvoiceService) : ordre de droite à
+	// gauche et formes liées des lettres, absents du moteur de base.
+	implementation("com.openhtmltopdf:openhtmltopdf-rtl-support:1.0.10")
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
