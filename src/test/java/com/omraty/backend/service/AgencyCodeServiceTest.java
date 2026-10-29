@@ -163,4 +163,22 @@ class AgencyCodeServiceTest {
         assertThat(result.used()).isTrue();
         assertThat(result.accountId()).isEqualTo(ACCOUNT_ID);
     }
+
+    @Test
+    void getDiscountPercentage_returnsLinkedAgencyDiscount() {
+        when(agencyCodeRepository.findDiscountPercentageForAccount(ACCOUNT_ID))
+                .thenReturn(Optional.of(new BigDecimal("5.00")));
+
+        assertThat(agencyCodeService().getDiscountPercentage(ACCOUNT_ID))
+                .isEqualByComparingTo("5");
+    }
+
+    @Test
+    void getDiscountPercentage_withoutAgency_returnsZero() {
+        when(agencyCodeRepository.findDiscountPercentageForAccount(ACCOUNT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThat(agencyCodeService().getDiscountPercentage(ACCOUNT_ID))
+                .isEqualByComparingTo("0");
+    }
 }

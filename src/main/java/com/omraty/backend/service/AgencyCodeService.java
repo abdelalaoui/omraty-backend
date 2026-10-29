@@ -80,6 +80,16 @@ public class AgencyCodeService {
         return agencyCodeRepository.updateVerify(agencyCode.id(), accountId);
     }
 
+    /**
+     * Remise agence du compte (voir BookingPaymentService.applyDiscounts), 0 s'il n'a validé aucun
+     * code.
+     */
+    public BigDecimal getDiscountPercentage(UUID accountId) {
+        return agencyCodeRepository
+                .findDiscountPercentageForAccount(accountId)
+                .orElse(BigDecimal.ZERO);
+    }
+
     private String generateUniqueCode() {
         for (int attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
             String candidate = randomCode();
