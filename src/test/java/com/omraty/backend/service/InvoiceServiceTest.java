@@ -40,6 +40,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -269,6 +271,35 @@ class InvoiceServiceTest {
 
         verify(fileStorageService)
                 .store(any(byte[].class), anyString(), eq("application/pdf"), eq("invoices"));
+    }
+
+    @Test
+    void generateIfFullyPaid_withArabicPackageLabel_rendersArabicDescription() throws Exception {
+        // Libellé de package en arabe dans la description : Helvetica n'a pas ces lettres et les
+        // rendait en « # » (voir InvoiceService.buildHtml, td.ar).
+        when(bookingPaymentRepository.findById(10L))
+                .thenReturn(Optional.of(payment(10L, PaymentPlan.FULL, PaymentStatus.CONFIRMED)));
+        when(bookingInstallmentRepository.findByBookingPaymentIds(List.of(10L)))
+                .thenReturn(List.of());
+        when(bookingPaymentRepository.hasInvoiceGenerated(10L)).thenReturn(false);
+        when(bookingPaymentRepository.nextInvoiceNumberSequenceValue()).thenReturn(100116L);
+        stubRoomAndOwner();
+        when(packageRepository.findById(1L))
+                .thenReturn(Optional.of(new OmraPackage(1L, "عمرة رمضان", 10, null, null)));
+        ArgumentCaptor<byte[]> pdf = ArgumentCaptor.forClass(byte[].class);
+        when(fileStorageService.store(
+                        pdf.capture(), anyString(), eq("application/pdf"), eq("invoices")))
+                .thenReturn("invoices/FACT-3.pdf");
+        when(bookingPaymentRepository.markInvoiceGenerated(eq(10L), anyString(), anyString()))
+                .thenReturn(true);
+
+        invoiceService().generateIfFullyPaid(10L);
+
+        try (PDDocument document = PDDocument.load(pdf.getValue())) {
+            String text = new PDFTextStripper().getText(document);
+            assertThat(text).doesNotContain("#");
+            assertThat(text).containsPattern("\\p{InArabic}");
+        }
     }
 
     @Test

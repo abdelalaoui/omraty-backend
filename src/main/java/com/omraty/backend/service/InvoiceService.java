@@ -450,7 +450,10 @@ public class InvoiceService {
                                 + " .terms .term { margin: 0 0 1mm 0; }"
                                 + " .terms .rtl { direction: rtl; text-align: right; font-family: "
                                 + TERMS_FONT_FAMILY
-                                + "; font-size: 10pt; }")
+                                + "; font-size: 10pt; }"
+                                + " td.ar { font-family: "
+                                + TERMS_FONT_FAMILY
+                                + "; }")
                 .append("</style></head><body><div class=\"content\">");
 
         html.append("<h1>Facture ").append(escape(invoiceNumber)).append("</h1>");
@@ -460,7 +463,9 @@ public class InvoiceService {
         html.append("</div>");
 
         html.append("<table><tr><th>Description</th><th>Montant</th></tr>");
-        html.append("<tr><td>")
+        // Helvetica n'a pas de lettres arabes (rendues en « # ») : un libellé de package en arabe
+        // passe en Amiri, qui couvre aussi le latin et les chiffres du reste de la description.
+        html.append(containsArabic(purchase.description()) ? "<tr><td class=\"ar\">" : "<tr><td>")
                 .append(escape(purchase.description()))
                 .append("</td><td>")
                 .append(formatAmount(payment.totalAmount()))
