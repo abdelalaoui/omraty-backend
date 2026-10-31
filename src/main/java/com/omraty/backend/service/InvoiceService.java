@@ -273,13 +273,12 @@ public class InvoiceService {
         // Proposition préparée par un admin (voir migration V69) : ni chambre ni lit.
         Optional<CustomOffer> customOffer = customOfferRepository.findByPaymentId(payment.id());
         if (customOffer.isPresent()) {
-            String label =
+            String packageLabel =
                     customOffer.get().packageId() == null
-                            ? customOffer.get().title()
-                            : customOffer.get().title()
-                                    + " — "
-                                    + resolvePackageLabel(customOffer.get().packageId());
-            return new PurchaseDescription(customOffer.get().userId(), label);
+                            ? null
+                            : resolvePackageLabel(customOffer.get().packageId());
+            return new PurchaseDescription(
+                    customOffer.get().userId(), customOffer.get().title(), packageLabel);
         }
         List<Long> groupBedIds = bookingPaymentRepository.findGroupBedIds(payment.id());
         List<Long> groupRoomIds = bookingPaymentRepository.findGroupRoomIds(payment.id());
@@ -312,9 +311,9 @@ public class InvoiceService {
                         + roomsSummary
                         + " + "
                         + bedIds.size()
-                        + " lit(s) en chambre de 5) — "
-                        + resolvePackageLabel(rooms.get(0).packageId());
-        return new PurchaseDescription(rooms.get(0).userId(), label);
+                        + " lit(s) en chambre de 5)";
+        return new PurchaseDescription(
+                rooms.get(0).userId(), label, resolvePackageLabel(rooms.get(0).packageId()));
     }
 
     private PurchaseDescription describeGroupBeds(List<Long> bedIds) {
@@ -324,12 +323,11 @@ public class InvoiceService {
         }
         Optional<Room> room =
                 roomRepository.findByIds(List.of(beds.get(0).roomId())).stream().findFirst();
-        String label =
-                "Réservation de "
-                        + beds.size()
-                        + " lits (chambres 5 places) — "
-                        + room.map(r -> resolvePackageLabel(r.packageId())).orElse("");
-        return new PurchaseDescription(beds.get(0).userId(), label);
+        String label = "Réservation de " + beds.size() + " lits (chambres 5 places)";
+        return new PurchaseDescription(
+                beds.get(0).userId(),
+                label,
+                room.map(r -> resolvePackageLabel(r.packageId())).orElse(null));
     }
 
     private PurchaseDescription describeGroupRooms(long paymentId) {
@@ -342,14 +340,9 @@ public class InvoiceService {
                 rooms.stream()
                         .map(room -> room.totalCapacity() + " places")
                         .collect(Collectors.joining(", "));
-        String label =
-                "Achat groupé ("
-                        + rooms.size()
-                        + " chambres : "
-                        + roomsSummary
-                        + ") — "
-                        + resolvePackageLabel(rooms.get(0).packageId());
-        return new PurchaseDescription(rooms.get(0).userId(), label);
+        String label = "Achat groupé (" + rooms.size() + " chambres : " + roomsSummary + ")";
+        return new PurchaseDescription(
+                rooms.get(0).userId(), label, resolvePackageLabel(rooms.get(0).packageId()));
     }
 
     private PurchaseDescription describeRoom(Room room) {
@@ -358,8 +351,8 @@ public class InvoiceService {
                 room.totalCapacity() == 1
                         ? "Achat chambre privée (1 personne)"
                         : "Achat chambre " + room.totalCapacity() + " places";
-        String label = roomLabel + " — " + resolvePackageLabel(room.packageId());
-        return new PurchaseDescription(room.userId(), label);
+        return new PurchaseDescription(
+                room.userId(), roomLabel, resolvePackageLabel(room.packageId()));
     }
 
     private Optional<PurchaseDescription> describeBed(Bed bed) {
@@ -373,19 +366,15 @@ public class InvoiceService {
                                                 + bed.number()
                                                 + " (chambre "
                                                 + room.totalCapacity()
-                                                + " places) — "
-                                                + resolvePackageLabel(room.packageId())));
+                                                + " places)",
+                                        resolvePackageLabel(room.packageId())));
     }
 
     private PurchaseDescription describeVipRequest(VipRequest vipRequest) {
         String label =
-                "Offre VIP — vol "
-                        + vipRequest.airline()
-                        + ", "
-                        + vipRequest.seats()
-                        + " place(s) — "
-                        + resolvePackageLabel(vipRequest.packageId());
-        return new PurchaseDescription(vipRequest.userId(), label);
+                "Offre VIP — vol " + vipRequest.airline() + ", " + vipRequest.seats() + " place(s)";
+        return new PurchaseDescription(
+                vipRequest.userId(), label, resolvePackageLabel(vipRequest.packageId()));
     }
 
     private String resolvePackageLabel(long packageId) {
@@ -451,9 +440,9 @@ public class InvoiceService {
                                 + " .terms .rtl { direction: rtl; text-align: right; font-family: "
                                 + TERMS_FONT_FAMILY
                                 + "; font-size: 10pt; }"
-                                + " td.ar { font-family: "
+                                + " .line-ar { direction: rtl; text-align: right; font-family: "
                                 + TERMS_FONT_FAMILY
-                                + "; }")
+                                + "; font-size: 11pt; }")
                 .append("</style></head><body><div class=\"content\">");
 
         html.append("<h1>Facture ").append(escape(invoiceNumber)).append("</h1>");
@@ -463,11 +452,14 @@ public class InvoiceService {
         html.append("</div>");
 
         html.append("<table><tr><th>Description</th><th>Montant</th></tr>");
-        // Helvetica n'a pas de lettres arabes (rendues en « # ») : un libellé de package en arabe
-        // passe en Amiri, qui couvre aussi le latin et les chiffres du reste de la description.
-        html.append(containsArabic(purchase.description()) ? "<tr><td class=\"ar\">" : "<tr><td>")
-                .append(escape(purchase.description()))
-                .append("</td><td>")
+        // Type d'achat puis package, chacun sur sa ligne : mêlés sur une seule ligne, le français
+        // et l'arabe s'entrecroisaient et devenaient illisibles.
+        html.append("<tr><td>");
+        appendDescriptionLine(html, purchase.description());
+        if (purchase.packageLabel() != null && !purchase.packageLabel().isBlank()) {
+            appendDescriptionLine(html, purchase.packageLabel());
+        }
+        html.append("</td><td>")
                 .append(formatAmount(payment.totalAmount()))
                 .append("</td></tr></table>");
 
@@ -557,6 +549,16 @@ public class InvoiceService {
         }
     }
 
+    /**
+     * Une ligne de la description. Helvetica n'a pas de lettres arabes (rendues en « # ») : une
+     * ligne en arabe passe en Amiri, de droite à gauche.
+     */
+    private static void appendDescriptionLine(StringBuilder html, String text) {
+        html.append(containsArabic(text) ? "<div class=\"line-ar\" dir=\"rtl\">" : "<div>")
+                .append(escape(text))
+                .append("</div>");
+    }
+
     private static boolean containsArabic(String text) {
         return text != null
                 && text.codePoints()
@@ -581,5 +583,6 @@ public class InvoiceService {
                 .replace("\"", "&quot;");
     }
 
-    private record PurchaseDescription(UUID userId, String description) {}
+    /** Type d'achat (description) et libellé du package, null si aucun package. */
+    private record PurchaseDescription(UUID userId, String description, String packageLabel) {}
 }
